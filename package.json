@@ -3,15 +3,22 @@
   "private": true,
   "scripts": {
     "build": "turbo run build",
+    "ci:quality": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "ci:smoke": "pnpm --filter web test:e2e -- --grep \"template -> render -> sign -> finalize\"",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:e2e": "pnpm --filter web test:e2e",
+    "typecheck": "turbo run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "check-types": "turbo run check-types"
+    "doctor": "node ./scripts/doctor.mjs",
+    "db:reset": "node ./scripts/reset-dev-db.mjs"
   },
   "devDependencies": {
     "prettier": "^3.7.4",
     "turbo": "^2.8.12",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "vitest": "^3.2.4"
   },
   "packageManager": "pnpm@9.0.0",
   "engines": {

@@ -1,0 +1,30 @@
+{
+  "name": "@repo/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.888.0",
+    "@repo/db": "workspace:*",
+    "@repo/shared": "workspace:*",
+    "bullmq": "^5.63.0",
+    "playwright": "^1.55.0",
+    "undici": "^7.24.0"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^22.15.3",
+    "eslint": "^9.39.1",
+    "tsx": "^4.20.6",
+    "typescript": "5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

@@ -1,50 +1,58 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --radius-lg: 1rem;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-}
-
-body {
-  color: var(--foreground);
-  background: var(--background);
+  --background: #f6f8ff;
+  --foreground: #111430;
+  --primary: #5b4ff7;
+  --primary-foreground: #ffffff;
+  --surface: #ffffff;
+  --muted: #63698d;
+  --border: #d8ddf4;
 }
 
 * {
   box-sizing: border-box;
-  padding: 0;
+}
+
+body {
   margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(91, 79, 247, 0.16), transparent 35%),
+    radial-gradient(circle at 90% 0%, rgba(99, 102, 241, 0.12), transparent 40%),
+    var(--background);
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+.app-theme {
+  --background: #0c0a12;
+  --foreground: #f7f5ff;
+  --primary: #8b5cf6;
+  --primary-foreground: #f8f3ff;
+  --surface: #151122;
+  --muted: #a49abf;
+  --border: #2b2240;
 }
 
-.imgDark {
-  display: none;
+.glass-card {
+  background: color-mix(in oklab, var(--surface) 92%, #eef1ff 8%);
+  border: 1px solid color-mix(in oklab, var(--border) 80%, #ffffff 20%);
+  box-shadow: 0 20px 40px rgba(43, 56, 125, 0.08);
+  backdrop-filter: blur(6px);
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
-
-  .imgLight {
-    display: none;
-  }
-  .imgDark {
-    display: unset;
-  }
+.marketing-hero {
+  background:
+    radial-gradient(75% 60% at 50% 10%, rgba(91, 79, 247, 0.14) 0%, transparent 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(246, 248, 255, 0.8) 100%);
 }

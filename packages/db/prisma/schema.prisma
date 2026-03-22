@@ -1,0 +1,399 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Workspace {
+  id            String   @id @default(cuid())
+  name          String
+  owner_user_id String?
+  audit_retention_days Int @default(90)
+  audit_export_token_ttl_minutes Int @default(15)
+  cpq_approval_discount_threshold Int @default(15)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  templates     Template[]
+  documents     Document[]
+  contentBlocks ContentBlock[]
+  activityEvents DocumentActivityEvent[]
+  auditExportLedgers AuditExportLedger[]
+  apiKeys       ApiKey[]
+  webhookEndpoints WebhookEndpoint[]
+  webhookDeliveries WebhookDelivery[]
+  documentPayments DocumentPayment[]
+  quoteApprovals QuoteApprovalRequest[]
+  members       WorkspaceMember[]
+  invites       WorkspaceInvite[]
+  contacts      Contact[]
+  owner         User?            @relation("workspace_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
+}
+
+model Template {
+  id             String   @id @default(cuid())
+  workspace_id   String
+  name           String
+  tags           Json
+  variable_registry_json Json?
+  pricing_json    Json?
+  editor_json    Json
+  schema_version Int      @default(1)
+  created_by     String
+  updated_at     DateTime @updatedAt
+  created_at     DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  documents Document[]
+}
+
+model Document {
+  id                String         @id @default(cuid())
+  workspace_id      String
+  template_id       String?
+  contact_id        String?
+  editor_json       Json
+  schema_version    Int            @default(1)
+  doc_version       Int            @default(1)
+  status            DocumentStatus @default(DRAFTED)
+  variables_json    Json
+  pricing_json      Json
+  recipients_json   Json
+  finalized_pdf_key String?
+  doc_hash          String?
+  created_at        DateTime       @default(now())
+  updated_at        DateTime       @updatedAt
+
+  workspace       Workspace        @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  template        Template?        @relation(fields: [template_id], references: [id], onDelete: SetNull)
+  contact         Contact?         @relation(fields: [contact_id], references: [id], onDelete: SetNull)
+  recipients      Recipient[]
+  signatureFields SignatureField[]
+  activityEvents  DocumentActivityEvent[]
+  webhookDeliveries WebhookDelivery[]
+  payments      DocumentPayment[]
+  quoteApprovals QuoteApprovalRequest[]
+}
+
+model DocumentPayment {
+  id                  String                 @id @default(cuid())
+  workspace_id        String
+  document_id         String
+  provider            PaymentProvider
+  provider_session_id String                 @unique
+  status              DocumentPaymentStatus  @default(PENDING)
+  amount_minor        Int
+  currency            String
+  checkout_url        String?
+  paid_at             DateTime?
+  metadata_json       Json
+  created_at          DateTime               @default(now())
+  updated_at          DateTime               @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  document  Document  @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@index([workspace_id, status, created_at])
+  @@index([document_id, created_at])
+}
+
+model QuoteApprovalRequest {
+  id                    String              @id @default(cuid())
+  workspace_id          String
+  document_id           String
+  status                QuoteApprovalStatus @default(PENDING)
+  requested_by_user_id  String
+  requested_reason      String?
+  decided_by_user_id    String?
+  decided_reason        String?
+  discount_percent      Float
+  threshold_percent     Float
+  created_at            DateTime            @default(now())
+  decided_at            DateTime?
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  document  Document  @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@index([workspace_id, created_at])
+  @@index([document_id, created_at])
+}
+
+model ContentBlock {
+  id             String   @id @default(cuid())
+  workspace_id   String
+  name           String
+  block_type     String
+  editor_json    Json
+  version        Int      @default(1)
+  schema_version Int      @default(1)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+}
+
+model Recipient {
+  id            String        @id @default(cuid())
+  document_id   String
+  email         String
+  name          String
+  role          RecipientRole
+  signing_order Int
+  group_key     String?
+  created_at    DateTime      @default(now())
+
+  document        Document         @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  signatureFields SignatureField[]
+}
+
+model SignatureField {
+  id              String     @id @default(cuid())
+  document_id     String
+  recipient_id    String
+  field_type      FieldType
+  position_json   Json
+  required        Boolean    @default(true)
+  value_json      Json?
+  signed_at       DateTime?
+  audit_meta_json Json?
+  created_at      DateTime   @default(now())
+  updated_at      DateTime   @updatedAt
+
+  document  Document  @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  recipient Recipient @relation(fields: [recipient_id], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id                     String            @id @default(cuid())
+  email                  String            @unique
+  name                   String
+  password_hash          String
+  default_workspace_id   String?
+  created_at             DateTime          @default(now())
+  updated_at             DateTime          @updatedAt
+  workspace_memberships  WorkspaceMember[]
+  owned_workspaces       Workspace[]       @relation("workspace_owner")
+  owned_contacts         Contact[]         @relation("contact_owner")
+}
+
+model Contact {
+  id                String   @id @default(cuid())
+  workspace_id      String
+  owner_user_id     String?
+  first_name        String
+  last_name         String
+  full_name         String
+  email             String
+  phone             String?
+  company_name      String?
+  title             String?
+  address_line_1    String?
+  address_line_2    String?
+  city              String?
+  state             String?
+  postal_code       String?
+  country           String?
+  website           String?
+  notes             String?
+  custom_fields_json Json?
+  tags              Json
+  color_label       String?
+  last_activity_at  DateTime?
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  owner     User?     @relation("contact_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
+  documents Document[]
+
+  @@index([workspace_id, updated_at])
+  @@index([workspace_id, full_name])
+  @@index([workspace_id, email])
+}
+
+model WorkspaceMember {
+  id           String        @id @default(cuid())
+  workspace_id String
+  user_id      String
+  role         WorkspaceRole
+  created_at   DateTime      @default(now())
+  updated_at   DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([workspace_id, user_id])
+}
+
+model WorkspaceInvite {
+  id             String        @id @default(cuid())
+  workspace_id   String
+  email          String
+  role           WorkspaceRole
+  invite_token   String        @unique
+  invited_by     String
+  accepted_at    DateTime?
+  expires_at     DateTime
+  created_at     DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+}
+
+model DocumentActivityEvent {
+  id                 String   @id @default(cuid())
+  workspace_id       String
+  document_id        String
+  event_type         String
+  actor_user_id      String?
+  actor_recipient_id String?
+  metadata_json      Json
+  created_at         DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  document  Document  @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@index([document_id, created_at])
+  @@index([workspace_id, created_at])
+}
+
+model ApiKey {
+  id           String        @id @default(cuid())
+  workspace_id String
+  name         String
+  key_prefix   String
+  key_hash     String        @unique
+  role         WorkspaceRole @default(MEMBER)
+  created_by   String
+  last_used_at DateTime?
+  expires_at   DateTime?
+  revoked_at   DateTime?
+  created_at   DateTime      @default(now())
+  updated_at   DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@index([workspace_id, revoked_at])
+  @@index([workspace_id, revoked_at, expires_at])
+}
+
+model WebhookEndpoint {
+  id           String   @id @default(cuid())
+  workspace_id String
+  url          String
+  secret       String
+  events_json  Json
+  allowed_ips_json Json?
+  require_mtls Boolean @default(false)
+  mtls_cert_fingerprint String?
+  is_active    Boolean  @default(true)
+  created_by   String
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  workspace  Workspace         @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([workspace_id, is_active])
+}
+
+model AuditExportLedger {
+  id                  String   @id @default(cuid())
+  workspace_id        String
+  actor_user_id       String
+  export_type         String
+  before_at           DateTime?
+  export_limit        Int
+  row_count           Int
+  checksum            String
+  previous_entry_hash String?
+  entry_hash          String
+  metadata_json       Json
+  created_at          DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@index([workspace_id, created_at])
+}
+
+model WebhookDelivery {
+  id              String                @id @default(cuid())
+  workspace_id    String
+  endpoint_id     String
+  document_id     String?
+  event_type      String
+  status          WebhookDeliveryStatus @default(PENDING)
+  attempts        Int                   @default(0)
+  payload_json    Json
+  signature       String?
+  http_status     Int?
+  response_body   String?
+  next_retry_at   DateTime?
+  delivered_at    DateTime?
+  created_at      DateTime              @default(now())
+  updated_at      DateTime              @updatedAt
+
+  workspace Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  endpoint  WebhookEndpoint @relation(fields: [endpoint_id], references: [id], onDelete: Cascade)
+  document  Document?       @relation(fields: [document_id], references: [id], onDelete: SetNull)
+
+  @@index([workspace_id, status, created_at])
+  @@index([endpoint_id, created_at])
+}
+
+enum DocumentStatus {
+  DRAFTED
+  SENT
+  VIEWED
+  COMMENTED
+  SIGNED
+  PAID
+  EXPIRED
+  VOID
+}
+
+enum RecipientRole {
+  SIGNER
+  APPROVER
+  VIEWER
+}
+
+enum FieldType {
+  SIGNATURE
+  INITIALS
+  DATE
+  TEXT
+  CHECKBOX
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  RETRYING
+  SUCCESS
+  DEAD_LETTER
+}
+
+enum QuoteApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PaymentProvider {
+  STRIPE
+}
+
+enum DocumentPaymentStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+  FAILED
+}
