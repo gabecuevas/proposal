@@ -7,15 +7,16 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "tsc --noEmit",
-    "lint": "eslint . --max-warnings 0",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "prisma": "prisma",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate:dev": "prisma migrate dev",
-    "prisma:deploy": "prisma migrate deploy",
-    "seed": "tsx prisma/seed.ts"
+  "build": "prisma generate --schema prisma/schema.prisma && tsc --noEmit",
+  "lint": "eslint . --max-warnings 0",
+  "typecheck": "tsc --noEmit",
+  "test": "vitest run",
+  "postinstall": "prisma generate --schema prisma/schema.prisma",
+  "prisma": "prisma",
+  "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+  "prisma:migrate:dev": "prisma migrate dev --schema prisma/schema.prisma",
+  "prisma:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
+  "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.17.1"
