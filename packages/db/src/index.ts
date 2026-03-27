@@ -1,4 +1,5 @@
-import { PrismaClient, type Prisma } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
+import type { InputJsonValue as PrismaInputJsonValue } from "@prisma/client/runtime/library";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
@@ -8,4 +9,4 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
-export type InputJsonValue = Prisma.InputJsonValue;
+export type InputJsonValue = PrismaInputJsonValue;
