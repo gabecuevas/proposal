@@ -1,41 +1,97 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { EditorDoc } from "@/lib/editor/types";
+import { documentTitleFromEditorJson } from "@/lib/ui/document-title";
+import { formatRelativeTime } from "@/lib/ui/time";
+
+type Recipient = { id: string; email: string; name: string; role: string };
 
 type DocumentItem = {
   id: string;
   status: string;
   template_id: string | null;
+  editor_json: EditorDoc;
+  recipients_json: Recipient[];
   created_at: string;
   updated_at: string;
 };
 
-type TemplateOption = {
-  id: string;
-  name: string;
+type TabKey = "all" | "draft" | "sent" | "viewed" | "completed" | "expired";
+
+/** Keys mirror the Documents entries in the app shell sidebar. */
+const tabMatchers: Record<TabKey, (status: string) => boolean> = {
+  all: () => true,
+  draft: (s) => s === "DRAFTED",
+  sent: (s) => s === "SENT",
+  viewed: (s) => s === "VIEWED" || s === "COMMENTED",
+  completed: (s) => s === "SIGNED" || s === "PAID",
+  expired: (s) => s === "EXPIRED" || s === "VOID",
 };
 
-const statuses = ["", "DRAFTED", "SENT", "VIEWED", "COMMENTED", "SIGNED", "PAID", "EXPIRED", "VOID"];
+function toTabKey(value: string | null): TabKey {
+  return value && value in tabMatchers ? (value as TabKey) : "all";
+}
+
+function statusBadgeClass(status: string): string {
+  const s = status.toUpperCase();
+  const base = "inline-flex rounded-md px-2 py-0.5 text-xs font-medium";
+  if (s === "DRAFTED") {
+    return `${base} bg-slate-100 text-slate-700`;
+  }
+  if (s === "SENT") {
+    return `${base} bg-sky-100 text-sky-800`;
+  }
+  if (s === "VIEWED" || s === "COMMENTED") {
+    return `${base} bg-indigo-100 text-indigo-800`;
+  }
+  if (s === "SIGNED" || s === "PAID") {
+    return `${base} bg-emerald-100 text-emerald-800`;
+  }
+  if (s === "EXPIRED" || s === "VOID") {
+    return `${base} bg-red-100 text-red-800`;
+  }
+  return `${base} bg-slate-100 text-slate-600`;
+}
+
+function statusDisplayLabel(status: string): string {
+  const s = status.toUpperCase();
+  if (s === "DRAFTED") {
+    return "Draft";
+  }
+  if (s === "SIGNED" || s === "PAID") {
+    return "Completed";
+  }
+  if (s === "VOID") {
+    return "Expired";
+  }
+  if (s === "COMMENTED") {
+    return "Viewed";
+  }
+  return s.charAt(0) + s.slice(1).toLowerCase();
+}
+
+function firstRecipientEmail(recipients: Recipient[]): string {
+  const r = recipients[0];
+  return r?.email ?? "—";
+}
 
 export default function DocumentsPage() {
+  const searchParams = useSearchParams();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("");
-  const [templateIdForCreate, setTemplateIdForCreate] = useState("");
   const [error, setError] = useState("");
-  const [statusMessage, setStatusMessage] = useState("");
 
-  async function loadDocuments(search = query, statusFilter = status) {
+  const activeTab = toTabKey(searchParams.get("tab"));
+
+  const loadDocuments = useCallback(async () => {
     setError("");
     const params = new URLSearchParams();
-    params.set("limit", "100");
-    if (search.trim()) {
-      params.set("q", search.trim());
-    }
-    if (statusFilter) {
-      params.set("status", statusFilter);
+    params.set("limit", "200");
+    if (query.trim()) {
+      params.set("q", query.trim());
     }
     const response = await fetch(`/api/documents?${params.toString()}`);
     if (!response.ok) {
@@ -44,146 +100,110 @@ export default function DocumentsPage() {
     }
     const payload = (await response.json()) as { documents: DocumentItem[] };
     setDocuments(payload.documents);
-  }
-
-  async function loadTemplates() {
-    const response = await fetch("/api/templates?limit=100");
-    if (!response.ok) {
-      return;
-    }
-    const payload = (await response.json()) as { templates: TemplateOption[] };
-    setTemplates(payload.templates);
-    setTemplateIdForCreate((current) => current || payload.templates[0]?.id || "");
-  }
-
-  async function createBlankDocument() {
-    setError("");
-    setStatusMessage("");
-    const response = await fetch("/api/documents", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    if (!response.ok) {
-      setError("Failed to create blank document");
-      return;
-    }
-    setStatusMessage("Blank document created.");
-    await loadDocuments();
-  }
-
-  async function createFromTemplate() {
-    if (!templateIdForCreate) {
-      return;
-    }
-    setError("");
-    setStatusMessage("");
-    const response = await fetch("/api/documents", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ templateId: templateIdForCreate }),
-    });
-    if (!response.ok) {
-      setError("Failed to create document from template");
-      return;
-    }
-    setStatusMessage("Document created from template.");
-    await loadDocuments();
-  }
+  }, [query]);
 
   useEffect(() => {
     void loadDocuments();
-    void loadTemplates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadDocuments]);
+
+  const filtered = useMemo(
+    () => documents.filter((d) => tabMatchers[activeTab](d.status.toUpperCase())),
+    [documents, activeTab],
+  );
 
   return (
-    <main className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold">Documents</h1>
-        <p className="text-sm text-muted">Search, filter, and create documents from blank or templates.</p>
-      </div>
-
-      <div className="grid gap-2 rounded-xl border border-border bg-surface p-3 md:grid-cols-[1fr_220px_auto]">
-        <input
-          className="rounded border border-border bg-background px-3 py-2 text-sm"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by document or template ID"
-        />
-        <select
-          className="rounded border border-border bg-background px-3 py-2 text-sm"
-          value={status}
-          onChange={(event) => setStatus(event.target.value)}
-        >
-          {statuses.map((item) => (
-            <option key={item || "ALL"} value={item}>
-              {item || "All statuses"}
-            </option>
-          ))}
-        </select>
+    <main className="mx-auto max-w-6xl space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M16 16l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </span>
+          <input
+            className="h-10 w-full rounded-md border border-border bg-surface pl-9 pr-3 text-sm outline-none ring-primary/15 focus:ring-2"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void loadDocuments()}
+            placeholder="Search documents…"
+          />
+        </div>
         <button
-          onClick={() => void loadDocuments()}
-          className="rounded border border-border px-3 py-2 text-sm hover:bg-background"
+          type="button"
+          className="inline-flex h-10 items-center gap-2 rounded-md border border-border bg-surface px-3 text-sm text-foreground hover:bg-slate-50"
         >
-          Search
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path
+              d="M4 6h16M7 12h10M10 18h4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+          Filter
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
         </button>
       </div>
 
-      <div className="grid gap-2 rounded-xl border border-border bg-surface p-3 md:grid-cols-[auto_1fr_auto_auto]">
-        <span className="self-center text-sm text-muted">New document</span>
-        <select
-          className="rounded border border-border bg-background px-3 py-2 text-sm"
-          value={templateIdForCreate}
-          onChange={(event) => setTemplateIdForCreate(event.target.value)}
-        >
-          <option value="">Select template (optional)</option>
-          {templates.map((template) => (
-            <option key={template.id} value={template.id}>
-              {template.name}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={() => void createFromTemplate()}
-          className="rounded border border-border px-3 py-2 text-sm hover:bg-background"
-        >
-          Create from template
-        </button>
-        <button
-          onClick={() => void createBlankDocument()}
-          className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground"
-        >
-          Create blank
-        </button>
-      </div>
-
-      {statusMessage ? <p className="text-sm text-green-600">{statusMessage}</p> : null}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-      <section className="space-y-2">
-        {documents.map((document) => (
-          <Link
-            key={document.id}
-            href={`/app/documents/${document.id}`}
-            className="block rounded-xl border border-border bg-surface p-3 text-sm hover:bg-background"
-          >
-            <p className="font-medium">{document.id}</p>
-            <p className="text-xs text-muted">
-              Status: {document.status} | Template: {document.template_id ?? "blank"}
-            </p>
-            <p className="text-xs text-muted">
-              Updated: {new Date(document.updated_at).toLocaleString()} | Created:{" "}
-              {new Date(document.created_at).toLocaleString()}
-            </p>
-          </Link>
-        ))}
-        {documents.length === 0 ? (
-          <div className="rounded-xl border border-border bg-surface p-4 text-sm text-muted">
-            No documents found.
-          </div>
+      <div className="overflow-hidden rounded-lg border border-border bg-surface">
+        <table className="w-full text-left text-sm">
+          <thead className="border-b border-border bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-muted">
+            <tr>
+              <th className="px-4 py-3">Document</th>
+              <th className="px-4 py-3">Recipient</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Updated</th>
+              <th className="w-10 px-2 py-3" aria-label="Actions" />
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((document) => {
+              const title = documentTitleFromEditorJson(document.editor_json, document.id);
+              return (
+                <tr key={document.id} className="border-b border-border last:border-0 hover:bg-slate-50/60">
+                  <td className="px-4 py-3">
+                    <Link
+                      href={`/app/documents/${document.id}`}
+                      className="flex items-center gap-2 font-medium text-foreground hover:text-primary"
+                    >
+                      <span className="text-muted" aria-hidden>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <path
+                            d="M8 4h8l4 4v12a1 1 0 01-1 1H8a1 1 0 01-1-1V5a1 1 0 011-1z"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                          />
+                        </svg>
+                      </span>
+                      {title}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 text-muted">{firstRecipientEmail(document.recipients_json)}</td>
+                  <td className="px-4 py-3">
+                    <span className={statusBadgeClass(document.status)}>
+                      {statusDisplayLabel(document.status)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-muted">{formatRelativeTime(document.updated_at)}</td>
+                  <td className="px-2 py-3 text-center text-muted">
+                    <Link href={`/app/documents/${document.id}`} className="inline-block p-1 hover:text-foreground">
+                      ···
+                    </Link>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {filtered.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-muted">No documents in this view.</p>
         ) : null}
-      </section>
+      </div>
     </main>
   );
 }

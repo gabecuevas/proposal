@@ -34,14 +34,20 @@ body {
     var(--background);
 }
 
+/* Logged-in app: light enterprise SaaS (sidebar + canvas) */
 .app-theme {
-  --background: #0c0a12;
-  --foreground: #f7f5ff;
-  --primary: #8b5cf6;
-  --primary-foreground: #f8f3ff;
-  --surface: #151122;
-  --muted: #a49abf;
-  --border: #2b2240;
+  --background: #f4f6f9;
+  --foreground: #1e293b;
+  --primary: #1e3a5f;
+  --primary-foreground: #ffffff;
+  --surface: #ffffff;
+  --muted: #64748b;
+  --border: #e2e8f0;
+  font-family: var(--font-app-sans, ui-sans-serif), system-ui, sans-serif;
+}
+
+.font-app-serif {
+  font-family: var(--font-app-serif, ui-serif), Georgia, "Times New Roman", serif;
 }
 
 .glass-card {

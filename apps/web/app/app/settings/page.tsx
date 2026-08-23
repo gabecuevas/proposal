@@ -313,7 +313,7 @@ export default function SettingsPage() {
         {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
       </div>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section id="compliance" className="scroll-mt-28 rounded-xl border border-border bg-surface p-4">
         <h2 className="text-lg font-semibold">Compliance Policy</h2>
         <p className="mt-1 text-sm text-muted">Configure workspace retention and audit export token lifetime.</p>
         <div className="mt-3 grid gap-3 md:grid-cols-3">
@@ -360,7 +360,7 @@ export default function SettingsPage() {
         ) : null}
       </section>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section id="api-keys" className="scroll-mt-28 rounded-xl border border-border bg-surface p-4">
         <h2 className="text-lg font-semibold">API Keys</h2>
         <p className="mt-1 text-sm text-muted">Create, rotate, and revoke workspace API keys with expiry controls.</p>
         {apiAnalytics ? (
@@ -443,7 +443,7 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
+      <section id="webhooks" className="scroll-mt-28 rounded-xl border border-border bg-surface p-4">
         <h2 className="text-lg font-semibold">Webhook Trust Policy</h2>
         <p className="mt-1 text-sm text-muted">Configure endpoint IP allowlisting and mTLS requirement metadata.</p>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
