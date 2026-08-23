@@ -21,6 +21,33 @@ type AppSidebarProps = {
 
 type Counts = Partial<Record<CountKey, number>>;
 
+function useTeamMemberCount(enabled: boolean): number | null {
+  const [count, setCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+    let cancelled = false;
+    async function load() {
+      const response = await fetch("/api/workspace/members");
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as { members?: unknown[] };
+      if (!cancelled) {
+        setCount(payload.members?.length ?? 0);
+      }
+    }
+    void load().catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled]);
+
+  return count;
+}
+
 function useShellCounts(sectionId: SectionId): Counts {
   const [counts, setCounts] = useState<Counts>({});
 
@@ -92,6 +119,9 @@ export function AppSidebar({
   onNavigate,
 }: AppSidebarProps) {
   const counts = useShellCounts(section.id);
+  const teamMemberCount = useTeamMemberCount(
+    Boolean(section.filters?.some((filter) => filter.id === "members")),
+  );
   const logout = useLogout();
 
   return (
@@ -140,6 +170,27 @@ export function AppSidebar({
               placeholder={section.searchPlaceholder}
               className="h-9 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm text-foreground outline-none ring-primary/20 placeholder:text-muted/80 focus:border-primary/40 focus:ring-2"
             />
+          </div>
+        ) : null}
+
+        {section.filters?.length ? (
+          <div className="shrink-0 space-y-1.5 px-3 pb-1 pt-2">
+            {section.filters.map((filter) => {
+              const label =
+                filter.id === "members" && teamMemberCount !== null
+                  ? `${filter.options[0]} (${teamMemberCount})`
+                  : filter.options[0]!;
+              return (
+                <select
+                  key={filter.id}
+                  aria-label={filter.options[0]}
+                  className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none ring-primary/20 focus:border-primary/40 focus:ring-2"
+                  defaultValue={label}
+                >
+                  <option>{label}</option>
+                </select>
+              );
+            })}
           </div>
         ) : null}
 

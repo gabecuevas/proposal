@@ -16,6 +16,11 @@ export type AppNavItem = {
 
 export type SectionId = "dashboard" | "documents" | "library" | "settings";
 
+export type AppNavFilter = {
+  id: "departments" | "members";
+  options: string[];
+};
+
 export type AppSection = {
   id: SectionId;
   label: string;
@@ -26,6 +31,8 @@ export type AppSection = {
   exact?: boolean;
   createCta: boolean;
   searchPlaceholder?: string;
+  /** Scope selectors rendered above the item list. */
+  filters?: AppNavFilter[];
   items: AppNavItem[];
   /** Rendered under a divider at the bottom of the item list. */
   extras?: AppNavItem[];
@@ -36,10 +43,19 @@ export const appSections: AppSection[] = [
     id: "dashboard",
     label: "Dashboard",
     href: "/app",
-    prefixes: [],
+    prefixes: ["/app/team-stats", "/app/department-stats", "/app/data-export"],
     exact: true,
     createCta: true,
-    items: [{ label: "Overview", href: "/app" }],
+    filters: [
+      { id: "departments", options: ["All Departments"] },
+      { id: "members", options: ["All Team Members"] },
+    ],
+    items: [
+      { label: "Overview", href: "/app" },
+      { label: "Team Stats", href: "/app/team-stats" },
+      { label: "Department Stats", href: "/app/department-stats" },
+      { label: "Data Export", href: "/app/data-export" },
+    ],
   },
   {
     id: "documents",
