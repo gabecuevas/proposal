@@ -15,6 +15,7 @@ export type EditorNode = {
 
 export type EditorDoc = {
   type: "doc";
+  attrs?: Record<string, JSONValue>;
   content: EditorNode[];
 };
 
@@ -51,7 +52,7 @@ export type QuoteTotals = {
 export type SignerFieldValue = {
   fieldId: string;
   recipientId: string;
-  type: "signature" | "initial" | "date" | "text" | "checkbox";
+  type: "signature" | "initial" | "date" | "text" | "checkbox" | "dropdown";
   required: boolean;
   value: JSONValue;
 };

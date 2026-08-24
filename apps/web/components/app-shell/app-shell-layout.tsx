@@ -5,7 +5,7 @@ import { Suspense, useCallback, useEffect, useState, type ReactNode } from "reac
 import { AppBreadcrumbs } from "./app-breadcrumbs";
 import { AppSidebar } from "./app-sidebar";
 import { AppTopBar } from "./app-top-bar";
-import { resolveSection } from "./nav-config";
+import { isImmersivePath, resolveSection } from "./nav-config";
 
 type AppShellLayoutProps = {
   children: ReactNode;
@@ -78,6 +78,10 @@ function AppShellChrome({ children, userEmail, userRole, userInitials }: AppShel
       setSidebarOpen(false);
     }
   }, [isCompact]);
+
+  if (isImmersivePath(pathname)) {
+    return <div className="app-theme h-screen w-full overflow-hidden bg-background">{children}</div>;
+  }
 
   return (
     <div className="app-theme flex min-h-screen w-full flex-col bg-background">

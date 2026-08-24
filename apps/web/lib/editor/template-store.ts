@@ -49,15 +49,17 @@ export async function createTemplate(input: {
   name: string;
   workspaceId: string;
   createdBy: string;
+  editor_json?: EditorDoc;
+  tags?: string[];
 }): Promise<TemplateEditorRecord> {
   const row = await prisma.template.create({
     data: {
       workspace_id: input.workspaceId,
       name: input.name,
-      tags: [],
+      tags: input.tags ?? [],
       variable_registry_json: defaultVariableRegistry,
       pricing_json: defaultPricingModel,
-      editor_json: defaultEditorDoc,
+      editor_json: input.editor_json ? normalizeEditorDoc(input.editor_json) : defaultEditorDoc,
       schema_version: CURRENT_DOC_VERSION,
       created_by: input.createdBy,
     },

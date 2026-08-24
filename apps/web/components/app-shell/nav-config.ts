@@ -118,6 +118,25 @@ export function resolveSection(pathname: string): AppSection {
   return matches.sort((a, b) => b.href.length - a.href.length)[0] ?? dashboardSection;
 }
 
+/**
+ * Routes that replace the app chrome with their own full-window layout. The
+ * document creator needs the whole viewport for its canvas and side panels.
+ */
+const immersivePrefixes = ["/app/templates/", "/app/documents/"];
+const immersiveExclusions = ["/app/templates/new"];
+
+export function isImmersivePath(pathname: string): boolean {
+  if (immersiveExclusions.includes(pathname)) {
+    return false;
+  }
+  if (pathname === "/app/proposals/new") {
+    return true;
+  }
+  return immersivePrefixes.some(
+    (prefix) => pathname.startsWith(prefix) && pathname.length > prefix.length,
+  );
+}
+
 /** Trailing breadcrumb labels for routes that have no matching sidebar item. */
 const detailCrumbs: Array<{ prefix: string; label: string }> = [
   { prefix: "/app/proposals/new", label: "New document" },

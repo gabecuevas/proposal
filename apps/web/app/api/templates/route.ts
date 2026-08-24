@@ -3,6 +3,7 @@ import { parseCursorPagination, getNextCursorFromTimestampPage } from "@/lib/api
 import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
 import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
 import { createTemplate, listTemplates } from "@/lib/editor/template-store";
+import type { EditorDoc } from "@/lib/editor/types";
 
 export async function GET(request: NextRequest) {
   const auth = await getRequestAuthContext(request);
@@ -24,12 +25,18 @@ export async function POST(request: NextRequest) {
   const auth = await getRequestAuthContext(request);
   assertRole(auth, "ADMIN");
 
-  const payload = (await request.json()) as { name?: string };
+  const payload = (await request.json()) as {
+    name?: string;
+    editor_json?: EditorDoc;
+    tags?: string[];
+  };
   try {
     const template = await createTemplate({
       name: payload.name?.trim() || "Untitled Template",
       workspaceId: auth.workspaceId,
       createdBy: auth.userId,
+      editor_json: payload.editor_json,
+      tags: Array.isArray(payload.tags) ? payload.tags.map(String).slice(0, 20) : undefined,
     });
     return jsonWithRequestId(request, { template }, { status: 201 });
   } catch {

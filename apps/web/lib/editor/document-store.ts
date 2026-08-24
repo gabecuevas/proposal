@@ -8,13 +8,21 @@ import {
   type SignerFieldValue,
   type VariableContext,
 } from "./types";
-import { defaultPricingModel } from "./defaults";
+import { defaultEditorDoc, defaultPricingModel } from "./defaults";
+import { signAssetToken } from "../auth/asset-download";
 import { getDiscountPercent, requiresQuoteApproval } from "../cpq/approval";
 import { computeDocumentHash } from "./hash";
 import { renderComputedHtml } from "./render";
 import { applySignerFieldValue, canRecipientFillField } from "./signer-fields";
+import { migrateSignerFieldsDoc } from "./migrate-signer-fields";
 import { normalizeEditorDoc } from "./stable";
 import { resolveTemplateVariables } from "./variables";
+
+function appBaseUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
+  ).replace(/\/$/, "");
+}
 
 export type DocumentRecord = {
   id: string;
@@ -297,16 +305,20 @@ export async function createBlankDocument(input: {
       data: {
         workspace_id: input.workspaceId,
         template_id: null,
-        editor_json: {
-          type: "doc",
-          content: [{ type: "paragraph", content: [{ type: "text", text: "Untitled document" }] }],
-        } as InputJsonValue,
+        editor_json: defaultEditorDoc as InputJsonValue,
         schema_version: CURRENT_DOC_VERSION,
         doc_version: CURRENT_DOC_VERSION,
         status: "DRAFTED",
         variables_json: {},
         pricing_json: defaultPricingModel as InputJsonValue,
-        recipients_json: [],
+        recipients_json: [
+          {
+            id: randomUUID(),
+            email: "",
+            name: "Primary Signer",
+            role: "signer",
+          },
+        ] as InputJsonValue,
       },
     });
     await tx.documentActivityEvent.create({
@@ -323,6 +335,61 @@ export async function createBlankDocument(input: {
     return created;
   });
   return parseDocument(row);
+}
+
+export async function duplicateDocument(input: {
+  sourceDocumentId: string;
+  workspaceId: string;
+  actorUserId: string;
+}): Promise<DocumentRecord> {
+  const source = await getDocument(input.sourceDocumentId, input.workspaceId);
+  if (!source) {
+    throw new Error("Document not found");
+  }
+
+  const editorJson = suffixEditorTitle(normalizeEditorDoc(source.editor_json), " (copy)");
+  const row = await prisma.$transaction(async (tx) => {
+    const created = await tx.document.create({
+      data: {
+        workspace_id: input.workspaceId,
+        template_id: source.template_id,
+        contact_id: source.contact_id,
+        editor_json: editorJson as InputJsonValue,
+        schema_version: CURRENT_DOC_VERSION,
+        doc_version: CURRENT_DOC_VERSION,
+        status: "DRAFTED",
+        variables_json: source.variables_json as InputJsonValue,
+        pricing_json: source.pricing_json as InputJsonValue,
+        recipients_json: source.recipients_json as InputJsonValue,
+      },
+    });
+    await tx.documentActivityEvent.create({
+      data: {
+        workspace_id: input.workspaceId,
+        document_id: created.id,
+        event_type: "DOCUMENT_CREATED",
+        actor_user_id: input.actorUserId,
+        metadata_json: {
+          source: "duplicate",
+          sourceDocumentId: source.id,
+        },
+      },
+    });
+    return created;
+  });
+  return parseDocument(row);
+}
+
+function suffixEditorTitle(doc: EditorDoc, suffix: string): EditorDoc {
+  const next = structuredClone(doc);
+  const first = next.content[0];
+  if (first && (first.type === "heading" || first.type === "paragraph")) {
+    const text = (first.content ?? []).map((node) => node.text ?? "").join("");
+    if (text && !text.endsWith(suffix)) {
+      first.content = [{ type: "text", text: `${text}${suffix}` }];
+    }
+  }
+  return next;
 }
 
 export async function getDocument(
@@ -647,22 +714,32 @@ export async function addDocumentComment(input: {
 function extractSignerFields(doc: EditorDoc): Array<{
   fieldId: string;
   recipientId: string;
-  type: "signature" | "initial" | "date" | "text" | "checkbox";
+  type: SignerFieldValue["type"];
   required: boolean;
 }> {
   const fields: Array<{
     fieldId: string;
     recipientId: string;
-    type: "signature" | "initial" | "date" | "text" | "checkbox";
+    type: SignerFieldValue["type"];
     required: boolean;
   }> = [];
 
   const walk = (node: { type?: string; attrs?: Record<string, unknown>; content?: unknown[] }) => {
     if (node.type === "signerField") {
+      const raw = String(node.attrs?.type ?? "text");
+      const type: SignerFieldValue["type"] =
+        raw === "signature" ||
+        raw === "initial" ||
+        raw === "date" ||
+        raw === "text" ||
+        raw === "checkbox" ||
+        raw === "dropdown"
+          ? raw
+          : "text";
       fields.push({
         fieldId: String(node.attrs?.fieldId ?? ""),
         recipientId: String(node.attrs?.recipientId ?? ""),
-        type: (node.attrs?.type as "signature" | "initial" | "date" | "text" | "checkbox") ?? "text",
+        type,
         required: Boolean(node.attrs?.required ?? true),
       });
     }
@@ -677,13 +754,29 @@ function extractSignerFields(doc: EditorDoc): Array<{
   return fields;
 }
 
+function mergeSignerFieldValuesFromDb(
+  editorDoc: EditorDoc,
+  rows: Array<{ id: string; recipient_id: string; field_type: string; required: boolean; value_json: unknown }>,
+): SignerFieldValue[] {
+  const migrated = migrateSignerFieldsDoc(editorDoc);
+  const fields = extractSignerFields(migrated);
+  const valueById = new Map(rows.map((row) => [row.id, row.value_json]));
+  return fields.map((field) => ({
+    fieldId: field.fieldId,
+    recipientId: field.recipientId,
+    type: field.type,
+    required: field.required,
+    value: (valueById.has(field.fieldId) ? valueById.get(field.fieldId) : null) as SignerFieldValue["value"],
+  }));
+}
+
 export async function getDocumentSignerFields(documentId: string, workspaceId: string) {
   const document = await getDocument(documentId, workspaceId);
   if (!document) {
     throw new Error("Document not found");
   }
 
-  const fields = extractSignerFields(document.editor_json);
+  const fields = extractSignerFields(migrateSignerFieldsDoc(document.editor_json));
   return fields;
 }
 
@@ -720,7 +813,7 @@ export async function setSignerFieldValue(input: {
     throw new Error("Finalized documents are immutable");
   }
 
-  const signerFields = extractSignerFields(document.editor_json);
+  const signerFields = extractSignerFields(migrateSignerFieldsDoc(document.editor_json));
   const mapping = signerFields.find((field) => field.fieldId === input.fieldId);
   if (!mapping) {
     throw new Error("Signer field not found");
@@ -761,7 +854,7 @@ export async function setSignerFieldValue(input: {
     return true;
   };
   const existingByFieldId = new Map(existingRows.map((row) => [row.id, row.value_json]));
-  const pendingOrders = extractSignerFields(document.editor_json)
+  const pendingOrders = extractSignerFields(migrateSignerFieldsDoc(document.editor_json))
     .filter((field) => field.required)
     .filter((field) => !hasValue(existingByFieldId.get(field.fieldId)))
     .map((field) => recipientRows.find((row) => row.id === field.recipientId)?.signing_order)
@@ -780,7 +873,15 @@ export async function setSignerFieldValue(input: {
   });
 
   const enumFieldType: "SIGNATURE" | "INITIALS" | "DATE" | "TEXT" | "CHECKBOX" =
-    mapping.type === "initial" ? "INITIALS" : (mapping.type.toUpperCase() as "SIGNATURE" | "DATE" | "TEXT" | "CHECKBOX");
+    mapping.type === "initial"
+      ? "INITIALS"
+      : mapping.type === "signature"
+        ? "SIGNATURE"
+        : mapping.type === "date"
+          ? "DATE"
+          : mapping.type === "checkbox"
+            ? "CHECKBOX"
+            : "TEXT";
 
   await prisma.signatureField.upsert({
     where: { id: mapping.fieldId },
@@ -836,13 +937,7 @@ export async function renderDocumentHtml(input: {
     where: { document_id: document.id },
     orderBy: { created_at: "asc" },
   });
-  const signerFieldValues: SignerFieldValue[] = rows.map((row) => ({
-    fieldId: row.id,
-    recipientId: row.recipient_id,
-    type: row.field_type.toLowerCase() as SignerFieldValue["type"],
-    required: row.required,
-    value: row.value_json as unknown as SignerFieldValue["value"],
-  }));
+  const signerFieldValues = mergeSignerFieldValuesFromDb(document.editor_json, rows);
 
   const finalizedEvent =
     input.mode === "finalized"
@@ -957,13 +1052,7 @@ export async function finalizeDocument(input: {
     where: { document_id: document.id },
     orderBy: { created_at: "asc" },
   });
-  const signerFieldValues: SignerFieldValue[] = rows.map((row) => ({
-    fieldId: row.id,
-    recipientId: row.recipient_id,
-    type: row.field_type.toLowerCase() as SignerFieldValue["type"],
-    required: row.required,
-    value: row.value_json as unknown as SignerFieldValue["value"],
-  }));
+  const signerFieldValues = mergeSignerFieldValuesFromDb(document.editor_json, rows);
 
   const template = document.template_id
     ? await prisma.template.findUnique({ where: { id: document.template_id } })
@@ -1022,6 +1111,8 @@ export async function finalizeDocument(input: {
     resolvedVariables: variableOutput.resolved,
     pricing: document.pricing_json,
     signerFieldValues,
+    assetBaseUrl: appBaseUrl(),
+    assetToken: await signAssetToken(input.workspaceId),
     certificate: {
       docHash: doc_hash,
       finalizedAt: certificate.finalizedAt,

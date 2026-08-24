@@ -1,11 +1,11 @@
-import { Node } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
 
 export const SignerField = Node.create({
   name: "signerField",
-  inline: true,
+  group: "block",
   atom: true,
-  group: "inline",
   selectable: true,
+  draggable: false,
 
   addAttributes() {
     return {
@@ -13,23 +13,30 @@ export const SignerField = Node.create({
       recipientId: { default: "" },
       type: { default: "signature" },
       required: { default: true },
+      label: { default: "" },
+      placeholder: { default: "" },
+      defaultValue: { default: "" },
+      dropdownOptions: { default: "[]" },
+      xPct: { default: 0.04 },
+      yPct: { default: 0.04 },
+      wPct: { default: 0.38 },
+      hPct: { default: 0.09 },
+      page: { default: 0 },
     };
   },
 
   parseHTML() {
-    return [{ tag: "span[data-signer-field-id]" }];
+    return [{ tag: 'div[data-node-type="signerField"]' }];
   },
 
   renderHTML({ HTMLAttributes }) {
-    const type = String(HTMLAttributes.type ?? "signature");
     return [
-      "span",
-      {
-        ...HTMLAttributes,
-        "data-signer-field-id": HTMLAttributes.fieldId,
-        class: "signer-field rounded border border-primary/40 bg-surface px-2 py-1 text-xs text-primary",
-      },
-      `Signer ${type}`,
+      "div",
+      mergeAttributes(HTMLAttributes, {
+        "data-node-type": "signerField",
+        "data-signer-field-id": String(HTMLAttributes.fieldId ?? ""),
+        class: "signer-field-node",
+      }),
     ];
   },
 });

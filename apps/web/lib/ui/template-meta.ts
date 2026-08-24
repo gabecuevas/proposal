@@ -16,6 +16,27 @@ function walkContent(nodes: unknown[], visit: (node: { type?: string; content?: 
   }
 }
 
+/**
+ * Uploaded templates carry a rendered image of each page, so the first one
+ * doubles as the gallery thumbnail.
+ */
+export function templateThumbnailKey(doc: EditorDoc | null | undefined): string | null {
+  if (!doc?.content?.length) {
+    return null;
+  }
+  let key: string | null = null;
+  walkContent(doc.content, (n) => {
+    if (key || n.type !== "fieldCanvas") {
+      return;
+    }
+    const bgKey = (n as { attrs?: { bgKey?: unknown } }).attrs?.bgKey;
+    if (typeof bgKey === "string" && bgKey) {
+      key = bgKey;
+    }
+  });
+  return key;
+}
+
 export function pageCountFromEditor(doc: EditorDoc | null | undefined): number {
   if (!doc?.content?.length) {
     return 1;

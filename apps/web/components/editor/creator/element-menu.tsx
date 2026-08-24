@@ -1,0 +1,303 @@
+"use client";
+
+import type { Editor } from "@tiptap/core";
+import { useRef, useState, type ReactElement } from "react";
+import {
+  insertDivider,
+  insertHeading,
+  insertImageAsset,
+  insertPageBreak,
+  insertTable,
+  insertTableOfContents,
+  insertTextBlock,
+  insertVideo,
+  isSupportedImage,
+  uploadAsset,
+} from "@/lib/editor/insert-elements";
+import {
+  IconDivider,
+  IconImage,
+  IconListBullet,
+  IconListOrdered,
+  IconPageBreak,
+  IconQuote,
+  IconTable,
+  IconTextT,
+  IconToc,
+  IconVideo,
+} from "./creator-icons";
+
+type Props = {
+  editor: Editor | null;
+  onDone: () => void;
+  /** Runs before an element is inserted, so callers can move the cursor first. */
+  onBeforeInsert?: () => void;
+  /** When set, only matching rows are shown (used by the `/` slash menu). */
+  query?: string;
+};
+
+type Entry = {
+  id: string;
+  label: string;
+  hint: string;
+  Icon: (props: { className?: string }) => ReactElement;
+  run: (editor: Editor) => void;
+};
+
+const entries: Entry[] = [
+        { id: "text", label: "Text box", hint: "Write anywhere", Icon: IconTextT, run: insertTextBlock },
+  {
+    id: "heading",
+    label: "Heading",
+    hint: "Section title",
+    Icon: IconTextT,
+    run: (editor) => insertHeading(editor, 2),
+  },
+  {
+    id: "bullet",
+    label: "Bulleted list",
+    hint: "Unordered",
+    Icon: IconListBullet,
+    run: (editor) => editor.chain().focus().toggleBulletList().run(),
+  },
+  {
+    id: "ordered",
+    label: "Numbered list",
+    hint: "Ordered",
+    Icon: IconListOrdered,
+    run: (editor) => editor.chain().focus().toggleOrderedList().run(),
+  },
+  {
+    id: "quote",
+    label: "Quote",
+    hint: "Pull quote",
+    Icon: IconQuote,
+    run: (editor) => editor.chain().focus().toggleBlockquote().run(),
+  },
+  { id: "toc", label: "Table of contents", hint: "From headings", Icon: IconToc, run: insertTableOfContents },
+  { id: "divider", label: "Divider", hint: "Horizontal rule", Icon: IconDivider, run: insertDivider },
+  { id: "pageBreak", label: "Page break", hint: "Start a new page", Icon: IconPageBreak, run: insertPageBreak },
+];
+
+export function ElementMenu({ editor, onDone, onBeforeInsert, query = "" }: Props) {
+  const [view, setView] = useState<"root" | "video" | "table">("root");
+  const [videoUrl, setVideoUrl] = useState("");
+  const [videoError, setVideoError] = useState("");
+  const [tableSize, setTableSize] = useState({ rows: 3, cols: 3 });
+  const [uploadError, setUploadError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const needle = query.trim().toLowerCase();
+  const visibleEntries = needle
+    ? entries.filter(
+        (entry) =>
+          entry.label.toLowerCase().includes(needle) || entry.hint.toLowerCase().includes(needle),
+      )
+    : entries;
+  const showImage = !needle || "image".includes(needle) || needle.includes("image") || needle.includes("photo");
+  const showVideo = !needle || needle.includes("video") || needle.includes("youtube");
+  const showTable = !needle || needle.includes("table") || needle.includes("grid") || needle.includes("excel");
+
+  function run(action: (editor: Editor) => void) {
+    if (!editor) {
+      return;
+    }
+    onBeforeInsert?.();
+    action(editor);
+    onDone();
+  }
+
+  async function onPickImage(file: File | undefined) {
+    if (!editor || !file) {
+      return;
+    }
+    if (!isSupportedImage(file)) {
+      setUploadError("Use a PNG, JPEG or WebP image.");
+      return;
+    }
+    setUploading(true);
+    setUploadError("");
+    try {
+      const asset = await uploadAsset(file);
+      onBeforeInsert?.();
+      insertImageAsset(editor, asset);
+      onDone();
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  if (view === "video") {
+    return (
+      <Panel>
+        <PanelTitle onBack={() => setView("root")}>Add video</PanelTitle>
+        <p className="mb-2 text-xs text-muted">Paste a YouTube link and it plays inline.</p>
+        <input
+          autoFocus
+          value={videoUrl}
+          onChange={(event) => {
+            setVideoUrl(event.target.value);
+            setVideoError("");
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              submitVideo();
+            }
+          }}
+          placeholder="https://www.youtube.com/watch?v=…"
+          aria-label="Video URL"
+          className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none ring-primary/15 focus:ring-2"
+        />
+        {videoError ? <p className="mt-1.5 text-xs text-red-600">{videoError}</p> : null}
+        <button
+          type="button"
+          onClick={submitVideo}
+          className="mt-2 w-full rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-95"
+        >
+          Add video
+        </button>
+      </Panel>
+    );
+  }
+
+  if (view === "table") {
+    return (
+      <Panel>
+        <PanelTitle onBack={() => setView("root")}>Insert table</PanelTitle>
+        <div className="mb-2 grid grid-cols-6 gap-0.5" role="presentation">
+          {Array.from({ length: 36 }, (_, index) => {
+            const row = Math.floor(index / 6) + 1;
+            const col = (index % 6) + 1;
+            const active = row <= tableSize.rows && col <= tableSize.cols;
+            return (
+              <button
+                key={index}
+                type="button"
+                aria-label={`${row} by ${col} table`}
+                onMouseEnter={() => setTableSize({ rows: row, cols: col })}
+                onClick={() => run((editor) => insertTable(editor, row, col))}
+                className={`h-5 rounded-sm border ${
+                  active ? "border-primary bg-primary/20" : "border-border bg-background"
+                }`}
+              />
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted">
+          {tableSize.rows} × {tableSize.cols} with a header row
+        </p>
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel>
+      <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+        Add element
+      </p>
+      <div className="max-h-80 overflow-y-auto">
+        {showImage ? (
+          <Row
+            Icon={IconImage}
+            label={uploading ? "Uploading…" : "Image"}
+            hint="PNG, JPEG, WebP"
+            onClick={() => fileInputRef.current?.click()}
+          />
+        ) : null}
+        {showVideo ? (
+          <Row Icon={IconVideo} label="Video" hint="YouTube link" onClick={() => setView("video")} />
+        ) : null}
+        {showTable ? (
+          <Row Icon={IconTable} label="Table" hint="Rows and columns" onClick={() => setView("table")} />
+        ) : null}
+        {visibleEntries.map((entry) => (
+          <Row
+            key={entry.id}
+            Icon={entry.Icon}
+            label={entry.label}
+            hint={entry.hint}
+            onClick={() => run(entry.run)}
+          />
+        ))}
+      </div>
+      {uploadError ? <p className="mt-1 px-1 text-xs text-red-600">{uploadError}</p> : null}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          void onPickImage(file);
+        }}
+      />
+    </Panel>
+  );
+
+  function submitVideo() {
+    if (!editor) {
+      return;
+    }
+    onBeforeInsert?.();
+    if (!insertVideo(editor, videoUrl)) {
+      setVideoError("That does not look like a YouTube link.");
+      return;
+    }
+    setVideoUrl("");
+    onDone();
+  }
+}
+
+function Panel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="w-64 rounded-lg border border-border bg-surface p-2 shadow-xl">{children}</div>
+  );
+}
+
+function PanelTitle({ children, onBack }: { children: React.ReactNode; onBack: () => void }) {
+  return (
+    <div className="mb-2 flex items-center gap-2">
+      <button
+        type="button"
+        onClick={onBack}
+        className="rounded px-1 text-sm text-muted hover:bg-slate-100 hover:text-foreground"
+        aria-label="Back to element list"
+      >
+        ‹
+      </button>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">{children}</p>
+    </div>
+  );
+}
+
+function Row({
+  Icon,
+  label,
+  hint,
+  onClick,
+}: {
+  Icon: (props: { className?: string }) => ReactElement;
+  label: string;
+  hint: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-slate-50"
+    >
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-border bg-background text-primary">
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm text-foreground">{label}</span>
+        <span className="block truncate text-[11px] text-muted">{hint}</span>
+      </span>
+    </button>
+  );
+}

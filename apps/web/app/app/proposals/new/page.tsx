@@ -36,7 +36,7 @@ export default function NewProposalPage() {
   }, [router]);
 
   return (
-    <div className="flex min-h-[40vh] flex-col items-center justify-center gap-2">
+    <div className="flex h-screen flex-col items-center justify-center gap-2 bg-background">
       <div className="h-8 w-8 animate-pulse rounded-full border-2 border-primary/30 border-t-primary" aria-hidden />
       <p className="text-sm text-muted">{message}</p>
     </div>

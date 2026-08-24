@@ -51,6 +51,7 @@ export function normalizeStable(value: JSONValue): JSONValue {
 export function normalizeEditorDoc(doc: EditorDoc): EditorDoc {
   return {
     type: "doc",
+    attrs: doc.attrs ? sortObject(doc.attrs) : undefined,
     content: doc.content.map(normalizeNode),
   };
 }

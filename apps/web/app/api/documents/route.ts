@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
 import { getNextCursorFromTimestampPage, parseCursorPagination } from "@/lib/api/pagination";
 import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
-import { createBlankDocument, createDocumentFromTemplate, listDocuments } from "@/lib/editor/document-store";
+import { createBlankDocument, createDocumentFromTemplate, duplicateDocument, listDocuments } from "@/lib/editor/document-store";
 
 const validStatuses = [
   "DRAFTED",
@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
 
 type CreateDocumentBody = {
   templateId?: string;
+  sourceDocumentId?: string;
 };
 
 export async function POST(request: NextRequest) {
@@ -45,19 +46,25 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as CreateDocumentBody;
 
   try {
-    const document = body.templateId
-      ? await createDocumentFromTemplate(body.templateId, auth.workspaceId)
-      : await createBlankDocument({
+    const document = body.sourceDocumentId
+      ? await duplicateDocument({
+          sourceDocumentId: body.sourceDocumentId,
           workspaceId: auth.workspaceId,
           actorUserId: auth.userId,
-        });
+        })
+      : body.templateId
+        ? await createDocumentFromTemplate(body.templateId, auth.workspaceId)
+        : await createBlankDocument({
+            workspaceId: auth.workspaceId,
+            actorUserId: auth.userId,
+          });
     return jsonWithRequestId(request, { document }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create document";
-    if (message === "Template not found") {
+    if (message === "Template not found" || message === "Document not found") {
       return errorResponse(request, {
         status: 404,
-        code: "template_not_found",
+        code: message === "Template not found" ? "template_not_found" : "document_not_found",
         message,
       });
     }

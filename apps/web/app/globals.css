@@ -50,6 +50,248 @@ body {
   font-family: var(--font-app-serif, ui-serif), Georgia, "Times New Roman", serif;
 }
 
+/* ---------------------------------------------------------------------------
+   Creator paper. US Letter at the CSS 96dpi reference size, with 0.5in
+   print-safe margins (see PRINT_SAFE_MARGIN_PX). Overlay fields anchor to
+   `page + fraction of a page`, so the page height has to stay a fixed value
+   shared with lib/editor/page-geometry.ts.
+   --------------------------------------------------------------------------- */
+.creator-paper {
+  --creator-page-width: 816px;
+  --creator-page-height: 1056px;
+  --creator-page-margin: 48px;
+  position: relative;
+  width: var(--creator-page-width);
+  background: #ffffff;
+}
+
+/* Dashed guides showing where one sheet ends and the next begins. */
+.creator-page-guides {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.creator-page-guide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed rgba(148, 163, 184, 0.85);
+}
+.creator-page-guide::after {
+  content: attr(data-page-label);
+  position: absolute;
+  right: 8px;
+  top: 6px;
+  font-size: 10px;
+  color: #94a3b8;
+}
+/* Margin outline, only while editing. */
+.creator-margin-guide {
+  position: absolute;
+  top: var(--creator-page-margin);
+  bottom: var(--creator-page-margin);
+  left: var(--creator-page-margin);
+  right: var(--creator-page-margin);
+  z-index: 4;
+  pointer-events: none;
+  outline: 1px dashed rgba(203, 213, 225, 0.9);
+}
+
+.tiptap-creator {
+  position: relative;
+  padding: var(--creator-page-margin, 48px);
+  min-height: var(--creator-page-height, 1056px);
+  color: #0f172a;
+  font-size: 15px;
+  line-height: 1.6;
+}
+.tiptap-creator:focus {
+  outline: none;
+}
+.tiptap-creator p {
+  margin: 0 0 0.75rem;
+}
+.tiptap-creator h1 {
+  font-size: 1.875rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+}
+.tiptap-creator h2 {
+  font-size: 1.375rem;
+  font-weight: 600;
+  margin: 1.25rem 0 0.5rem;
+}
+.tiptap-creator h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 1rem 0 0.5rem;
+}
+.tiptap-creator ul,
+.tiptap-creator ol {
+  margin: 0 0 0.75rem;
+  padding-left: 1.5rem;
+}
+.tiptap-creator blockquote {
+  margin: 0 0 0.75rem;
+  border-left: 3px solid #cbd5e1;
+  padding-left: 0.875rem;
+  color: #475569;
+}
+.tiptap-creator hr {
+  margin: 1.25rem 0;
+  border: none;
+  border-top: 1px solid #e2e8f0;
+}
+.tiptap-creator a {
+  color: #1e3a5f;
+  text-decoration: underline;
+}
+.tiptap-creator p.is-editor-empty:first-child::before,
+.tiptap-creator .is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+/* Elements ---------------------------------------------------------------- */
+.tiptap-creator .creator-image-block {
+  margin: 0 0 0.75rem;
+}
+.tiptap-creator .creator-text-box {
+  margin: 0 0 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+}
+.tiptap-creator .creator-text-box:focus-within,
+.tiptap-creator .ProseMirror-selectednode.creator-text-box,
+.tiptap-creator .creator-text-box.ProseMirror-selectednode {
+  border-color: #1e3a5f;
+  box-shadow: 0 0 0 1px rgba(30, 58, 95, 0.15);
+}
+.tiptap-creator .creator-text-box p:last-child {
+  margin-bottom: 0;
+}
+.tiptap-creator iframe {
+  max-width: 100%;
+  border: 0;
+  border-radius: 6px;
+}
+.tiptap-creator div[data-youtube-video] {
+  margin: 0 0 0.75rem;
+  cursor: default;
+}
+.tiptap-creator table {
+  width: 100%;
+  margin: 0 0 0.75rem;
+  border-collapse: collapse;
+  table-layout: fixed;
+  overflow: hidden;
+}
+.tiptap-creator table td,
+.tiptap-creator table th {
+  position: relative;
+  min-width: 1em;
+  border: 1px solid #cbd5e1;
+  padding: 6px 8px;
+  vertical-align: top;
+}
+.tiptap-creator table th {
+  background: #f1f5f9;
+  font-weight: 600;
+  text-align: left;
+}
+.tiptap-creator table .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(30, 58, 95, 0.08);
+  pointer-events: none;
+}
+.tiptap-creator table p {
+  margin: 0;
+}
+.tiptap-creator .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #1e3a5f;
+  pointer-events: none;
+}
+.tiptap-creator.resize-cursor {
+  cursor: col-resize;
+}
+
+/* PDF-backed pages ------------------------------------------------------- */
+.tiptap-creator .field-canvas {
+  margin: 0 0 1.5rem;
+  border-radius: 0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+.tiptap-creator .field-canvas:last-child {
+  margin-bottom: 0;
+}
+.tiptap-creator .page-break,
+.tiptap-creator [data-node-type="pageBreak"] {
+  display: block;
+  height: 0;
+  margin: 0;
+  border-top: 1px dashed #cbd5e1;
+}
+
+/* Signer fields ---------------------------------------------------------- */
+/* One layer over the whole sheet so a field can be dropped on top of text,
+   images, tables or video instead of taking its own block. */
+.field-overlay,
+.rendered-field-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+.field-overlay-content {
+  display: block;
+  height: 100%;
+}
+.signer-field-node,
+.rendered-signer-field {
+  position: absolute;
+  left: calc(var(--field-x) * 100%);
+  width: calc(var(--field-w) * 100%);
+  min-height: 36px;
+  pointer-events: auto;
+}
+/* Inside the overlay a field is anchored to a page, so its offset counts whole
+   pages plus a fraction of one. Inside a canvas everything is relative to that
+   canvas instead. */
+.field-overlay .signer-field-node,
+.rendered-field-overlay .rendered-signer-field {
+  top: calc((var(--field-page) + var(--field-y)) * var(--creator-page-height, 1056px));
+  height: calc(var(--field-h) * var(--creator-page-height, 1056px));
+}
+.field-canvas-content .signer-field-node,
+.rendered-field-canvas .rendered-signer-field {
+  top: calc(var(--field-y) * 100%);
+  height: calc(var(--field-h) * 100%);
+}
+
+/* Block handles ---------------------------------------------------------- */
+.creator-block-handle {
+  position: absolute;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  transform: translateX(-100%);
+  padding-right: 6px;
+}
+
 .glass-card {
   background: color-mix(in oklab, var(--surface) 92%, #eef1ff 8%);
   border: 1px solid color-mix(in oklab, var(--border) 80%, #ffffff 20%);

@@ -28,4 +28,13 @@ describe("serializeStable", () => {
 
     expect(serializeStable(docA)).toBe(serializeStable(docB));
   });
+
+  test("keeps document page size attrs", () => {
+    const serialized = serializeStable({
+      type: "doc",
+      attrs: { pageSize: "a4" },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Hi" }] }],
+    });
+    expect(serialized).toContain('"pageSize":"a4"');
+  });
 });
