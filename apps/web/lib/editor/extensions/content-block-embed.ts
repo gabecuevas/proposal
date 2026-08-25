@@ -10,6 +10,8 @@ export const ContentBlockEmbed = Node.create({
     return {
       blockId: { default: "" },
       version: { default: 1 },
+      /** Frozen library document captured at send. Drafts leave this null. */
+      snapshotDoc: { default: null },
     };
   },
 

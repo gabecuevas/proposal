@@ -653,3 +653,58 @@ export function IconLock({ className }: IconProps) {
     </Svg>
   );
 }
+
+export function IconLink({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path
+        d="M10 13.5l.8.8a3.5 3.5 0 004.95 0l2.12-2.12a3.5 3.5 0 00-4.95-4.95l-1.1 1.1"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M14 10.5l-.8-.8a3.5 3.5 0 00-4.95 0L6.13 11.82a3.5 3.5 0 004.95 4.95l1.1-1.1"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+export function IconIndent({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M4 6h16M12 12h8M4 18h16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M4 9.5v5l4-2.5z" fill="currentColor" />
+    </Svg>
+  );
+}
+
+export function IconOutdent({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M4 6h16M12 12h8M4 18h16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M8 9.5v5L4 12z" fill="currentColor" />
+    </Svg>
+  );
+}
+
+export function IconHighlight({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M7 15l-2 4 4-2 8.5-8.5a1.8 1.8 0 00-2.5-2.5L7 15z" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M4 20h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+export function IconLineSpacing({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M8 5v14M8 5l-2.5 2.5M8 5l2.5 2.5M8 19l-2.5-2.5M8 19l2.5-2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M13 8h7M13 12h7M13 16h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </Svg>
+  );
+}

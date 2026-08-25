@@ -76,6 +76,35 @@ export async function createContentBlock(input: {
   return parseContentBlock(row);
 }
 
+export async function getContentBlock(
+  blockId: string,
+  workspaceId: string,
+): Promise<ContentBlockRecord | null> {
+  const row = await prisma.contentBlock.findFirst({
+    where: { id: blockId, workspace_id: workspaceId },
+  });
+  if (!row) {
+    return null;
+  }
+  return parseContentBlock(row);
+}
+
+export async function getContentBlocksByIds(
+  workspaceId: string,
+  blockIds: string[],
+): Promise<ContentBlockRecord[]> {
+  if (blockIds.length === 0) {
+    return [];
+  }
+  const rows = await prisma.contentBlock.findMany({
+    where: {
+      workspace_id: workspaceId,
+      id: { in: blockIds },
+    },
+  });
+  return rows.map(parseContentBlock);
+}
+
 export async function bumpContentBlockVersion(
   blockId: string,
   workspaceId: string,

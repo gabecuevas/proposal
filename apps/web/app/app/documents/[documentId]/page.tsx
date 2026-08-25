@@ -1,21 +1,25 @@
 "use client";
 
 import { useEditor } from "@tiptap/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CreatorCanvas } from "@/components/editor/creator/creator-canvas";
 import { CreatorFieldsSidebar } from "@/components/editor/creator/creator-fields-sidebar";
 import { CreatorHeader } from "@/components/editor/creator/creator-header";
 import { CreatorPageStrip } from "@/components/editor/creator/creator-page-strip";
 import { SignerRecipientProvider } from "@/components/editor/signer-field-context";
+import { PricingProvider } from "@/components/editor/pricing-context";
 import { defaultPricingModel } from "@/lib/editor/defaults";
+import { creatorEditorProps } from "@/lib/editor/editor-config";
 import { editorExtensions } from "@/lib/editor/extensions";
 import { insertPageBreak } from "@/lib/editor/insert-elements";
 import { insertSignerFieldAtPoint, insertSignerFieldBlock } from "@/lib/editor/insert-signer-field";
 import { migrateSignerFieldsDoc } from "@/lib/editor/migrate-signer-fields";
 import { pageSizeFromDoc, pageSizeSpec, withPageSize, type PageSizeId } from "@/lib/editor/page-geometry";
+import { openPrintPreview } from "@/lib/editor/print-document";
 import { calculateQuoteTotals } from "@/lib/editor/quote";
 import { renderComputedHtml } from "@/lib/editor/render";
+import { SaveQueue } from "@/lib/editor/save-queue";
 import type { SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
 import { serializeStable } from "@/lib/editor/stable";
 import type { EditorDoc, PricingModel, VariableContext, VariableRegistry } from "@/lib/editor/types";
@@ -41,6 +45,13 @@ type DocumentDetail = {
   finalized_pdf_key: string | null;
   created_at?: string;
   updated_at: string;
+  sent_version?: {
+    id: string;
+    version_number: number;
+    snapshot_hash: string;
+    sent_at: string;
+    snapshot_kind: string;
+  } | null;
 };
 
 type Contact = {
@@ -141,35 +152,28 @@ export default function DocumentDetailPage({ params }: Params) {
   const [error, setError] = useState("");
   const [lastSavedSnapshot, setLastSavedSnapshot] = useState("");
   const [showPreview, setShowPreview] = useState(false);
+  const [saveConflict, setSaveConflict] = useState<{ serverUpdatedAt: string } | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectedRecipientId, setSelectedRecipientId] = useState("");
   const [name, setName] = useState("");
-  const [historyTick, setHistoryTick] = useState(0);
   const [visualPages, setVisualPages] = useState(1);
   const [pageSize, setPageSize] = useState<PageSizeId>("letter");
+  const pageSizeRef = useRef(pageSize);
+  pageSizeRef.current = pageSize;
+  const [serializedDoc, setSerializedDoc] = useState(() => serializeStable({ type: "doc", content: [] }));
+  const saveQueueRef = useRef(new SaveQueue());
+  const expectedUpdatedAtRef = useRef("");
+  const lastSavedSnapshotRef = useRef("");
 
   const editor = useEditor({
     immediatelyRender: false,
     extensions: editorExtensions,
     content: document ? migrateSignerFieldsDoc(document.editor_json) : undefined,
-    editorProps: {
-      attributes: {
-        class: "tiptap-creator min-h-full max-w-none focus:outline-none",
-      },
-    },
-    onUpdate() {
-      setHistoryTick((n) => n + 1);
-    },
-    onTransaction() {
-      setHistoryTick((n) => n + 1);
+    editorProps: creatorEditorProps,
+    onUpdate({ editor: nextEditor }) {
+      setSerializedDoc(serializeStable(withPageSize(nextEditor.getJSON() as EditorDoc, pageSizeRef.current)));
     },
   });
-
-  const serializedDoc = editor
-    ? serializeStable(withPageSize(editor.getJSON() as EditorDoc, pageSize))
-    : document
-      ? serializeStable(withPageSize(document.editor_json, pageSize))
-      : serializeStable({ type: "doc", content: [] });
 
   const parsedVariables = asJsonObject(variablesText, document?.variables_json ?? {});
   const variableOutput = resolveTemplateVariables(variableRegistry, parsedVariables);
@@ -182,17 +186,6 @@ export default function DocumentDetailPage({ params }: Params) {
     }
   }, [document?.recipients_json, recipientsText]);
   const quoteTotals = calculateQuoteTotals(pricing);
-  const previewHtml = useMemo(
-    () =>
-      renderComputedHtml({
-        doc: JSON.parse(serializedDoc) as EditorDoc,
-        mode: "sender-preview",
-        resolvedVariables: variableOutput.resolved,
-        pricing,
-        signerFieldValues: [],
-      }),
-    [pricing, serializedDoc, variableOutput.resolved],
-  );
   const pageCount = Math.max(pageCountFromEditor(JSON.parse(serializedDoc) as EditorDoc), visualPages);
   const derivedTitle = useMemo(() => {
     if (!document) {
@@ -234,13 +227,19 @@ export default function DocumentDetailPage({ params }: Params) {
     setRecipientsText(JSON.stringify(loadedRecipients, null, 2));
     setName(documentTitleFromEditorJson(payload.document.editor_json, payload.document.id));
     setPageSize(pageSizeFromDoc(payload.document.editor_json));
+    const nextDoc = serializeStable(
+      withPageSize(payload.document.editor_json, pageSizeFromDoc(payload.document.editor_json)),
+    );
+    setSerializedDoc(nextDoc);
     const snapshot = JSON.stringify({
-      doc: serializeStable(payload.document.editor_json),
+      doc: nextDoc,
       variables: JSON.stringify(payload.document.variables_json),
       pricing: JSON.stringify(payload.document.pricing_json),
       recipients: JSON.stringify(loadedRecipients),
       contactId: payload.document.contact_id ?? "",
     });
+    expectedUpdatedAtRef.current = payload.document.updated_at;
+    lastSavedSnapshotRef.current = snapshot;
     setLastSavedSnapshot(snapshot);
     if (editor) {
       editor.commands.setContent(migrateSignerFieldsDoc(payload.document.editor_json));
@@ -275,41 +274,75 @@ export default function DocumentDetailPage({ params }: Params) {
     if (!documentId) {
       return;
     }
-    setError("");
-    setStatus("Saving...");
+    await saveQueueRef.current.run(async () => {
+      try {
+        if (document?.status && document.status !== "DRAFTED") {
+          setStatus("Sent documents cannot be edited");
+          return;
+        }
+        setError("");
+        setStatus("Saving...");
 
-    const payload = {
-      editor_json: JSON.parse(serializedDoc) as EditorDoc,
-      variables_json: parsedVariables,
-      pricing_json: pricing,
-      recipients_json: parsedRecipients,
-      contact_id: contactId || null,
-    };
-    const response = await fetch(`/api/documents/${documentId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      const payload = {
+        editor_json: JSON.parse(serializedDoc) as EditorDoc,
+        variables_json: parsedVariables,
+        pricing_json: pricing,
+        recipients_json: parsedRecipients,
+        contact_id: contactId || null,
+        expectedUpdatedAt: expectedUpdatedAtRef.current || undefined,
+      };
+      const response = await fetch(`/api/documents/${documentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (response.status === 409) {
+        const serverResponse = await fetch(`/api/documents/${documentId}`);
+        const serverPayload = serverResponse.ok
+          ? ((await serverResponse.json()) as { document?: DocumentDetail })
+          : null;
+        const serverUpdatedAt = serverPayload?.document?.updated_at ?? "";
+        setSaveConflict({ serverUpdatedAt });
+        setStatus("Conflict");
+        setError("This document was changed in another tab.");
+        return;
+      }
+      if (response.status === 403) {
+        setError("Sent documents cannot be edited.");
+        setStatus("Locked");
+        return;
+      }
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          error?: string | { message?: string };
+        } | null;
+        const msg =
+          typeof body?.error === "string" ? body.error : (body?.error?.message ?? "Save failed");
+        setError(msg);
+        setStatus("Save failed");
+        return;
+      }
+      const result = (await response.json()) as { document?: DocumentDetail };
+      if (result.document?.updated_at) {
+        expectedUpdatedAtRef.current = result.document.updated_at;
+      }
+      const snapshot = JSON.stringify({
+        doc: serializedDoc,
+        variables: JSON.stringify(parsedVariables),
+        pricing: JSON.stringify(pricing),
+        recipients: JSON.stringify(parsedRecipients),
+        contactId,
+      });
+      lastSavedSnapshotRef.current = snapshot;
+      setLastSavedSnapshot(snapshot);
+      setSaveConflict(null);
+      setStatus("Saved");
+      } catch {
+        setError("Save failed");
+        setStatus("Save failed");
+      }
     });
-    if (!response.ok) {
-      const body = (await response.json().catch(() => null)) as {
-        error?: string | { message?: string };
-      } | null;
-      const msg =
-        typeof body?.error === "string" ? body.error : (body?.error?.message ?? "Save failed");
-      setError(msg);
-      setStatus("Save failed");
-      return;
-    }
-    const snapshot = JSON.stringify({
-      doc: serializedDoc,
-      variables: JSON.stringify(parsedVariables),
-      pricing: JSON.stringify(pricing),
-      recipients: JSON.stringify(parsedRecipients),
-      contactId,
-    });
-    setLastSavedSnapshot(snapshot);
-    setStatus("Saved");
-  }, [contactId, documentId, parsedRecipients, parsedVariables, pricing, serializedDoc]);
+  }, [contactId, document?.status, documentId, parsedRecipients, parsedVariables, pricing, serializedDoc]);
 
   async function sendDocument() {
     if (!documentId) return;
@@ -438,6 +471,13 @@ export default function DocumentDetailPage({ params }: Params) {
   }, [document, editor]);
 
   useEffect(() => {
+    if (!editor) {
+      return;
+    }
+    setSerializedDoc(serializeStable(withPageSize(editor.getJSON() as EditorDoc, pageSize)));
+  }, [editor, pageSize]);
+
+  useEffect(() => {
     if (!selectedRecipientId && parsedRecipients.length > 0) {
       const first = parsedRecipients[0];
       if (first) {
@@ -447,7 +487,7 @@ export default function DocumentDetailPage({ params }: Params) {
   }, [parsedRecipients, selectedRecipientId]);
 
   useEffect(() => {
-    if (!documentId || !document) {
+    if (!documentId || !document || document.status !== "DRAFTED" || saveConflict) {
       return;
     }
     const id = window.setInterval(() => {
@@ -472,12 +512,65 @@ export default function DocumentDetailPage({ params }: Params) {
     parsedRecipients,
     parsedVariables,
     pricing,
+    saveConflict,
     saveNow,
     serializedDoc,
   ]);
 
-  const canUndo = Boolean(editor?.can().undo()) && historyTick >= 0;
-  const canRedo = Boolean(editor?.can().redo()) && historyTick >= 0;
+  useEffect(() => {
+    function currentSnapshot() {
+      return JSON.stringify({
+        doc: serializedDoc,
+        variables: JSON.stringify(parsedVariables),
+        pricing: JSON.stringify(pricing),
+        recipients: JSON.stringify(parsedRecipients),
+        contactId,
+      });
+    }
+    function flushIfDirty() {
+      if (!documentId || document?.status !== "DRAFTED" || currentSnapshot() === lastSavedSnapshotRef.current) {
+        return;
+      }
+      void fetch(`/api/documents/${documentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          editor_json: JSON.parse(serializedDoc) as EditorDoc,
+          variables_json: parsedVariables,
+          pricing_json: pricing,
+          recipients_json: parsedRecipients,
+          contact_id: contactId || null,
+          expectedUpdatedAt: expectedUpdatedAtRef.current || undefined,
+        }),
+        keepalive: true,
+      });
+    }
+    function onBeforeUnload(event: BeforeUnloadEvent) {
+      if (currentSnapshot() === lastSavedSnapshotRef.current) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = "";
+      flushIfDirty();
+    }
+    window.addEventListener("pagehide", flushIfDirty);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("pagehide", flushIfDirty);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [contactId, document, documentId, parsedRecipients, parsedVariables, pricing, serializedDoc]);
+
+  function previewHtml() {
+    return renderComputedHtml({
+      doc: JSON.parse(serializedDoc) as EditorDoc,
+      mode: "sender-preview",
+      resolvedVariables: variableOutput.resolved,
+      pricing,
+      signerFieldValues: [],
+    });
+  }
+
   const unassignedRoleCount = parsedRecipients.filter((r) => !r.email.trim()).length;
 
   if (!document) {
@@ -492,16 +585,13 @@ export default function DocumentDetailPage({ params }: Params) {
     <SignerRecipientProvider
       recipients={parsedRecipients.map((r) => ({ id: r.id, name: r.name || r.email || "Signer" }))}
     >
+      <PricingProvider pricing={pricing}>
       <div className="flex h-screen w-full flex-col bg-background">
         <CreatorHeader
           name={name || derivedTitle}
           onNameChange={renameDocument}
           saveStatus={saveStatusLine}
           statusLabel={statusLabel(document.status)}
-          canUndo={canUndo}
-          canRedo={canRedo}
-          onUndo={() => editor?.chain().focus().undo().run()}
-          onRedo={() => editor?.chain().focus().redo().run()}
           closeHref="/app/documents"
           editor={editor}
           pageSize={pageSize}
@@ -509,8 +599,12 @@ export default function DocumentDetailPage({ params }: Params) {
             setPageSize(size);
             editor?.commands.setPageSize(size);
           }}
+          onSave={() => void saveNow()}
+          onPrint={() => openPrintPreview(previewHtml(), pageSize)}
+          onInsertField={insertSignerField}
+          variableKeys={Object.keys(variableRegistry)}
           fileItems={[
-            { label: "Duplicate", onClick: () => void duplicateThis() },
+            { label: "Make a copy", onClick: () => void duplicateThis() },
             { label: "Save as template", onClick: () => void saveAsTemplate() },
             { label: "Export PDF", onClick: () => void exportArtifact() },
           ]}
@@ -526,6 +620,40 @@ export default function DocumentDetailPage({ params }: Params) {
         />
 
         {error ? <p className="border-b border-border bg-red-50 px-4 py-2 text-sm text-red-600">{error}</p> : null}
+        {document.status !== "DRAFTED" ? (
+          <p className="border-b border-border bg-slate-50 px-4 py-2 text-sm text-muted">
+            This sent version is locked. Recipients see the immutable snapshot
+            {document.sent_version ? ` (${document.sent_version.snapshot_hash.slice(0, 12)}…)` : ""}.
+          </p>
+        ) : null}
+        {saveConflict ? (
+          <div className="flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-950">
+            <span>This document was changed in another tab. Your local edits are still here.</span>
+            <button
+              type="button"
+              className="rounded border border-amber-300 bg-white px-2 py-1 text-xs"
+              onClick={() => {
+                if (saveConflict.serverUpdatedAt) {
+                  expectedUpdatedAtRef.current = saveConflict.serverUpdatedAt;
+                }
+                setSaveConflict(null);
+                void saveNow();
+              }}
+            >
+              Keep my changes
+            </button>
+            <button
+              type="button"
+              className="rounded border border-amber-300 bg-white px-2 py-1 text-xs"
+              onClick={() => {
+                setSaveConflict(null);
+                void loadDocument(documentId);
+              }}
+            >
+              Load other version
+            </button>
+          </div>
+        ) : null}
 
         <div className="flex min-h-0 flex-1">
           <div className="flex min-w-0 flex-1 flex-col">
@@ -698,11 +826,12 @@ export default function DocumentDetailPage({ params }: Params) {
             </div>
             <div
               className="prose prose-sm prose-neutral max-h-[calc(90vh-4rem)] overflow-auto p-4 font-app-serif"
-              dangerouslySetInnerHTML={{ __html: previewHtml }}
+              dangerouslySetInnerHTML={{ __html: previewHtml() }}
             />
           </div>
         </div>
       ) : null}
+      </PricingProvider>
     </SignerRecipientProvider>
   );
 }

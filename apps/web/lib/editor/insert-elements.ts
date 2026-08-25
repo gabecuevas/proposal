@@ -106,3 +106,15 @@ export function insertPageBreak(editor: Editor): void {
 export function insertTableOfContents(editor: Editor): void {
   editor.chain().focus().insertTableOfContents().run();
 }
+
+export function insertQuoteTable(editor: Editor, tableId = "default"): void {
+  editor.chain().focus().insertContent({ type: "quoteTable", attrs: { tableId } }).run();
+}
+
+export function insertVariable(editor: Editor, key: string): void {
+  const trimmed = key.trim();
+  if (!trimmed) {
+    return;
+  }
+  editor.chain().focus().insertContent({ type: "variableToken", attrs: { key: trimmed } }).run();
+}

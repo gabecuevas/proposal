@@ -20,6 +20,7 @@ export function printDocumentCss(spec: PageSizeSpec): string {
 @page { size: ${cssPageSize(spec.id)}; margin: ${marginIn}in; }
 html, body { margin: 0; padding: 0; background: #fff; }
 article {
+  position: relative;
   width: ${contentWidthPx}px;
   max-width: 100%;
   margin: 0 auto;
@@ -27,6 +28,10 @@ article {
   font-size: 15px;
   line-height: 1.6;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --creator-page-width: ${spec.widthPx}px;
+  --creator-page-height: ${spec.heightPx}px;
+  --creator-page-margin: ${spec.marginPx}px;
+  --creator-page-gap: 0px;
 }
 article p { margin: 0 0 0.75rem; orphans: 2; widows: 2; }
 article h1 { font-size: 1.875rem; font-weight: 600; margin: 0 0 0.75rem; }
@@ -35,6 +40,7 @@ article h3 { font-size: 1.125rem; font-weight: 600; margin: 1rem 0 0.5rem; }
 article ul, article ol { margin: 0 0 0.75rem; padding-left: 1.5rem; }
 article blockquote { margin: 0 0 0.75rem; border-left: 3px solid #cbd5e1; padding-left: 0.875rem; color: #475569; }
 article hr { margin: 1.25rem 0; border: none; border-top: 1px solid #e2e8f0; }
+article mark { border-radius: 2px; padding: 0 0.1em; }
 .creator-text-box {
   margin: 0 0 0.75rem;
   padding: 0.75rem 0.875rem;
@@ -52,7 +58,10 @@ td, th { border: 1px solid #cbd5e1; padding: 6px 8px; }
   border: 0;
 }
 .certificate-page { break-before: page; }
-.rendered-field-overlay { --creator-page-gap: 0px; }
+.rendered-field-overlay {
+  --creator-page-gap: 0px;
+  --creator-page-height: ${spec.heightPx}px;
+}
 `.trim();
 }
 
@@ -64,4 +73,20 @@ export function wrapPrintHtml(bodyHtml: string, pageSize?: PageSizeId | unknown)
 
 export function wrapPrintHtmlForDoc(bodyHtml: string, doc: { attrs?: Record<string, unknown> } | null | undefined): string {
   return wrapPrintHtml(bodyHtml, pageSizeFromDoc(doc));
+}
+
+/** Opens the same print CSS the PDF pipeline uses, then triggers the browser print dialog. */
+export function openPrintPreview(bodyHtml: string, pageSize?: PageSizeId | unknown): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const popup = window.open("", "_blank", "noopener,noreferrer");
+  if (!popup) {
+    return;
+  }
+  popup.document.open();
+  popup.document.write(wrapPrintHtml(bodyHtml, pageSize));
+  popup.document.close();
+  popup.focus();
+  popup.print();
 }

@@ -1,5 +1,6 @@
 import Color from "@tiptap/extension-color";
 import FontFamily from "@tiptap/extension-font-family";
+import Highlight from "@tiptap/extension-highlight";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import Table from "@tiptap/extension-table";
@@ -23,6 +24,8 @@ import { CreatorDocument } from "./creator-document";
 import { FieldCanvas } from "./field-canvas";
 import { FieldOverlay } from "./field-overlay";
 import { FontSize } from "./font-size";
+import { Indent } from "./indent";
+import { LineHeight } from "./line-height";
 import { PageBreak } from "./page-break";
 import { PageFlow } from "./page-flow";
 import { QuoteTable } from "./quote-table";
@@ -31,6 +34,7 @@ import { SignerField } from "./signer-field";
 import { TableOfContents } from "./table-of-contents";
 import { TextBox } from "./text-box";
 import { VariableToken } from "./variable-token";
+import { QuoteTableView } from "@/components/editor/quote-table-view";
 
 const FieldCanvasWithView = FieldCanvas.extend({
   addNodeView() {
@@ -56,6 +60,12 @@ const ResizableImageWithView = ResizableImage.extend({
   },
 });
 
+const QuoteTableWithView = QuoteTable.extend({
+  addNodeView() {
+    return ReactNodeViewRenderer(QuoteTableView);
+  },
+});
+
 const TableOfContentsWithView = TableOfContents.extend({
   addNodeView() {
     return ReactNodeViewRenderer(TableOfContentsView);
@@ -75,6 +85,9 @@ export const editorExtensions = [
   FontFamily.configure({ types: ["textStyle"] }),
   Color.configure({ types: ["textStyle"] }),
   FontSize,
+  Highlight.configure({ multicolor: true }),
+  LineHeight,
+  Indent,
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener" } }),
   Placeholder.configure({
@@ -94,7 +107,7 @@ export const editorExtensions = [
   VariableToken,
   ContentBlockEmbed,
   BlockMeta,
-  QuoteTable,
+  QuoteTableWithView,
   SignerFieldWithView,
   FieldCanvasWithView,
   FieldOverlayWithView,

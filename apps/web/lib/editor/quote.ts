@@ -1,5 +1,11 @@
 import type { PricingModel, QuoteLineItem, QuoteTotals } from "./types";
 
+/**
+ * Canonical pricing lives in Document/Template `pricing_json`, not in Tiptap.
+ * `quoteTable` nodes only store `{ tableId }` (currently `"default"`) as a
+ * pointer into that blob. Totals are always derived here — never persisted.
+ */
+
 function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }

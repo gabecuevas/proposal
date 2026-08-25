@@ -8,7 +8,8 @@ export const QuoteTable = Node.create({
 
   addAttributes() {
     return {
-      tableId: { default: "" },
+      /** Pointer into document/template `pricing_json`. Line items are not stored on this node. */
+      tableId: { default: "default" },
     };
   },
 

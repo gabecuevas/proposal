@@ -1,21 +1,25 @@
 "use client";
 
 import { useEditor } from "@tiptap/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SignerRecipientProvider } from "@/components/editor/signer-field-context";
+import { PricingProvider } from "@/components/editor/pricing-context";
 import { CreatorCanvas } from "@/components/editor/creator/creator-canvas";
 import { CreatorFieldsSidebar } from "@/components/editor/creator/creator-fields-sidebar";
 import { CreatorHeader } from "@/components/editor/creator/creator-header";
 import { CreatorPageStrip } from "@/components/editor/creator/creator-page-strip";
 import { defaultEditorDoc } from "@/lib/editor/defaults";
+import { creatorEditorProps } from "@/lib/editor/editor-config";
 import { editorExtensions } from "@/lib/editor/extensions";
 import { insertPageBreak } from "@/lib/editor/insert-elements";
 import { insertSignerFieldAtPoint, insertSignerFieldBlock } from "@/lib/editor/insert-signer-field";
 import { migrateSignerFieldsDoc } from "@/lib/editor/migrate-signer-fields";
 import { pageSizeFromDoc, pageSizeSpec, withPageSize, type PageSizeId } from "@/lib/editor/page-geometry";
+import { openPrintPreview } from "@/lib/editor/print-document";
 import { calculateQuoteTotals } from "@/lib/editor/quote";
 import { renderComputedHtml } from "@/lib/editor/render";
+import { SaveQueue } from "@/lib/editor/save-queue";
 import type { SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
 import { serializeStable } from "@/lib/editor/stable";
 import { resolveTemplateVariables } from "@/lib/editor/variables";
@@ -82,27 +86,22 @@ export function TemplateEditor({
   const [availableBlocks, setAvailableBlocks] = useState(contentBlocks);
   const [selectedRecipientId, setSelectedRecipientId] = useState(defaultRecipients[0]?.id ?? "");
   const [mode, setMode] = useState<"sender-preview" | "recipient-fill" | "finalized">("sender-preview");
-  const [historyTick, setHistoryTick] = useState(0);
+  const [debugOpen, setDebugOpen] = useState(false);
   const [visualPages, setVisualPages] = useState(1);
   const [pageSize, setPageSize] = useState<PageSizeId>(() => pageSizeFromDoc(migratedInitial));
   const pageSizeRef = useRef(pageSize);
   pageSizeRef.current = pageSize;
+  const saveQueueRef = useRef(new SaveQueue());
+  const lastSavedSerializedRef = useRef(lastSavedSerialized);
+  lastSavedSerializedRef.current = lastSavedSerialized;
 
   const editor = useEditor({
     immediatelyRender: false,
     extensions: editorExtensions,
     content: migratedInitial,
-    editorProps: {
-      attributes: {
-        class: "tiptap-creator min-h-full max-w-none focus:outline-none",
-      },
-    },
+    editorProps: creatorEditorProps,
     onUpdate({ editor: nextEditor }) {
       setSerialized(serializeStable(withPageSize(nextEditor.getJSON() as EditorDoc, pageSizeRef.current)));
-      setHistoryTick((n) => n + 1);
-    },
-    onTransaction() {
-      setHistoryTick((n) => n + 1);
     },
   });
 
@@ -110,15 +109,45 @@ export function TemplateEditor({
   const variableContext = parseJsonText<VariableContext>(variablesText, {});
   const variableOutput = resolveTemplateVariables(variableRegistry, variableContext);
   const quoteTotals = calculateQuoteTotals(pricing);
-  const computedHtml = renderComputedHtml({
-    doc: JSON.parse(serialized) as EditorDoc,
-    mode,
-    resolvedVariables: variableOutput.resolved,
-    pricing,
-    signerFieldValues: [],
-    activeRecipientId: selectedRecipientId,
-  });
   const pageCount = Math.max(pageCountFromEditor(JSON.parse(serialized) as EditorDoc), visualPages);
+
+  function buildComputedHtml() {
+    return renderComputedHtml({
+      doc: JSON.parse(serialized) as EditorDoc,
+      mode,
+      resolvedVariables: variableOutput.resolved,
+      pricing,
+      signerFieldValues: [],
+      activeRecipientId: selectedRecipientId,
+    });
+  }
+
+  const saveNow = useCallback(async () => {
+    await saveQueueRef.current.run(async () => {
+      try {
+        setStatus("Saving...");
+        const response = await fetch(`/api/templates/${templateId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            editor_json: JSON.parse(serialized) as EditorDoc,
+            variable_registry: variableRegistry,
+            pricing_json: pricing,
+          }),
+        });
+        if (!response.ok) {
+          setStatus("Save failed");
+          return;
+        }
+        lastSavedSerializedRef.current = serialized;
+        setLastSavedSerialized(serialized);
+        setStatus("Saved");
+      } catch {
+        setStatus("Save failed");
+      }
+    });
+  }, [name, pricing, serialized, templateId, variableRegistry]);
 
   useEffect(() => {
     if (!editor) {
@@ -132,13 +161,22 @@ export function TemplateEditor({
       return;
     }
 
-    const id = window.setInterval(async () => {
+    const id = window.setInterval(() => {
       if (serialized === lastSavedSerialized) {
         return;
       }
+      void saveNow();
+    }, 1200);
 
-      setStatus("Saving...");
-      const response = await fetch(`/api/templates/${templateId}`, {
+    return () => window.clearInterval(id);
+  }, [editor, lastSavedSerialized, saveNow, serialized]);
+
+  useEffect(() => {
+    function flushIfDirty() {
+      if (serialized === lastSavedSerializedRef.current) {
+        return;
+      }
+      void fetch(`/api/templates/${templateId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -147,23 +185,14 @@ export function TemplateEditor({
           variable_registry: variableRegistry,
           pricing_json: pricing,
         }),
+        keepalive: true,
       });
-
-      if (!response.ok) {
-        setStatus("Save failed");
-        return;
-      }
-
-      setLastSavedSerialized(serialized);
-      setStatus("Saved");
-    }, 1200);
-
-    return () => window.clearInterval(id);
-  }, [editor, lastSavedSerialized, name, pricing, serialized, templateId, variableRegistry]);
+    }
+    window.addEventListener("pagehide", flushIfDirty);
+    return () => window.removeEventListener("pagehide", flushIfDirty);
+  }, [name, pricing, serialized, templateId, variableRegistry]);
 
   const currentBlock = availableBlocks.find((block) => block.id === selectedBlockId);
-  const canUndo = Boolean(editor?.can().undo()) && historyTick >= 0;
-  const canRedo = Boolean(editor?.can().redo()) && historyTick >= 0;
 
   function insertVariableToken() {
     if (!editor || !selectedVariable) {
@@ -270,15 +299,12 @@ export function TemplateEditor({
 
   return (
     <SignerRecipientProvider recipients={defaultRecipients}>
+      <PricingProvider pricing={pricing}>
       <div className="flex h-screen w-full flex-col bg-background">
         <CreatorHeader
           name={name}
           onNameChange={setName}
           saveStatus={status}
-          canUndo={canUndo}
-          canRedo={canRedo}
-          onUndo={() => editor?.chain().focus().undo().run()}
-          onRedo={() => editor?.chain().focus().redo().run()}
           closeHref="/app/templates"
           editor={editor}
           pageSize={pageSize}
@@ -286,7 +312,13 @@ export function TemplateEditor({
             setPageSize(size);
             editor?.commands.setPageSize(size);
           }}
-          fileItems={[{ label: "Duplicate template", onClick: () => void duplicateTemplate() }]}
+          onSave={() => void saveNow()}
+          onPrint={() => openPrintPreview(buildComputedHtml(), pageSize)}
+          onInsertField={insertSignerField}
+          variableKeys={Object.keys(variableRegistry)}
+          fileItems={[{ label: "Make a copy", onClick: () => void duplicateTemplate() }]}
+          primaryActionLabel="Save template"
+          onPrimaryAction={() => void saveNow()}
         />
 
         <div className="flex min-h-0 flex-1">
@@ -329,7 +361,10 @@ export function TemplateEditor({
           />
         </div>
 
-        <details className="shrink-0 border-t border-border bg-surface">
+        <details
+          className="shrink-0 border-t border-border bg-surface"
+          onToggle={(event) => setDebugOpen((event.currentTarget as HTMLDetailsElement).open)}
+        >
           <summary className="cursor-pointer px-4 py-2 text-xs font-medium text-muted hover:text-foreground">
             Advanced workspace tools
           </summary>
@@ -530,12 +565,13 @@ export function TemplateEditor({
               </div>
               <div
                 className="prose max-h-40 overflow-auto rounded border border-border bg-surface p-2 text-xs"
-                dangerouslySetInnerHTML={{ __html: computedHtml }}
+                dangerouslySetInnerHTML={{ __html: debugOpen ? buildComputedHtml() : "" }}
               />
             </div>
           </div>
         </details>
       </div>
+      </PricingProvider>
     </SignerRecipientProvider>
   );
 }

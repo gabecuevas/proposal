@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import type { SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
+import { FIELD_REGISTRY } from "@/lib/editor/field-registry";
 import {
   IconCard,
   IconCheckbox,
@@ -13,6 +14,19 @@ import {
   IconTextField,
 } from "./creator-icons";
 
+const FIELD_ICONS: Record<string, (props: { className?: string }) => ReactElement> = {
+  signature: IconSignature,
+  initials: IconInitials,
+  text: IconTextField,
+  date: IconDate,
+  file: IconFileUpload,
+  radio: IconRadio,
+  checkbox: IconCheckbox,
+  dropdown: IconDropdown,
+  card: IconCard,
+  stamp: IconStamp,
+};
+
 export type FieldTypeEntry = {
   id: string;
   label: string;
@@ -21,22 +35,10 @@ export type FieldTypeEntry = {
   editorType: SignerFieldEditorType | null;
 };
 
-/**
- * Ordered to match the field tray. Entries without an `editorType` are shown so
- * the tray is complete, but stay disabled until the signing flow supports them.
- */
-export const fieldTypes: FieldTypeEntry[] = [
-  { id: "signature", label: "Signature", Icon: IconSignature, editorType: "signature" },
-  { id: "initials", label: "Initials", Icon: IconInitials, editorType: "initial" },
-  { id: "text", label: "Text field", Icon: IconTextField, editorType: "text" },
-  { id: "date", label: "Date", Icon: IconDate, editorType: "date" },
-  { id: "file", label: "File upload", Icon: IconFileUpload, editorType: null },
-  { id: "radio", label: "Radio buttons", Icon: IconRadio, editorType: null },
-  { id: "checkbox", label: "Checkbox", Icon: IconCheckbox, editorType: "checkbox" },
-  { id: "dropdown", label: "Dropdown", Icon: IconDropdown, editorType: "dropdown" },
-  { id: "card", label: "Card details", Icon: IconCard, editorType: null },
-  { id: "stamp", label: "Stamp", Icon: IconStamp, editorType: null },
-];
+export const fieldTypes: FieldTypeEntry[] = FIELD_REGISTRY.map((entry) => ({
+  ...entry,
+  Icon: FIELD_ICONS[entry.id] ?? IconTextField,
+}));
 
 /** How many rows stay visible when the tray is collapsed. */
 export const COLLAPSED_FIELD_COUNT = 4;

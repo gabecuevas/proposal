@@ -3,7 +3,7 @@ import { attrsToJson, parseSignerFieldAttrs } from "./signer-field-attrs";
 
 function migrateParagraph(node: EditorNode): EditorNode[] {
   const content = node.content ?? [];
-  if (content.length === 0) {
+  if (content.length === 0 || !content.some((child) => child.type === "signerField")) {
     return [node];
   }
   const result: EditorNode[] = [];
@@ -12,7 +12,7 @@ function migrateParagraph(node: EditorNode): EditorNode[] {
 
   const flushPara = () => {
     if (textBuf.length) {
-      result.push({ type: "paragraph", content: textBuf });
+      result.push({ type: "paragraph", attrs: node.attrs, content: textBuf });
       textBuf = [];
     }
   };

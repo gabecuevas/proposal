@@ -21,6 +21,7 @@
     "@tiptap/core": "^2.26.4",
     "@tiptap/extension-color": "^2.26.4",
     "@tiptap/extension-font-family": "^2.26.4",
+    "@tiptap/extension-highlight": "2.26.4",
     "@tiptap/extension-image": "^2.26.4",
     "@tiptap/extension-link": "^2.26.4",
     "@tiptap/extension-placeholder": "^2.26.4",
@@ -58,6 +59,7 @@
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
     "eslint": "^9.39.1",
+    "happy-dom": "^20.11.6",
     "tailwindcss": "^4.1.14",
     "typescript": "5.9.2",
     "vitest": "^3.2.4"

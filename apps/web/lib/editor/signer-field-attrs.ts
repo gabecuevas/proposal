@@ -106,3 +106,30 @@ export function attrsToJson(attrs: SignerFieldAttrs): Record<string, JSONValue> 
     page: attrs.page,
   };
 }
+
+type Walkable = {
+  type?: string;
+  attrs?: Record<string, unknown>;
+  content?: Walkable[];
+};
+
+/** Overlay fields stored inside Tiptap JSON (`fieldOverlay` / `fieldCanvas` children). */
+export function extractSigningFields(doc: { content?: Walkable[] } | null | undefined): SignerFieldAttrs[] {
+  const fields: SignerFieldAttrs[] = [];
+  function walk(node: Walkable, index: number) {
+    if (node.type === "signerField") {
+      fields.push(parseSignerFieldAttrs(node.attrs, index));
+    }
+    node.content?.forEach((child, childIndex) => walk(child, childIndex));
+  }
+  (doc?.content ?? []).forEach((child, index) => walk(child, index));
+  return fields;
+}
+
+export function isDropdownField(field: SignerFieldAttrs): field is SignerFieldAttrs & { type: "dropdown" } {
+  return field.type === "dropdown";
+}
+
+export function isCheckboxField(field: SignerFieldAttrs): field is SignerFieldAttrs & { type: "checkbox" } {
+  return field.type === "checkbox";
+}

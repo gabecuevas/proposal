@@ -7,13 +7,16 @@ import {
   insertHeading,
   insertImageAsset,
   insertPageBreak,
+  insertQuoteTable,
   insertTable,
   insertTableOfContents,
   insertTextBlock,
+  insertVariable,
   insertVideo,
   isSupportedImage,
   uploadAsset,
 } from "@/lib/editor/insert-elements";
+import type { SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
 import {
   IconDivider,
   IconImage,
@@ -22,6 +25,7 @@ import {
   IconListOrdered,
   IconPageBreak,
   IconQuote,
+  IconSignature,
   IconTable,
   IconTextT,
   IconToc,
@@ -37,6 +41,8 @@ type Props = {
   query?: string;
   /** Opens the searchable content library modal (Insert menu). */
   onOpenLibrary?: () => void;
+  onInsertField?: (type: SignerFieldEditorType) => void;
+  variableKeys?: string[];
 };
 
 type Entry = {
@@ -80,9 +86,18 @@ const entries: Entry[] = [
   { id: "toc", label: "Table of contents", hint: "From headings", Icon: IconToc, run: insertTableOfContents },
   { id: "divider", label: "Divider", hint: "Horizontal rule", Icon: IconDivider, run: insertDivider },
   { id: "pageBreak", label: "Page break", hint: "Start a new page", Icon: IconPageBreak, run: insertPageBreak },
+  { id: "quoteTable", label: "Pricing table", hint: "Quote / line items", Icon: IconTable, run: (ed) => insertQuoteTable(ed) },
 ];
 
-export function ElementMenu({ editor, onDone, onBeforeInsert, query = "", onOpenLibrary }: Props) {
+export function ElementMenu({
+  editor,
+  onDone,
+  onBeforeInsert,
+  query = "",
+  onOpenLibrary,
+  onInsertField,
+  variableKeys = [],
+}: Props) {
   const [view, setView] = useState<"root" | "video" | "table">("root");
   const [videoUrl, setVideoUrl] = useState("");
   const [videoError, setVideoError] = useState("");
@@ -103,6 +118,16 @@ export function ElementMenu({ editor, onDone, onBeforeInsert, query = "", onOpen
   const showImage = !needle || "image".includes(needle) || needle.includes("image") || needle.includes("photo");
   const showVideo = !needle || needle.includes("video") || needle.includes("youtube");
   const showTable = !needle || needle.includes("table") || needle.includes("grid") || needle.includes("excel");
+  const showFields =
+    Boolean(onInsertField) &&
+    (!needle ||
+      needle.includes("sign") ||
+      needle.includes("field") ||
+      needle.includes("date") ||
+      needle.includes("initial"));
+  const visibleVariables = needle
+    ? variableKeys.filter((key) => key.toLowerCase().includes(needle))
+    : variableKeys.slice(0, 8);
 
   function run(action: (editor: Editor) => void) {
     if (!editor) {
@@ -213,6 +238,46 @@ export function ElementMenu({ editor, onDone, onBeforeInsert, query = "", onOpen
               onDone();
             }}
           />
+        </>
+      ) : null}
+      {showFields ? (
+        <>
+          <p className="mb-1.5 mt-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+            Fillable fields
+          </p>
+          {(
+            [
+              ["signature", "Signature"],
+              ["initial", "Initials"],
+              ["date", "Date"],
+              ["text", "Text field"],
+            ] as const
+          ).map(([type, label]) => (
+            <Row
+              key={type}
+              Icon={IconSignature}
+              label={label}
+              hint="Placed on the page overlay"
+              onClick={() => {
+                onInsertField?.(type);
+                onDone();
+              }}
+            />
+          ))}
+        </>
+      ) : null}
+      {visibleVariables.length > 0 ? (
+        <>
+          <p className="mb-1.5 mt-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted">Variables</p>
+          {visibleVariables.map((key) => (
+            <Row
+              key={key}
+              Icon={IconTextT}
+              label={`{{${key}}}`}
+              hint="Inline token"
+              onClick={() => run((ed) => insertVariable(ed, key))}
+            />
+          ))}
         </>
       ) : null}
       <p className="mb-1.5 mt-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted">

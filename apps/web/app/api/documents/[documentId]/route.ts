@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
-import { getDocument, updateDocumentDraft } from "@/lib/editor/document-store";
+import { getDocument, SentDocumentImmutableError, updateDocumentDraft } from "@/lib/editor/document-store";
+import { StaleDocumentWriteError } from "@/lib/editor/save-queue";
 import type { EditorDoc, PricingModel, VariableContext } from "@/lib/editor/types";
 
 type Params = { params: Promise<{ documentId: string }> };
@@ -26,6 +27,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     pricing_json?: PricingModel;
     recipients_json?: Array<{ id: string; email: string; name: string; role: "signer" | "approver" | "viewer" }>;
     contact_id?: string | null;
+    expectedUpdatedAt?: string;
   };
   try {
     const document = await updateDocumentDraft(documentId, auth.workspaceId, payload);
@@ -34,6 +36,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
     return NextResponse.json({ document });
   } catch (error) {
+    if (error instanceof StaleDocumentWriteError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
+    }
+    if (error instanceof SentDocumentImmutableError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
+    }
     const message = error instanceof Error ? error.message : "Failed to update document";
     if (message === "Contact not found") {
       return NextResponse.json({ error: message }, { status: 404 });

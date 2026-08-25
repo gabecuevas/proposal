@@ -55,6 +55,9 @@ function renderTextWithMarks(node: EditorNode): string {
     } else if (mark.type === "link") {
       const href = escapeHtml(String(mark.attrs?.href ?? ""));
       html = `<a href="${href}">${html}</a>`;
+    } else if (mark.type === "highlight") {
+      const color = escapeHtml(String(mark.attrs?.color ?? "#fef08a"));
+      html = `<mark style="background-color:${color}">${html}</mark>`;
     } else if (mark.type === "textStyle") {
       const styles: string[] = [];
       if (mark.attrs?.color) {
@@ -186,14 +189,31 @@ function renderSignerFieldNode(node: EditorNode, input: RenderInput): string {
   return `<div class="${shellClass} signer-field--fill" style="${layoutStyle}" ${baseDataAttrs} data-field-mode="recipient-fill" data-editable="true"><label class="block font-medium text-slate-800">${label}<input type="text" class="mt-1 w-full rounded border border-slate-300 bg-white px-1 py-0.5 text-xs" data-field-id="${escapeHtml(fieldId)}" value="${escapeHtml(v)}" placeholder="${placeholder}" /></label></div>`;
 }
 
+function blockInlineStyle(node: EditorNode): string {
+  const styles: string[] = [];
+  const align = node.attrs?.textAlign;
+  if (typeof align === "string" && align && align !== "left") {
+    styles.push(`text-align:${escapeHtml(align)}`);
+  }
+  const lineHeight = node.attrs?.lineHeight;
+  if (typeof lineHeight === "string" && lineHeight) {
+    styles.push(`line-height:${escapeHtml(lineHeight)}`);
+  }
+  const indent = Number(node.attrs?.indent ?? 0);
+  if (Number.isFinite(indent) && indent > 0) {
+    styles.push(`padding-left:${indent * 24}px`);
+  }
+  return styles.length ? ` style="${styles.join(";")}"` : "";
+}
+
 function renderNode(node: EditorNode, input: RenderInput): string {
   switch (node.type) {
     case "paragraph":
-      return `<p>${(node.content ?? []).map((child) => renderNode(child, input)).join("")}</p>`;
+      return `<p${blockInlineStyle(node)}>${(node.content ?? []).map((child) => renderNode(child, input)).join("")}</p>`;
     case "heading": {
       const level = Number(node.attrs?.level ?? 2);
       const tag = `h${Math.min(Math.max(level, 1), 6)}`;
-      return `<${tag}>${(node.content ?? []).map((child) => renderNode(child, input)).join("")}</${tag}>`;
+      return `<${tag}${blockInlineStyle(node)}>${(node.content ?? []).map((child) => renderNode(child, input)).join("")}</${tag}>`;
     }
     case "blockquote":
       return `<blockquote>${(node.content ?? []).map((child) => renderNode(child, input)).join("")}</blockquote>`;
@@ -210,7 +230,10 @@ function renderNode(node: EditorNode, input: RenderInput): string {
     case "horizontalRule":
       return "<hr />";
     case "image": {
-      const src = String(node.attrs?.src ?? "");
+      const assetKey = String(node.attrs?.assetKey ?? "");
+      const src = assetKey
+        ? assetUrl(assetKey, { baseUrl: input.assetBaseUrl, token: input.assetToken })
+        : String(node.attrs?.src ?? "");
       const alt = escapeHtml(String(node.attrs?.alt ?? ""));
       const widthPct = clampImageWidth(node.attrs?.widthPct);
       const align = parseImageAlign(node.attrs?.align);
@@ -253,7 +276,13 @@ function renderNode(node: EditorNode, input: RenderInput): string {
     case "contentBlockEmbed": {
       const blockId = String(node.attrs?.blockId ?? "");
       const version = String(node.attrs?.version ?? "1");
-      return `<div class="content-block-embed" data-block-id="${escapeHtml(blockId)}" data-block-version="${escapeHtml(version)}"></div>`;
+      const snapshotDoc = node.attrs?.snapshotDoc;
+      if (snapshotDoc && typeof snapshotDoc === "object" && !Array.isArray(snapshotDoc)) {
+        const doc = snapshotDoc as { content?: EditorNode[] };
+        const inner = (doc.content ?? []).map((child) => renderNode(child, input)).join("");
+        return `<div class="content-block-embed" data-block-id="${escapeHtml(blockId)}" data-block-version="${escapeHtml(version)}" data-pinned="true">${inner}</div>`;
+      }
+      return `<div class="content-block-embed" data-block-id="${escapeHtml(blockId)}" data-block-version="${escapeHtml(version)}">Saved library content (id ${escapeHtml(blockId)}, v${escapeHtml(version)}) is not inlined in this export.</div>`;
     }
     case "quoteTable": {
       if (!input.pricing) {

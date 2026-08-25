@@ -159,6 +159,18 @@ body {
   color: #1e3a5f;
   text-decoration: underline;
 }
+.tiptap-creator mark {
+  border-radius: 2px;
+  padding: 0 0.1em;
+}
+.tiptap-creator [data-indent="1"] { padding-left: 24px; }
+.tiptap-creator [data-indent="2"] { padding-left: 48px; }
+.tiptap-creator [data-indent="3"] { padding-left: 72px; }
+.tiptap-creator [data-indent="4"] { padding-left: 96px; }
+.tiptap-creator [data-indent="5"] { padding-left: 120px; }
+.tiptap-creator [data-indent="6"] { padding-left: 144px; }
+.tiptap-creator [data-indent="7"] { padding-left: 168px; }
+.tiptap-creator [data-indent="8"] { padding-left: 192px; }
 .tiptap-creator p.is-editor-empty:first-child::before,
 .tiptap-creator .is-empty::before {
   content: attr(data-placeholder);

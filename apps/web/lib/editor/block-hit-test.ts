@@ -24,12 +24,18 @@ export function hitTestBlocks(y: number, blocks: TopLevelBlock[], paperHeight: n
   }
 
   const first = blocks[0];
+  if (!first) {
+    return { kind: "gap", insertPos: 0, topPx: Math.min(48, paperHeight / 2) };
+  }
   if (y < first.top) {
     return { kind: "gap", insertPos: first.pos, topPx: Math.max(12, first.top - 12) };
   }
 
   for (let i = 0; i < blocks.length; i += 1) {
     const block = blocks[i];
+    if (!block) {
+      continue;
+    }
     const next = blocks[i + 1];
     if (y >= block.top && y <= block.bottom) {
       return { kind: "block", block };
@@ -44,6 +50,9 @@ export function hitTestBlocks(y: number, blocks: TopLevelBlock[], paperHeight: n
   }
 
   const last = blocks[blocks.length - 1];
+  if (!last) {
+    return null;
+  }
   if (y > last.bottom) {
     return {
       kind: "gap",
