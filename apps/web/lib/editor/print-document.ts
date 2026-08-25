@@ -1,0 +1,67 @@
+import {
+  pageSizeFromDoc,
+  pageSizeSpec,
+  type PageSizeId,
+  type PageSizeSpec,
+} from "./page-geometry";
+
+function cssPageSize(id: PageSizeId): string {
+  if (id === "a4") {
+    return "A4";
+  }
+  return id;
+}
+
+/** Shared editor/print typography so Chromium paginates at the same lines. */
+export function printDocumentCss(spec: PageSizeSpec): string {
+  const marginIn = spec.marginPx / 96;
+  const contentWidthPx = spec.widthPx - 2 * spec.marginPx;
+  return `
+@page { size: ${cssPageSize(spec.id)}; margin: ${marginIn}in; }
+html, body { margin: 0; padding: 0; background: #fff; }
+article {
+  width: ${contentWidthPx}px;
+  max-width: 100%;
+  margin: 0 auto;
+  color: #0f172a;
+  font-size: 15px;
+  line-height: 1.6;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+article p { margin: 0 0 0.75rem; orphans: 2; widows: 2; }
+article h1 { font-size: 1.875rem; font-weight: 600; margin: 0 0 0.75rem; }
+article h2 { font-size: 1.375rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
+article h3 { font-size: 1.125rem; font-weight: 600; margin: 1rem 0 0.5rem; }
+article ul, article ol { margin: 0 0 0.75rem; padding-left: 1.5rem; }
+article blockquote { margin: 0 0 0.75rem; border-left: 3px solid #cbd5e1; padding-left: 0.875rem; color: #475569; }
+article hr { margin: 1.25rem 0; border: none; border-top: 1px solid #e2e8f0; }
+.creator-text-box {
+  margin: 0 0 0.75rem;
+  padding: 0.75rem 0.875rem;
+  break-inside: auto;
+}
+.creator-text-box p:last-child { margin-bottom: 0; }
+.creator-image-block { margin: 0 0 0.75rem; }
+img, table { max-width: 100%; }
+table { border-collapse: collapse; width: 100%; }
+td, th { border: 1px solid #cbd5e1; padding: 6px 8px; }
+.page-break, .creator-flow-break, [data-node-type="pageBreak"] {
+  break-before: page;
+  height: 0;
+  margin: 0;
+  border: 0;
+}
+.certificate-page { break-before: page; }
+.rendered-field-overlay { --creator-page-gap: 0px; }
+`.trim();
+}
+
+/** Full HTML document for Playwright PDF, using the same page box as the editor. */
+export function wrapPrintHtml(bodyHtml: string, pageSize?: PageSizeId | unknown): string {
+  const spec = pageSizeSpec(pageSize);
+  return `<!DOCTYPE html><html><head><meta charset="utf-8" /><style>${printDocumentCss(spec)}</style></head><body>${bodyHtml}</body></html>`;
+}
+
+export function wrapPrintHtmlForDoc(bodyHtml: string, doc: { attrs?: Record<string, unknown> } | null | undefined): string {
+  return wrapPrintHtml(bodyHtml, pageSizeFromDoc(doc));
+}

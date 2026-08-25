@@ -2,9 +2,11 @@
 
 import type { NodeViewProps } from "@tiptap/react";
 import { NodeViewWrapper } from "@tiptap/react";
-import { useCallback, useMemo, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { clamp01, parseSignerFieldAttrs } from "@/lib/editor/signer-field-attrs";
-import { readPaperPageHeightPx } from "@/lib/editor/page-geometry";
+import { pageCountForPaperHeight, readPaperPageGapPx, readPaperPageHeightPx } from "@/lib/editor/page-geometry";
+import { FieldOptionsMenu } from "./creator/field-options-menu";
+import { IconGear } from "./creator/creator-icons";
 import { useSignerRecipients } from "./signer-field-context";
 
 const MIN_W_PCT = 0.06;
@@ -53,6 +55,8 @@ function resolveContainer(fieldEl: HTMLElement): Container | null {
 
 export function SignerFieldView({ node, updateAttributes, selected, editor, getPos }: NodeViewProps) {
   const recipients = useSignerRecipients();
+  const [hovered, setHovered] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const attrs = useMemo(
     () => parseSignerFieldAttrs(node.attrs as Record<string, unknown>, 0),
     [node.attrs],
@@ -88,7 +92,11 @@ export function SignerFieldView({ node, updateAttributes, selected, editor, getP
       const startClientY = event.clientY;
       const maxX = Math.max(0, 1 - attrs.wPct);
       const pageCount = isOverlay
-        ? Math.max(1, Math.round(container.element.getBoundingClientRect().height / container.verticalUnitPx))
+        ? pageCountForPaperHeight(
+            container.element.getBoundingClientRect().height,
+            container.verticalUnitPx,
+            readPaperPageGapPx(container.element),
+          )
         : 1;
 
       const onMove = (moveEvent: globalThis.PointerEvent) => {
@@ -163,15 +171,25 @@ export function SignerFieldView({ node, updateAttributes, selected, editor, getP
 
   return (
     <NodeViewWrapper
-      className={`signer-field-node flex flex-col overflow-hidden rounded-md border bg-white/95 text-[11px] shadow-sm transition-shadow ${
-        selected ? "z-30 border-primary ring-2 ring-primary/30" : "z-20 border-slate-300"
+      className={`signer-field-node flex flex-col overflow-visible rounded-md border text-[11px] shadow-sm transition-colors ${
+        selected
+          ? "z-30 border-primary/40 bg-[rgba(30,58,95,0.1)]"
+          : hovered || menuOpen
+            ? "z-30 border-slate-300 bg-[rgba(30,58,95,0.045)]"
+            : "z-20 border-slate-300 bg-white/95"
       }`}
       style={positionVars}
       data-signer-field-id={attrs.fieldId}
       data-field-page={attrs.page}
       contentEditable={false}
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => {
+        if (!menuOpen) {
+          setHovered(false);
+        }
+      }}
       onPointerDown={(event: ReactPointerEvent<HTMLElement>) => {
-        if ((event.target as HTMLElement).closest("[data-drag-handle],[data-resize-handle]")) {
+        if ((event.target as HTMLElement).closest("[data-drag-handle],[data-resize-handle],[data-field-gear]")) {
           return;
         }
         selectThis();
@@ -186,7 +204,41 @@ export function SignerFieldView({ node, updateAttributes, selected, editor, getP
       >
         ⠿
       </button>
-      <div className="flex min-h-0 flex-1 flex-col px-1.5 pb-1 pt-5">
+      <div data-field-gear className="absolute -right-2 -top-2 z-40">
+          <button
+            type="button"
+            aria-label="Field options"
+            title="Field options"
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:opacity-95"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              selectThis();
+              setMenuOpen((open) => !open);
+            }}
+          >
+            <IconGear className="h-3.5 w-3.5" />
+          </button>
+          {menuOpen ? (
+            <div className="absolute right-0 top-8">
+              <FieldOptionsMenu
+                editor={editor}
+                getPos={() => {
+                  const pos = getPos();
+                  return typeof pos === "number" ? pos : undefined;
+                }}
+                onClose={() => setMenuOpen(false)}
+              />
+            </div>
+          ) : null}
+        </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md px-1.5 pb-1 pt-5">
         <div className="truncate font-medium text-foreground">{displayLabel}</div>
         <div className="truncate text-[10px] text-muted">
           {recipientName}

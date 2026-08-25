@@ -17,6 +17,7 @@ import {
 import {
   IconDivider,
   IconImage,
+  IconLibrary,
   IconListBullet,
   IconListOrdered,
   IconPageBreak,
@@ -34,6 +35,8 @@ type Props = {
   onBeforeInsert?: () => void;
   /** When set, only matching rows are shown (used by the `/` slash menu). */
   query?: string;
+  /** Opens the searchable content library modal (Insert menu). */
+  onOpenLibrary?: () => void;
 };
 
 type Entry = {
@@ -79,7 +82,7 @@ const entries: Entry[] = [
   { id: "pageBreak", label: "Page break", hint: "Start a new page", Icon: IconPageBreak, run: insertPageBreak },
 ];
 
-export function ElementMenu({ editor, onDone, onBeforeInsert, query = "" }: Props) {
+export function ElementMenu({ editor, onDone, onBeforeInsert, query = "", onOpenLibrary }: Props) {
   const [view, setView] = useState<"root" | "video" | "table">("root");
   const [videoUrl, setVideoUrl] = useState("");
   const [videoError, setVideoError] = useState("");
@@ -94,6 +97,9 @@ export function ElementMenu({ editor, onDone, onBeforeInsert, query = "" }: Prop
           entry.label.toLowerCase().includes(needle) || entry.hint.toLowerCase().includes(needle),
       )
     : entries;
+  const showLibrary =
+    Boolean(onOpenLibrary) &&
+    (!needle || needle.includes("library") || needle.includes("content") || needle.includes("saved"));
   const showImage = !needle || "image".includes(needle) || needle.includes("image") || needle.includes("photo");
   const showVideo = !needle || needle.includes("video") || needle.includes("youtube");
   const showTable = !needle || needle.includes("table") || needle.includes("grid") || needle.includes("excel");
@@ -195,8 +201,22 @@ export function ElementMenu({ editor, onDone, onBeforeInsert, query = "" }: Prop
 
   return (
     <Panel>
-      <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
-        Add element
+      {showLibrary ? (
+        <>
+          <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted">Add from</p>
+          <Row
+            Icon={IconLibrary}
+            label="Content library"
+            hint="Search saved elements"
+            onClick={() => {
+              onOpenLibrary?.();
+              onDone();
+            }}
+          />
+        </>
+      ) : null}
+      <p className="mb-1.5 mt-1 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+        Content
       </p>
       <div className="max-h-80 overflow-y-auto">
         {showImage ? (

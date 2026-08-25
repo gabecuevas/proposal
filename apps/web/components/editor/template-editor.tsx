@@ -302,6 +302,7 @@ export function TemplateEditor({
             <CreatorCanvas
               editor={editor}
               pageSize={pageSize}
+              templateId={templateId}
               onPageCountChange={setVisualPages}
               onDropField={(type, clientX, clientY) => {
                 if (!editor || !selectedRecipientId) {

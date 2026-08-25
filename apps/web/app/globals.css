@@ -60,17 +60,25 @@ body {
   --creator-page-width: 816px;
   --creator-page-height: 1056px;
   --creator-page-margin: 48px;
+  --creator-page-gap: 32px;
+  --creator-flow-break-height: 128px;
+  --creator-page-count: 1;
   position: relative;
   width: var(--creator-page-width);
-  background: #ffffff;
+  /* Each sheet is a full white page; the canvas shows through the gap. */
+  background-color: transparent;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    #ffffff 0,
+    #ffffff var(--creator-page-height),
+    transparent var(--creator-page-height),
+    transparent calc(var(--creator-page-height) + var(--creator-page-gap))
+  );
 }
 
-/* Dashed guides showing where one sheet ends and the next begins. */
+/* Dashed guides showing where one sheet ends and the next begins. Hidden for now. */
 .creator-page-guides {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  pointer-events: none;
+  display: none;
 }
 .creator-page-guide {
   position: absolute;
@@ -86,8 +94,9 @@ body {
   font-size: 10px;
   color: #94a3b8;
 }
-/* Margin outline, only while editing. */
+/* Margin outline, only while editing. Hidden until Show/Hide Margins returns. */
 .creator-margin-guide {
+  display: none;
   position: absolute;
   top: var(--creator-page-margin);
   bottom: var(--creator-page-margin);
@@ -101,7 +110,10 @@ body {
 .tiptap-creator {
   position: relative;
   padding: var(--creator-page-margin, 48px);
-  min-height: var(--creator-page-height, 1056px);
+  min-height: calc(
+    var(--creator-page-count, 1) * var(--creator-page-height, 1056px) +
+      (var(--creator-page-count, 1) - 1) * var(--creator-page-gap, 32px)
+  );
   color: #0f172a;
   font-size: 15px;
   line-height: 1.6;
@@ -163,15 +175,16 @@ body {
 .tiptap-creator .creator-text-box {
   margin: 0 0 0.75rem;
   padding: 0.75rem 0.875rem;
-  border: 1px dashed #cbd5e1;
+  border: none;
   border-radius: 4px;
-  background: #fff;
+  background: transparent;
+  overflow-x: hidden;
 }
 .tiptap-creator .creator-text-box:focus-within,
 .tiptap-creator .ProseMirror-selectednode.creator-text-box,
 .tiptap-creator .creator-text-box.ProseMirror-selectednode {
-  border-color: #1e3a5f;
-  box-shadow: 0 0 0 1px rgba(30, 58, 95, 0.15);
+  border: none;
+  box-shadow: none;
 }
 .tiptap-creator .creator-text-box p:last-child {
   margin-bottom: 0;
@@ -242,7 +255,22 @@ body {
   display: block;
   height: 0;
   margin: 0;
-  border-top: 1px dashed #cbd5e1;
+  border: none;
+}
+
+/* Height-only spacer so text can continue on the next sheet without painting
+   over the canvas gap or page margins. */
+.creator-flow-break {
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  height: var(--creator-flow-break-height, 128px);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  break-before: page;
 }
 
 /* Signer fields ---------------------------------------------------------- */
@@ -252,7 +280,7 @@ body {
 .rendered-field-overlay {
   position: absolute;
   inset: 0;
-  z-index: 20;
+  z-index: 28;
   pointer-events: none;
 }
 .field-overlay-content {
@@ -272,7 +300,10 @@ body {
    canvas instead. */
 .field-overlay .signer-field-node,
 .rendered-field-overlay .rendered-signer-field {
-  top: calc((var(--field-page) + var(--field-y)) * var(--creator-page-height, 1056px));
+  top: calc(
+    var(--field-page) * (var(--creator-page-height, 1056px) + var(--creator-page-gap, 0px)) +
+      var(--field-y) * var(--creator-page-height, 1056px)
+  );
   height: calc(var(--field-h) * var(--creator-page-height, 1056px));
 }
 .field-canvas-content .signer-field-node,
@@ -285,11 +316,66 @@ body {
 .creator-block-handle {
   position: absolute;
   z-index: 25;
+  top: 0;
+  left: 0;
   display: flex;
   align-items: center;
   gap: 2px;
   transform: translateX(-100%);
   padding-right: 6px;
+}
+
+.creator-insert-gap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 25;
+  height: 0;
+}
+
+.creator-insert-gap .creator-block-handle {
+  transform: translate(-100%, -50%);
+}
+
+.creator-block-gear {
+  position: absolute;
+  z-index: 25;
+  top: 0;
+  right: 0;
+  transform: translateX(100%);
+  padding-left: 6px;
+}
+
+.creator-block-frame {
+  display: block;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--creator-page-margin, 48px);
+  right: var(--creator-page-margin, 48px);
+  pointer-events: none;
+  border-radius: 4px;
+  background: rgba(30, 58, 95, 0.045);
+}
+
+.creator-block-frame.is-selected {
+  background: rgba(30, 58, 95, 0.1);
+}
+
+.tiptap-creator [data-block-design="highlight"] {
+  background: rgba(241, 245, 249, 0.55);
+}
+
+.tiptap-creator .creator-text-box[data-block-design="highlight"] {
+  background: rgba(248, 250, 252, 0.55);
+}
+
+.tiptap-creator [data-block-design="muted"] {
+  color: #64748b;
+}
+
+.tiptap-creator [data-block-locked="true"] {
+  opacity: 0.85;
 }
 
 .glass-card {

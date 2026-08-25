@@ -13,6 +13,7 @@ import { signAssetToken } from "../auth/asset-download";
 import { getDiscountPercent, requiresQuoteApproval } from "../cpq/approval";
 import { computeDocumentHash } from "./hash";
 import { renderComputedHtml } from "./render";
+import { wrapPrintHtmlForDoc } from "./print-document";
 import { applySignerFieldValue, canRecipientFillField } from "./signer-fields";
 import { migrateSignerFieldsDoc } from "./migrate-signer-fields";
 import { normalizeEditorDoc } from "./stable";
@@ -1124,7 +1125,7 @@ export async function finalizeDocument(input: {
     },
   });
 
-  return { doc_hash, html, pdf_key, certificate };
+  return { doc_hash, html: wrapPrintHtmlForDoc(html, document.editor_json), pdf_key, certificate };
 }
 
 export async function markDocumentPaid(input: {

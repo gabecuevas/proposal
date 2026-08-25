@@ -1,6 +1,6 @@
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { CREATOR_PAPER_SELECTOR, readPaperPageHeightPx } from "./page-geometry";
+import { CREATOR_PAPER_SELECTOR, pageAtVisualOffset, readPaperPageGapPx, readPaperPageHeightPx, visualTopForPage } from "./page-geometry";
 import {
   attrsToJson,
   clamp01,
@@ -173,13 +173,14 @@ export function insertSignerFieldAtPoint(
   }
 
   const pageHeightPx = readPaperPageHeightPx(paper);
+  const gapPx = readPaperPageGapPx(paper);
   const xPct = centered(input.clientX - paperRect.left, paperRect.width, defaults.wPct);
-  const absoluteY = Math.max(
-    0,
-    (input.clientY - paperRect.top) / pageHeightPx - defaults.hPct / 2,
+  const yFromTop = Math.max(0, input.clientY - paperRect.top);
+  const page = pageAtVisualOffset(yFromTop, pageHeightPx, gapPx);
+  const yPct = Math.min(
+    Math.max(0, 1 - defaults.hPct),
+    (yFromTop - visualTopForPage(page, pageHeightPx, gapPx)) / pageHeightPx - defaults.hPct / 2,
   );
-  const page = Math.floor(absoluteY);
-  const yPct = Math.min(Math.max(0, 1 - defaults.hPct), absoluteY - page);
 
   const overlay = ensureOverlay(editor);
   if (!overlay) {

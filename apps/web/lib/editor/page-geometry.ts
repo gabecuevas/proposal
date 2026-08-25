@@ -66,6 +66,12 @@ export const PAGE_HEIGHT_PX = PAGE_SIZES.letter.heightPx;
 export const PAGE_MARGIN_PX = PAGE_SIZES.letter.marginPx;
 export const TEXT_COLUMN_WIDTH_PX = PAGE_WIDTH_PX - PAGE_MARGIN_PX * 2;
 
+/**
+ * Grey gap between stacked sheets in the editor. Print/PDF omit this — `@page`
+ * margins already separate sheets — so field math uses the gap only on screen.
+ */
+export const PAGE_GAP_PX = 32;
+
 export function parsePageSize(value: unknown): PageSizeId {
   if (value === "a4" || value === "legal" || value === "letter") {
     return value;
@@ -89,6 +95,16 @@ export function withPageSize<T extends { attrs?: Record<string, unknown> }>(doc:
   };
 }
 
+/** Printable body height inside one sheet (page minus top and bottom margins). */
+export function pageContentHeightPx(pageHeightPx = PAGE_HEIGHT_PX, marginPx = PAGE_MARGIN_PX): number {
+  return Math.max(1, pageHeightPx - 2 * marginPx);
+}
+
+/** Screen-only spacer: bottom margin + gap between sheets + next top margin. */
+export function flowBreakHeightPx(marginPx = PAGE_MARGIN_PX, gapPx = PAGE_GAP_PX): number {
+  return 2 * marginPx + gapPx;
+}
+
 /** How many letter-sized pages the given rendered content height spills onto. */
 export function pageCountForHeight(contentHeightPx: number, pageHeightPx = PAGE_HEIGHT_PX): number {
   if (!Number.isFinite(contentHeightPx) || contentHeightPx <= 0) {
@@ -97,9 +113,61 @@ export function pageCountForHeight(contentHeightPx: number, pageHeightPx = PAGE_
   return Math.max(1, Math.ceil(contentHeightPx / pageHeightPx));
 }
 
+/**
+ * Total painted height of n stacked sheets with a canvas gap between them.
+ */
+export function stackedPaperHeightPx(
+  pageCount: number,
+  pageHeightPx = PAGE_HEIGHT_PX,
+  gapPx = PAGE_GAP_PX,
+): number {
+  const n = Math.max(1, Math.trunc(pageCount) || 1);
+  return n * pageHeightPx + (n - 1) * gapPx;
+}
+
+/**
+ * Page count when sheets are stacked with a visual gap between them
+ * (`n * pageHeight + (n - 1) * gap`).
+ */
+export function pageCountForPaperHeight(
+  paperHeightPx: number,
+  pageHeightPx = PAGE_HEIGHT_PX,
+  gapPx = PAGE_GAP_PX,
+): number {
+  if (!Number.isFinite(paperHeightPx) || paperHeightPx <= 0) {
+    return 1;
+  }
+  const stride = pageHeightPx + gapPx;
+  return Math.max(1, Math.ceil((paperHeightPx + gapPx) / stride - 1e-6));
+}
+
 /** Page index (0-based) containing a y offset measured from the top of the paper. */
 export function pageAtOffset(offsetPx: number, pageHeightPx = PAGE_HEIGHT_PX): number {
   return Math.max(0, Math.floor(offsetPx / pageHeightPx));
+}
+
+/** Page index when sheets are stacked with a visual gap between them. */
+export function pageAtVisualOffset(
+  offsetPx: number,
+  pageHeightPx = PAGE_HEIGHT_PX,
+  gapPx = PAGE_GAP_PX,
+): number {
+  const stride = pageHeightPx + gapPx;
+  const page = Math.max(0, Math.floor(Math.max(0, offsetPx) / stride));
+  const yInStride = Math.max(0, offsetPx) - page * stride;
+  if (yInStride > pageHeightPx) {
+    return page + 1;
+  }
+  return page;
+}
+
+/** Y offset of the top of a page in stacked-with-gap coordinates. */
+export function visualTopForPage(
+  pageIndex: number,
+  pageHeightPx = PAGE_HEIGHT_PX,
+  gapPx = PAGE_GAP_PX,
+): number {
+  return Math.max(0, pageIndex) * (pageHeightPx + gapPx);
 }
 
 /** Live paper height from CSS, so overlay math follows the selected page size. */
@@ -113,4 +181,16 @@ export function readPaperPageHeightPx(from?: Element | null): number {
   const raw = getComputedStyle(paper).getPropertyValue("--creator-page-height");
   const parsed = Number.parseFloat(raw);
   return parsed > 0 ? parsed : PAGE_HEIGHT_PX;
+}
+
+export function readPaperPageGapPx(from?: Element | null): number {
+  const paper =
+    (from?.closest?.(CREATOR_PAPER_SELECTOR) as HTMLElement | null) ??
+    (typeof document === "undefined" ? null : (document.querySelector(CREATOR_PAPER_SELECTOR) as HTMLElement | null));
+  if (!paper) {
+    return PAGE_GAP_PX;
+  }
+  const raw = getComputedStyle(paper).getPropertyValue("--creator-page-gap");
+  const parsed = Number.parseFloat(raw);
+  return parsed >= 0 ? parsed : PAGE_GAP_PX;
 }

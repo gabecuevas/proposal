@@ -17,12 +17,14 @@ import { FieldOverlayView } from "@/components/editor/field-overlay-view";
 import { ResizableImageView } from "@/components/editor/resizable-image-view";
 import { SignerFieldView } from "@/components/editor/signer-field-view";
 import { TableOfContentsView } from "@/components/editor/table-of-contents-view";
+import { BlockMeta } from "./block-meta";
 import { ContentBlockEmbed } from "./content-block-embed";
 import { CreatorDocument } from "./creator-document";
 import { FieldCanvas } from "./field-canvas";
 import { FieldOverlay } from "./field-overlay";
 import { FontSize } from "./font-size";
 import { PageBreak } from "./page-break";
+import { PageFlow } from "./page-flow";
 import { QuoteTable } from "./quote-table";
 import { ResizableImage } from "./resizable-image";
 import { SignerField } from "./signer-field";
@@ -88,8 +90,10 @@ export const editorExtensions = [
   ResizableImageWithView,
   TableOfContentsWithView,
   PageBreak,
+  PageFlow,
   VariableToken,
   ContentBlockEmbed,
+  BlockMeta,
   QuoteTable,
   SignerFieldWithView,
   FieldCanvasWithView,

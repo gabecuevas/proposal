@@ -1,12 +1,8 @@
 "use client";
 
 import { EditorContent, type Editor } from "@tiptap/react";
-import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
-import {
-  pageCountForHeight,
-  pageSizeSpec,
-  type PageSizeId,
-} from "@/lib/editor/page-geometry";
+import { useEffect, useRef, type CSSProperties, type DragEvent, type ReactNode } from "react";
+import { PAGE_GAP_PX, pageCountForPaperHeight, pageSizeSpec, type PageSizeId } from "@/lib/editor/page-geometry";
 import { CreatorBlockControls } from "./creator-block-controls";
 import { CreatorSelectionToolbar } from "./creator-selection-toolbar";
 import { FIELD_DRAG_MIME } from "./field-types";
@@ -17,6 +13,8 @@ type Props = {
   pageSize?: PageSizeId;
   onDropField: (type: string, clientX: number, clientY: number) => void;
   onPageCountChange?: (count: number) => void;
+  documentId?: string;
+  templateId?: string;
   children?: ReactNode;
 };
 
@@ -25,11 +23,12 @@ export function CreatorCanvas({
   pageSize = "letter",
   onDropField,
   onPageCountChange,
+  documentId,
+  templateId,
   children,
 }: Props) {
   const paperRef = useRef<HTMLDivElement>(null);
   const spec = pageSizeSpec(pageSize);
-  const [guideCount, setGuideCount] = useState(1);
 
   useEffect(() => {
     const paper = paperRef.current;
@@ -37,8 +36,7 @@ export function CreatorCanvas({
       return;
     }
     const measure = () => {
-      const pages = pageCountForHeight(paper.scrollHeight, spec.heightPx);
-      setGuideCount(pages);
+      const pages = pageCountForPaperHeight(paper.scrollHeight, spec.heightPx, PAGE_GAP_PX);
       onPageCountChange?.(pages);
     };
     measure();
@@ -69,33 +67,29 @@ export function CreatorCanvas({
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      <div className="mx-auto py-8 pl-16 pr-8" style={{ width: spec.widthPx + 96 }}>
+      <div className="mx-auto py-8 pl-16 pr-16" style={{ width: spec.widthPx + 128 }}>
         <div
           ref={paperRef}
           data-creator-paper
-          className="creator-paper relative rounded-sm bg-white shadow-[0_8px_30px_rgba(15,23,42,0.08)] ring-1 ring-black/5"
+          className="creator-paper relative"
           style={
             {
               "--creator-page-width": `${spec.widthPx}px`,
               "--creator-page-height": `${spec.heightPx}px`,
               "--creator-page-margin": `${spec.marginPx}px`,
+              "--creator-page-gap": `${PAGE_GAP_PX}px`,
+              "--creator-flow-break-height": `${spec.marginPx * 2 + PAGE_GAP_PX}px`,
               width: spec.widthPx,
             } as CSSProperties
           }
         >
-          <div className="creator-margin-guide" aria-hidden />
-          <div className="creator-page-guides" aria-hidden>
-            {Array.from({ length: Math.max(0, guideCount - 1) }, (_, index) => (
-              <div
-                key={index}
-                className="creator-page-guide"
-                data-page-label={`Page ${index + 2}`}
-                style={{ top: (index + 1) * spec.heightPx }}
-              />
-            ))}
-          </div>
           <EditorContent editor={editor} />
-          <CreatorBlockControls editor={editor} paperRef={paperRef} />
+          <CreatorBlockControls
+            editor={editor}
+            paperRef={paperRef}
+            documentId={documentId}
+            templateId={templateId}
+          />
           <CreatorSelectionToolbar editor={editor} paperRef={paperRef} />
           <SlashInsertMenu editor={editor} paperRef={paperRef} />
           {children}

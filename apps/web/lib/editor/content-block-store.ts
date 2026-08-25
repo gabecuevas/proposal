@@ -35,12 +35,21 @@ function parseContentBlock(block: {
 
 export async function listContentBlocks(
   workspaceId: string,
-  options?: { limit?: number; before?: Date },
+  options?: { limit?: number; before?: Date; query?: string; blockType?: string },
 ): Promise<ContentBlockRecord[]> {
+  const query = options?.query?.trim();
+  const blockType = options?.blockType?.trim();
   const rows = await prisma.contentBlock.findMany({
     where: {
       workspace_id: workspaceId,
       updated_at: options?.before ? { lt: options.before } : undefined,
+      block_type: blockType || undefined,
+      OR: query
+        ? [
+            { name: { contains: query, mode: "insensitive" } },
+            { block_type: { contains: query, mode: "insensitive" } },
+          ]
+        : undefined,
     },
     orderBy: [{ updated_at: "desc" }, { id: "desc" }],
     take: options?.limit ?? 50,

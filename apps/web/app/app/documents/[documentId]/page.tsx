@@ -539,6 +539,7 @@ export default function DocumentDetailPage({ params }: Params) {
             <CreatorCanvas
               editor={editor}
               pageSize={pageSize}
+              documentId={documentId || undefined}
               onPageCountChange={setVisualPages}
               onDropField={(type, clientX, clientY) => {
                 const recipientId = selectedRecipientId || parsedRecipients[0]?.id;

@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   pageCountForHeight,
+  pageCountForPaperHeight,
+  pageAtVisualOffset,
   pageSizeFromDoc,
   pageSizeSpec,
   parsePageSize,
+  stackedPaperHeightPx,
+  visualTopForPage,
 } from "../page-geometry";
 
 describe("page sizes", () => {
@@ -26,5 +30,14 @@ describe("page sizes", () => {
     expect(pageCountForHeight(1056)).toBe(1);
     expect(pageCountForHeight(1057)).toBe(2);
     expect(pageCountForHeight(2000, 1000)).toBe(2);
+  });
+
+  it("counts stacked sheets that include the editor page gap", () => {
+    expect(pageCountForPaperHeight(1056, 1056, 32)).toBe(1);
+    expect(pageCountForPaperHeight(1056 * 2 + 32, 1056, 32)).toBe(2);
+    expect(pageAtVisualOffset(1056 + 10, 1056, 32)).toBe(1);
+    expect(visualTopForPage(1, 1056, 32)).toBe(1088);
+    expect(stackedPaperHeightPx(1, 1056, 32)).toBe(1056);
+    expect(stackedPaperHeightPx(2, 1056, 32)).toBe(1056 * 2 + 32);
   });
 });

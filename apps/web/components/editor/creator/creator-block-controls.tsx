@@ -2,29 +2,30 @@
 
 import type { Editor } from "@tiptap/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { hitTestBlocks, type TopLevelBlock } from "@/lib/editor/block-hit-test";
+import { BlockOptionsMenu } from "./block-options-menu";
 import { ElementMenu } from "./element-menu";
-import { IconDragHandle, IconPlus } from "./creator-icons";
+import { IconDragHandle, IconGear, IconPlus } from "./creator-icons";
 
 /** Nodes that are not part of the reorderable flow. */
 const PINNED_NODES = new Set(["fieldOverlay"]);
 
-type HoverTarget = { pos: number; topPx: number };
+type HoverTarget = { pos: number; topPx: number; heightPx: number };
 type DropTarget = { index: number; topPx: number };
+type InsertSlot = { insertPos: number; topPx: number };
 
 type Props = {
   editor: Editor | null;
   /** The paper element the handles are positioned against. */
   paperRef: React.RefObject<HTMLDivElement | null>;
+  documentId?: string;
+  templateId?: string;
 };
-
-type TopLevelBlock = { index: number; pos: number; size: number; top: number; bottom: number };
 
 function readTopLevelBlocks(editor: Editor, paper: HTMLElement): TopLevelBlock[] {
   const paperTop = paper.getBoundingClientRect().top;
   const blocks: TopLevelBlock[] = [];
-  let pos = 0;
   editor.state.doc.forEach((node, offset, index) => {
-    pos = offset;
     if (!PINNED_NODES.has(node.type.name)) {
       const dom = editor.view.nodeDOM(offset);
       if (dom instanceof HTMLElement) {
@@ -39,16 +40,46 @@ function readTopLevelBlocks(editor: Editor, paper: HTMLElement): TopLevelBlock[]
       }
     }
   });
-  void pos;
   return blocks;
 }
 
-export function CreatorBlockControls({ editor, paperRef }: Props) {
+function selectedTopLevel(editor: Editor, paper: HTMLElement): TopLevelBlock | null {
+  const { $from } = editor.state.selection;
+  const pos = $from.depth === 0 ? $from.pos : $from.before(1);
+  return readTopLevelBlocks(editor, paper).find((block) => block.pos === pos) ?? null;
+}
+
+function toHover(block: TopLevelBlock | null): HoverTarget | null {
+  return block ? { pos: block.pos, topPx: block.top, heightPx: block.bottom - block.top } : null;
+}
+
+function isFieldTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest(".signer-field-node"));
+}
+
+function isGapTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest("[data-creator-insert-gap]"));
+}
+
+function focusInsertPos(editor: Editor, insertPos: number): void {
+  const pos = Math.max(0, Math.min(insertPos, editor.state.doc.content.size));
+  editor.chain().focus().setTextSelection(pos).run();
+}
+
+export function CreatorBlockControls({ editor, paperRef, documentId, templateId }: Props) {
   const [hover, setHover] = useState<HoverTarget | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [selected, setSelected] = useState<HoverTarget | null>(null);
+  const [insertSlot, setInsertSlot] = useState<InsertSlot | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [gearMenuOpen, setGearMenuOpen] = useState(false);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const draggingRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const menuOpen = addMenuOpen || gearMenuOpen;
+  const selectedChrome = dismissed ? null : selected;
+  const active = menuOpen ? hover ?? selectedChrome : hover;
 
   useEffect(() => {
     const paper = paperRef.current;
@@ -56,40 +87,105 @@ export function CreatorBlockControls({ editor, paperRef }: Props) {
       return;
     }
 
+    const syncSelected = () => {
+      setSelected(toHover(selectedTopLevel(editor, paper)));
+    };
+    syncSelected();
+    editor.on("selectionUpdate", syncSelected);
+    editor.on("transaction", syncSelected);
+
     const onPointerMove = (event: PointerEvent) => {
       if (draggingRef.current || menuOpen) {
         return;
       }
+      if (isFieldTarget(event.target)) {
+        setHover(null);
+        setInsertSlot(null);
+        return;
+      }
       const blocks = readTopLevelBlocks(editor, paper);
       const y = event.clientY - paper.getBoundingClientRect().top;
-      const match = blocks.find((block) => y >= block.top - 4 && y <= block.bottom + 4);
-      setHover(match ? { pos: match.pos, topPx: match.top } : null);
+      const hit = hitTestBlocks(y, blocks, paper.getBoundingClientRect().height);
+      if (hit?.kind === "block") {
+        setHover(toHover(hit.block));
+        setInsertSlot(null);
+        return;
+      }
+      setHover(null);
+      setInsertSlot(hit?.kind === "gap" ? { insertPos: hit.insertPos, topPx: hit.topPx } : null);
     };
 
-    const onPointerLeave = () => {
-      if (!draggingRef.current && !menuOpen) {
+    const onPointerLeave = (event: PointerEvent) => {
+      if (draggingRef.current || menuOpen) {
+        return;
+      }
+      if (containerRef.current?.contains(event.relatedTarget as Node)) {
+        return;
+      }
+      setHover(null);
+      setInsertSlot(null);
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) {
+        return;
+      }
+      if (containerRef.current?.contains(event.target as Node)) {
+        setDismissed(isGapTarget(event.target));
+        return;
+      }
+      if (isFieldTarget(event.target)) {
+        setDismissed(true);
+        setHover(null);
+        setInsertSlot(null);
+        return;
+      }
+      const blocks = readTopLevelBlocks(editor, paper);
+      const y = event.clientY - paper.getBoundingClientRect().top;
+      const hit = hitTestBlocks(y, blocks, paper.getBoundingClientRect().height);
+      if (hit?.kind === "block") {
+        setDismissed(false);
+      } else {
+        setDismissed(true);
         setHover(null);
       }
     };
 
     paper.addEventListener("pointermove", onPointerMove);
     paper.addEventListener("pointerleave", onPointerLeave);
+    paper.addEventListener("pointerdown", onPointerDown);
+    const scroller = paper.parentElement?.parentElement;
+    const onScrollerDown = (event: PointerEvent) => {
+      if (paper.contains(event.target as Node) || containerRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      setDismissed(true);
+      setHover(null);
+      setInsertSlot(null);
+    };
+    scroller?.addEventListener("pointerdown", onScrollerDown);
+
     return () => {
+      editor.off("selectionUpdate", syncSelected);
+      editor.off("transaction", syncSelected);
       paper.removeEventListener("pointermove", onPointerMove);
       paper.removeEventListener("pointerleave", onPointerLeave);
+      paper.removeEventListener("pointerdown", onPointerDown);
+      scroller?.removeEventListener("pointerdown", onScrollerDown);
     };
   }, [editor, menuOpen, paperRef]);
 
   const startDrag = useCallback(
     (event: React.PointerEvent) => {
       const paper = paperRef.current;
-      if (!editor || !paper || !hover || event.button !== 0) {
+      const sourceHover = hover ?? selectedChrome;
+      if (!editor || !paper || !sourceHover || event.button !== 0) {
         return;
       }
       event.preventDefault();
       draggingRef.current = true;
 
-      const sourcePos = hover.pos;
+      const sourcePos = sourceHover.pos;
       const blocks = readTopLevelBlocks(editor, paper);
       const source = blocks.find((block) => block.pos === sourcePos);
       if (!source) {
@@ -127,7 +223,7 @@ export function CreatorBlockControls({ editor, paperRef }: Props) {
       document.addEventListener("pointermove", onMove);
       document.addEventListener("pointerup", onUp);
     },
-    [editor, hover, paperRef],
+    [editor, hover, paperRef, selectedChrome],
   );
 
   useEffect(() => {
@@ -136,7 +232,8 @@ export function CreatorBlockControls({ editor, paperRef }: Props) {
     }
     const onPointerDown = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
+        setAddMenuOpen(false);
+        setGearMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", onPointerDown);
@@ -147,8 +244,14 @@ export function CreatorBlockControls({ editor, paperRef }: Props) {
     return null;
   }
 
+  const showGap = Boolean(insertSlot) && !active;
+
+  if (!active && !showGap && !dropTarget) {
+    return null;
+  }
+
   return (
-    <>
+    <div ref={containerRef} className="pointer-events-none absolute inset-0 z-[25]">
       {dropTarget ? (
         <div
           className="pointer-events-none absolute left-6 right-6 z-30 h-0.5 rounded bg-primary"
@@ -157,49 +260,122 @@ export function CreatorBlockControls({ editor, paperRef }: Props) {
         />
       ) : null}
 
-      {hover ? (
+      {showGap && insertSlot ? (
         <div
-          ref={containerRef}
-          className="creator-block-handle"
-          style={{ top: hover.topPx, left: 0 }}
+          data-creator-insert-gap
+          className="creator-insert-gap pointer-events-none"
+          style={{ top: insertSlot.topPx }}
         >
-          <button
-            type="button"
-            onClick={() => setMenuOpen((open) => !open)}
-            aria-label="Add element"
-            title="Add element"
-            aria-expanded={menuOpen}
-            className="flex h-6 w-6 items-center justify-center rounded border border-border bg-surface text-muted shadow-sm hover:text-foreground"
-          >
-            <IconPlus className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onPointerDown={startDrag}
-            aria-label="Drag to move"
-            title="Drag to move"
-            className="flex h-6 w-6 cursor-grab items-center justify-center rounded border border-border bg-surface text-muted shadow-sm hover:text-foreground active:cursor-grabbing"
-          >
-            <IconDragHandle className="h-3.5 w-3.5" />
-          </button>
-
-          {menuOpen ? (
-            <div className="absolute left-0 top-8 z-40">
-              <ElementMenu
-                editor={editor}
-                onDone={() => setMenuOpen(false)}
-                onBeforeInsert={() => {
-                  const node = editor.state.doc.nodeAt(hover.pos);
-                  if (node) {
-                    editor.commands.focus(hover.pos + node.nodeSize - 1);
-                  }
-                }}
-              />
-            </div>
-          ) : null}
+          <div className="creator-block-handle pointer-events-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setGearMenuOpen(false);
+                setDismissed(true);
+                setAddMenuOpen((open) => !open);
+              }}
+              aria-label="Add element"
+              title="Add element"
+              aria-expanded={addMenuOpen}
+              className="flex h-6 w-6 items-center justify-center rounded-full border border-border bg-surface text-muted shadow-sm hover:text-foreground"
+            >
+              <IconPlus className="h-3.5 w-3.5" />
+            </button>
+            {addMenuOpen ? (
+              <div className="absolute left-0 top-8 z-40">
+                <ElementMenu
+                  editor={editor}
+                  onDone={() => setAddMenuOpen(false)}
+                  onBeforeInsert={() => focusInsertPos(editor, insertSlot.insertPos)}
+                />
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
-    </>
+
+      {active ? (
+        <div
+          className="pointer-events-none absolute left-0 right-0"
+          style={{ top: active.topPx, height: Math.max(24, active.heightPx) }}
+        >
+          <div
+            className={`creator-block-frame${selectedChrome?.pos === active.pos ? " is-selected" : ""}`}
+            aria-hidden
+          />
+
+          <div className="creator-block-handle pointer-events-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setGearMenuOpen(false);
+                setAddMenuOpen((open) => !open);
+              }}
+              aria-label="Add element"
+              title="Add element"
+              aria-expanded={addMenuOpen}
+              className="flex h-6 w-6 items-center justify-center rounded-full border border-border bg-surface text-muted shadow-sm hover:text-foreground"
+            >
+              <IconPlus className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onPointerDown={startDrag}
+              aria-label="Drag to move"
+              title="Drag to move"
+              className="flex h-6 w-6 cursor-grab items-center justify-center rounded border border-border bg-surface text-muted shadow-sm hover:text-foreground active:cursor-grabbing"
+            >
+              <IconDragHandle className="h-3.5 w-3.5" />
+            </button>
+
+            {addMenuOpen ? (
+              <div className="absolute left-0 top-8 z-40">
+                <ElementMenu
+                  editor={editor}
+                  onDone={() => setAddMenuOpen(false)}
+                  onBeforeInsert={() => {
+                    const node = editor.state.doc.nodeAt(active.pos);
+                    if (node) {
+                      editor.commands.focus(active.pos + node.nodeSize - 1);
+                    }
+                  }}
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <div className="creator-block-gear pointer-events-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setAddMenuOpen(false);
+                setDismissed(false);
+                setHover((current) => current ?? selected);
+                setGearMenuOpen((open) => !open);
+              }}
+              aria-label="Element options"
+              title="Element options"
+              aria-expanded={gearMenuOpen}
+              aria-haspopup="menu"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:opacity-95"
+            >
+              <IconGear className="h-3.5 w-3.5" />
+            </button>
+            {gearMenuOpen ? (
+              <div className="absolute right-0 top-9 z-40">
+                <BlockOptionsMenu
+                  editor={editor}
+                  pos={active.pos}
+                  documentId={documentId}
+                  templateId={templateId}
+                  onClose={() => setGearMenuOpen(false)}
+                />
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

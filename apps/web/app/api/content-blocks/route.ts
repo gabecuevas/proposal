@@ -8,9 +8,12 @@ import type { EditorDoc } from "@/lib/editor/types";
 export async function GET(request: NextRequest) {
   const auth = await getRequestAuthContext(request);
   const pagination = parseCursorPagination(request, 50);
+  const url = new URL(request.url);
   const blocks = await listContentBlocks(auth.workspaceId, {
     limit: pagination.limit + 1,
     before: pagination.before,
+    query: url.searchParams.get("q") ?? undefined,
+    blockType: url.searchParams.get("type") ?? undefined,
   });
   const page = getNextCursorFromTimestampPage(blocks, pagination.limit, (item) => item.updated_at ?? new Date());
   return jsonWithRequestId(request, { blocks: page.items, nextCursor: page.nextCursor });
@@ -18,7 +21,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const auth = await getRequestAuthContext(request);
-  assertRole(auth, "ADMIN");
+  assertRole(auth, "MEMBER");
 
   const payload = (await request.json()) as {
     name?: string;

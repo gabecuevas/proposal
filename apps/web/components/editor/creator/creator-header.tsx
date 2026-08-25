@@ -4,7 +4,10 @@ import type { Editor } from "@tiptap/core";
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FONT_SIZES } from "@/lib/editor/extensions/font-size";
+import { getBlockClipboard } from "@/lib/editor/block-clipboard";
+import { insertNodeAfter } from "@/lib/editor/library-blocks";
 import { PAGE_SIZES, type PageSizeId } from "@/lib/editor/page-geometry";
+import { ContentLibraryModal } from "./content-library-modal";
 import { ElementMenu } from "./element-menu";
 import { IconArrowLeft, IconClose, IconKebab, IconRedo, IconSend, IconUndo } from "./creator-icons";
 
@@ -56,6 +59,7 @@ export function CreatorHeader({
 }: Props) {
   const saved = saveStatus === "Saved" || saveStatus === "Idle" || saveStatus === "Document sent.";
   const [open, setOpen] = useState<MenuId>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -149,12 +153,31 @@ export function CreatorHeader({
                 >
                   Select all
                 </MenuItem>
+                <MenuItem
+                  disabled={!getBlockClipboard()}
+                  onClick={() => {
+                    const node = getBlockClipboard();
+                    if (editor && node) {
+                      insertNodeAfter(editor, node);
+                    }
+                    setOpen(null);
+                  }}
+                >
+                  Paste element
+                </MenuItem>
               </MenuPanel>
             ) : null}
 
             {open === "insert" ? (
               <div className="absolute left-16 top-6 z-40">
-                <ElementMenu editor={editor} onDone={() => setOpen(null)} />
+                <ElementMenu
+                  editor={editor}
+                  onDone={() => setOpen(null)}
+                  onOpenLibrary={() => {
+                    setOpen(null);
+                    setLibraryOpen(true);
+                  }}
+                />
               </div>
             ) : null}
 
@@ -348,6 +371,7 @@ export function CreatorHeader({
           <IconClose />
         </Link>
       </div>
+      <ContentLibraryModal editor={editor} open={libraryOpen} onClose={() => setLibraryOpen(false)} />
     </header>
   );
 }

@@ -566,3 +566,90 @@ export function IconDocBadge({ className }: IconProps) {
     </Svg>
   );
 }
+
+export function IconGear({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path
+        d="M9.2 3.6h5.6l.7 2.3 2.1.9 2.2-1.1 2.8 4.8-1.6 1.8v2.2l1.6 1.8-2.8 4.8-2.2-1.1-2.1.9-.7 2.3H9.2l-.7-2.3-2.1-.9-2.2 1.1L1.4 15l1.6-1.8v-2.2L1.4 9.2l2.8-4.8 2.2 1.1 2.1-.9.7-2.3z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="2.6" stroke="currentColor" strokeWidth="1.5" />
+    </Svg>
+  );
+}
+
+export function IconSparkle({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path
+        d="M12 3l1.2 5.3L18 9.5l-4.8 1.2L12 16l-1.2-5.3L6 9.5l4.8-1.2L12 3z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path d="M18.5 14.5l.5 2 2 .5-2 .5-.5 2-.5-2-2-.5 2-.5.5-2z" fill="currentColor" />
+    </Svg>
+  );
+}
+
+export function IconLibrary({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M5 6l6-3 8 3v12l-8 3-6-3V6z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M11 3v15" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="7.5" cy="11" r="1" fill="currentColor" />
+      <rect x="13.5" y="9" width="3" height="3" rx="0.4" fill="currentColor" />
+      <path d="M14 15h3M14 17h2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+export function IconCut({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <circle cx="6.5" cy="7" r="2.2" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="6.5" cy="17" r="2.2" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M8.4 8.4L20 19M8.4 15.6L20 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+export function IconDuplicate({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <rect x="8" y="8" width="11" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M8 16H6.5A1.5 1.5 0 015 14.5v-9A1.5 1.5 0 016.5 4h9A1.5 1.5 0 0117 5.5V8"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeDasharray="2.2 1.6"
+      />
+    </Svg>
+  );
+}
+
+export function IconComment({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path
+        d="M5 6.5A2.5 2.5 0 017.5 4h9A2.5 2.5 0 0119 6.5v7a2.5 2.5 0 01-2.5 2.5H11l-4 3v-3H7.5A2.5 2.5 0 015 13.5v-7z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M12 9.5h.01M9 9.5h.01M15 9.5h.01" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+export function IconLock({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M8 11V8a4 4 0 018 0v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </Svg>
+  );
+}
