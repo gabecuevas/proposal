@@ -1,4 +1,6 @@
 import type { Editor } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
+import { requestPageFlowSync } from "./extensions/page-flow";
 
 export type UploadedAsset = { key: string; url: string; name: string; contentType: string };
 
@@ -20,21 +22,23 @@ export async function uploadAsset(file: File): Promise<UploadedAsset> {
   return payload.upload;
 }
 
-export function insertImageAsset(editor: Editor, asset: UploadedAsset): void {
-  editor
-    .chain()
-    .focus()
-    .insertContent({
-      type: "image",
-      attrs: {
-        src: asset.url,
-        assetKey: asset.key,
-        alt: asset.name,
-        widthPct: 100,
-        align: "center",
-      },
-    })
-    .run();
+export function insertImageAsset(editor: Editor, asset: UploadedAsset, at?: number): void {
+  const node = {
+    type: "image",
+    attrs: {
+      src: asset.url,
+      assetKey: asset.key,
+      alt: asset.name,
+      widthPct: 100,
+      align: "center",
+    },
+  };
+  if (at != null) {
+    insertContentAtTopLevel(editor, at, node);
+    return;
+  }
+  editor.chain().focus().insertContent(node).run();
+  requestPageFlowSync(editor);
 }
 
 const YOUTUBE_HOSTS = new Set([
@@ -75,46 +79,187 @@ export function normalizeVideoUrl(raw: string): string | null {
   return id ? `https://www.youtube.com/watch?v=${id}` : null;
 }
 
-export function insertVideo(editor: Editor, rawUrl: string): boolean {
+/** Map a document position onto a top-level slot so inserts never land inside
+ *  an isolating block such as a text box. */
+export function topLevelInsertPos(editor: Editor, pos: number): number {
+  const size = editor.state.doc.content.size;
+  const clamped = Math.max(0, Math.min(pos, size));
+  const $pos = editor.state.doc.resolve(clamped);
+  if ($pos.depth === 0) {
+    return clamped;
+  }
+  return $pos.before(1);
+}
+
+export function insertContentAtTopLevel(editor: Editor, pos: number, content: object | object[]): boolean {
+  const insertPos = topLevelInsertPos(editor, pos);
+  const items = Array.isArray(content) ? content : [content];
+  try {
+    const nodes = items.map((item) => editor.schema.nodeFromJSON(item));
+    const ok = editor
+      .chain()
+      .focus()
+      .command(({ tr, dispatch }) => {
+        if (!dispatch) {
+          return true;
+        }
+        let at = insertPos;
+        for (const node of nodes) {
+          tr.insert(at, node);
+          at += node.nodeSize;
+        }
+        tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(insertPos + 1, tr.doc.content.size))));
+        return true;
+      })
+      .run();
+    if (ok) {
+      requestPageFlowSync(editor);
+    }
+    return ok;
+  } catch {
+    const ok = editor.chain().focus().insertContentAt(insertPos, content).run();
+    if (ok) {
+      requestPageFlowSync(editor);
+    }
+    return ok;
+  }
+}
+
+function emptyParagraph() {
+  return { type: "paragraph" };
+}
+
+function tableNode(rows: number, cols: number) {
+  const safeRows = Math.max(1, rows);
+  const safeCols = Math.max(1, cols);
+  const header = {
+    type: "tableRow",
+    content: Array.from({ length: safeCols }, () => ({ type: "tableHeader", content: [emptyParagraph()] })),
+  };
+  const body = Array.from({ length: Math.max(0, safeRows - 1) }, () => ({
+    type: "tableRow",
+    content: Array.from({ length: safeCols }, () => ({ type: "tableCell", content: [emptyParagraph()] })),
+  }));
+  return { type: "table", content: [header, ...body] };
+}
+
+export function insertVideo(editor: Editor, rawUrl: string, at?: number): boolean {
   const src = normalizeVideoUrl(rawUrl);
   if (!src) {
     return false;
   }
-  return editor.chain().focus().setYoutubeVideo({ src, width: 640, height: 360 }).run();
+  if (at != null) {
+    return insertContentAtTopLevel(editor, at, { type: "youtube", attrs: { src } });
+  }
+  const ok = editor.chain().focus().setYoutubeVideo({ src, width: 640, height: 360 }).run();
+  if (ok) {
+    requestPageFlowSync(editor);
+  }
+  return ok;
 }
 
-export function insertTable(editor: Editor, rows = 3, cols = 3): void {
+export function insertTable(editor: Editor, rows = 3, cols = 3, at?: number): void {
+  if (at != null) {
+    insertContentAtTopLevel(editor, at, tableNode(rows, cols));
+    return;
+  }
   editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+  requestPageFlowSync(editor);
 }
 
-export function insertTextBlock(editor: Editor): void {
+export function insertTextBlock(editor: Editor, at?: number): void {
+  const node = { type: "textBox", content: [emptyParagraph()] };
+  if (at != null) {
+    insertContentAtTopLevel(editor, at, node);
+    return;
+  }
   editor.chain().focus().insertTextBox().run();
+  requestPageFlowSync(editor);
 }
 
-export function insertHeading(editor: Editor, level: 1 | 2 | 3): void {
-  editor.chain().focus().insertContent({ type: "heading", attrs: { level } }).run();
+export function insertHeading(editor: Editor, level: 1 | 2 | 3, at?: number): void {
+  const node = { type: "heading", attrs: { level }, content: [] };
+  if (at != null) {
+    insertContentAtTopLevel(editor, at, node);
+    return;
+  }
+  editor.chain().focus().insertContent(node).run();
 }
 
-export function insertDivider(editor: Editor): void {
+export function insertBulletList(editor: Editor, at?: number): void {
+  if (at != null) {
+    insertContentAtTopLevel(editor, at, {
+      type: "bulletList",
+      content: [{ type: "listItem", content: [emptyParagraph()] }],
+    });
+    return;
+  }
+  editor.chain().focus().toggleBulletList().run();
+}
+
+export function insertOrderedList(editor: Editor, at?: number): void {
+  if (at != null) {
+    insertContentAtTopLevel(editor, at, {
+      type: "orderedList",
+      content: [{ type: "listItem", content: [emptyParagraph()] }],
+    });
+    return;
+  }
+  editor.chain().focus().toggleOrderedList().run();
+}
+
+export function insertQuote(editor: Editor, at?: number): void {
+  if (at != null) {
+    insertContentAtTopLevel(editor, at, { type: "blockquote", content: [emptyParagraph()] });
+    return;
+  }
+  editor.chain().focus().toggleBlockquote().run();
+}
+
+export function insertDivider(editor: Editor, at?: number): void {
+  if (at != null) {
+    insertContentAtTopLevel(editor, at, { type: "horizontalRule" });
+    return;
+  }
   editor.chain().focus().setHorizontalRule().run();
 }
 
-export function insertPageBreak(editor: Editor): void {
-  editor.chain().focus().insertContent({ type: "pageBreak" }).run();
+export function insertPageBreak(editor: Editor, at?: number): void {
+  const node = { type: "pageBreak" };
+  if (at != null) {
+    insertContentAtTopLevel(editor, at, node);
+    return;
+  }
+  editor.chain().focus().insertContent(node).run();
 }
 
-export function insertTableOfContents(editor: Editor): void {
+export function insertTableOfContents(editor: Editor, at?: number): void {
+  if (at != null) {
+    insertContentAtTopLevel(editor, at, { type: "tableOfContents" });
+    return;
+  }
   editor.chain().focus().insertTableOfContents().run();
 }
 
-export function insertQuoteTable(editor: Editor, tableId = "default"): void {
-  editor.chain().focus().insertContent({ type: "quoteTable", attrs: { tableId } }).run();
+export function insertQuoteTable(editor: Editor, tableId = "default", at?: number): void {
+  const node = { type: "quoteTable", attrs: { tableId } };
+  if (at != null) {
+    insertContentAtTopLevel(editor, at, node);
+    return;
+  }
+  editor.chain().focus().insertContent(node).run();
+  requestPageFlowSync(editor);
 }
 
-export function insertVariable(editor: Editor, key: string): void {
+export function insertVariable(editor: Editor, key: string, at?: number): void {
   const trimmed = key.trim();
   if (!trimmed) {
     return;
   }
-  editor.chain().focus().insertContent({ type: "variableToken", attrs: { key: trimmed } }).run();
+  const node = { type: "variableToken", attrs: { key: trimmed } };
+  if (at != null) {
+    insertContentAtTopLevel(editor, at, node);
+    return;
+  }
+  editor.chain().focus().insertContent(node).run();
 }

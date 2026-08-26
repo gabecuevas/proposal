@@ -38,6 +38,17 @@ article h1 { font-size: 1.875rem; font-weight: 600; margin: 0 0 0.75rem; }
 article h2 { font-size: 1.375rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
 article h3 { font-size: 1.125rem; font-weight: 600; margin: 1rem 0 0.5rem; }
 article ul, article ol { margin: 0 0 0.75rem; padding-left: 1.5rem; }
+article ul { list-style-type: disc; }
+article ol { list-style-type: decimal; }
+article li { display: list-item; }
+article [data-indent="1"] { padding-left: 24px; }
+article [data-indent="2"] { padding-left: 48px; }
+article [data-indent="3"] { padding-left: 72px; }
+article [data-indent="4"] { padding-left: 96px; }
+article [data-indent="5"] { padding-left: 120px; }
+article [data-indent="6"] { padding-left: 144px; }
+article [data-indent="7"] { padding-left: 168px; }
+article [data-indent="8"] { padding-left: 192px; }
 article blockquote { margin: 0 0 0.75rem; border-left: 3px solid #cbd5e1; padding-left: 0.875rem; color: #475569; }
 article hr { margin: 1.25rem 0; border: none; border-top: 1px solid #e2e8f0; }
 article mark { border-radius: 2px; padding: 0 0.1em; }
@@ -49,8 +60,10 @@ article mark { border-radius: 2px; padding: 0 0.1em; }
 .creator-text-box p:last-child { margin-bottom: 0; }
 .creator-image-block { margin: 0 0 0.75rem; }
 img, table { max-width: 100%; }
-table { border-collapse: collapse; width: 100%; }
+table { border-collapse: collapse; width: 100%; break-inside: auto; }
+tr { break-inside: avoid; page-break-inside: avoid; }
 td, th { border: 1px solid #cbd5e1; padding: 6px 8px; }
+.quote-table { break-inside: auto; }
 .page-break, .creator-flow-break, [data-node-type="pageBreak"] {
   break-before: page;
   height: 0;

@@ -116,12 +116,6 @@ export function AppTopBar({
         </div>
         <button
           type="button"
-          className="hidden rounded-md border border-primary bg-surface px-3 py-1.5 text-xs font-medium text-primary shadow-sm xl:inline-flex xl:items-center"
-        >
-          Start free trial
-        </button>
-        <button
-          type="button"
           className="rounded-md p-2 text-muted transition-colors hover:bg-slate-100 hover:text-foreground"
           aria-label="Help"
         >

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
 import { SignerFieldPropertiesPanel } from "@/components/editor/signer-field-properties";
 import type { Editor } from "@tiptap/core";
-import { COLLAPSED_FIELD_COUNT, FIELD_DRAG_MIME, fieldTypes } from "./field-types";
+import { FIELD_DRAG_MIME, fieldTypes } from "./field-types";
 import {
   IconBraces,
   IconChevron,
@@ -28,6 +28,15 @@ type Props = {
   onReviewData?: () => void;
 };
 
+const STORAGE_KEY = "doxysign-fields-panel-open";
+
+function readOpen(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return window.localStorage.getItem(STORAGE_KEY) === "1";
+}
+
 export function CreatorFieldsSidebar({
   editor,
   recipients,
@@ -40,14 +49,74 @@ export function CreatorFieldsSidebar({
   onManageVariables,
   onReviewData,
 }: Props) {
-  const [expanded, setExpanded] = useState(true);
+  const [open, setOpen] = useState(false);
   const selected = recipients.find((r) => r.id === selectedRecipientId) ?? recipients[0];
-  const visible = expanded ? fieldTypes : fieldTypes.slice(0, COLLAPSED_FIELD_COUNT);
+
+  useEffect(() => {
+    setOpen(readOpen());
+  }, []);
+
+  const toggle = useCallback(() => {
+    setOpen((value) => {
+      const next = !value;
+      window.localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
+      return next;
+    });
+  }, []);
+
+  if (!open) {
+    return (
+      <aside className="flex h-full w-12 shrink-0 flex-col items-center overflow-y-auto border-l border-border bg-surface py-2">
+        <button
+          type="button"
+          onClick={toggle}
+          className="mb-2 flex h-8 w-8 items-center justify-center rounded text-muted hover:bg-slate-100 hover:text-foreground"
+          aria-label="Show fillable fields"
+          title="Show fillable fields"
+        >
+          «
+        </button>
+        <div className="flex flex-col items-center gap-1">
+          {fieldTypes.map((field) => (
+            <FieldIconButton
+              key={field.id}
+              field={field}
+              onInsertField={onInsertField}
+            />
+          ))}
+        </div>
+        <div className="mt-auto flex flex-col items-center gap-1 border-t border-border pt-2">
+          <IconAction
+            label="Manage recipients"
+            badge={unassignedRoleCount}
+            onClick={onManageRecipients}
+          >
+            <IconPeople className="h-4 w-4" />
+          </IconAction>
+          <IconAction label="Manage variables" badge={missingVariableCount} onClick={onManageVariables}>
+            <IconBraces className="h-4 w-4" />
+          </IconAction>
+          <IconAction label="Review data" onClick={onReviewData}>
+            <IconTable className="h-4 w-4" />
+          </IconAction>
+        </div>
+      </aside>
+    );
+  }
 
   return (
-    <aside className="flex h-full w-[300px] shrink-0 flex-col overflow-y-auto border-l border-border bg-surface">
-      <div className="border-b border-border px-4 py-4">
+    <aside className="flex h-full w-[300px] max-w-[300px] shrink-0 flex-col overflow-y-auto border-l border-border bg-surface">
+      <div className="flex items-start justify-between gap-2 border-b border-border px-4 py-3">
         <h2 className="text-base font-semibold text-foreground">Add fillable fields</h2>
+        <button
+          type="button"
+          onClick={toggle}
+          className="mt-0.5 flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-slate-100 hover:text-foreground"
+          aria-label="Hide fillable fields"
+          title="Hide fillable fields"
+        >
+          »
+        </button>
       </div>
 
       <div className="border-b border-border px-3 py-3">
@@ -80,47 +149,9 @@ export function CreatorFieldsSidebar({
       </div>
 
       <div className="flex flex-col gap-1.5 px-3 py-3">
-        {visible.map((field) => {
-          const enabled = field.editorType !== null;
-          return (
-            <button
-              key={field.id}
-              type="button"
-              disabled={!enabled}
-              draggable={enabled}
-              onClick={() => {
-                if (field.editorType) {
-                  onInsertField(field.editorType);
-                }
-              }}
-              onDragStart={(event) => {
-                if (!field.editorType) {
-                  event.preventDefault();
-                  return;
-                }
-                event.dataTransfer.setData(FIELD_DRAG_MIME, field.editorType);
-                event.dataTransfer.effectAllowed = "copy";
-              }}
-              title={enabled ? `Add ${field.label}` : `${field.label} is coming soon`}
-              className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
-                enabled
-                  ? "cursor-grab border-transparent bg-primary/[0.08] text-foreground hover:bg-primary/[0.14] active:cursor-grabbing"
-                  : "cursor-not-allowed border-transparent bg-slate-50 text-muted"
-              }`}
-            >
-              <field.Icon className="h-4 w-4 shrink-0 text-primary" />
-              <span className="flex-1 font-medium">{field.label}</span>
-              <IconDragHandle className="h-3.5 w-3.5 shrink-0 text-muted" />
-            </button>
-          );
-        })}
-        <button
-          type="button"
-          onClick={() => setExpanded((open) => !open)}
-          className="mt-1 text-center text-xs font-medium text-primary hover:underline"
-        >
-          {expanded ? "Show less" : "Show more"}
-        </button>
+        {fieldTypes.map((field) => (
+          <FieldRow key={field.id} field={field} onInsertField={onInsertField} />
+        ))}
       </div>
 
       <div className="mt-auto border-t border-border px-3 py-3">
@@ -148,6 +179,112 @@ export function CreatorFieldsSidebar({
         <SignerFieldPropertiesPanel editor={editor} hideEmpty />
       </div>
     </aside>
+  );
+}
+
+function FieldRow({
+  field,
+  onInsertField,
+}: {
+  field: (typeof fieldTypes)[number];
+  onInsertField: (type: SignerFieldEditorType) => void;
+}) {
+  const enabled = field.editorType !== null;
+  return (
+    <button
+      type="button"
+      disabled={!enabled}
+      draggable={enabled}
+      onClick={() => {
+        if (field.editorType) {
+          onInsertField(field.editorType);
+        }
+      }}
+      onDragStart={(event) => {
+        if (!field.editorType) {
+          event.preventDefault();
+          return;
+        }
+        event.dataTransfer.setData(FIELD_DRAG_MIME, field.editorType);
+        event.dataTransfer.effectAllowed = "copy";
+      }}
+      title={enabled ? `Add ${field.label}` : `${field.label} is coming soon`}
+      className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
+        enabled
+          ? "cursor-grab border-transparent bg-primary/[0.08] text-foreground hover:bg-primary/[0.14] active:cursor-grabbing"
+          : "cursor-not-allowed border-transparent bg-slate-50 text-muted"
+      }`}
+    >
+      <field.Icon className="h-4 w-4 shrink-0 text-primary" />
+      <span className="flex-1 font-medium">{field.label}</span>
+      <IconDragHandle className="h-3.5 w-3.5 shrink-0 text-muted" />
+    </button>
+  );
+}
+
+function FieldIconButton({
+  field,
+  onInsertField,
+}: {
+  field: (typeof fieldTypes)[number];
+  onInsertField: (type: SignerFieldEditorType) => void;
+}) {
+  const enabled = field.editorType !== null;
+  return (
+    <button
+      type="button"
+      disabled={!enabled}
+      draggable={enabled}
+      onClick={() => {
+        if (field.editorType) {
+          onInsertField(field.editorType);
+        }
+      }}
+      onDragStart={(event) => {
+        if (!field.editorType) {
+          event.preventDefault();
+          return;
+        }
+        event.dataTransfer.setData(FIELD_DRAG_MIME, field.editorType);
+        event.dataTransfer.effectAllowed = "copy";
+      }}
+      aria-label={enabled ? `Add ${field.label}` : `${field.label} is coming soon`}
+      title={enabled ? field.label : `${field.label} is coming soon`}
+      className={`flex h-8 w-8 items-center justify-center rounded-md ${
+        enabled
+          ? "text-primary hover:bg-primary/[0.12]"
+          : "cursor-not-allowed text-muted/50"
+      }`}
+    >
+      <field.Icon className="h-4 w-4" />
+    </button>
+  );
+}
+
+function IconAction({
+  children,
+  label,
+  badge,
+  onClick,
+}: {
+  children: ReactNode;
+  label: string;
+  badge?: number;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className="relative flex h-8 w-8 items-center justify-center rounded-md text-muted hover:bg-slate-100 hover:text-foreground"
+    >
+      {children}
+      {badge && badge > 0 ? (
+        <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-red-500" />
+      ) : null}
+    </button>
   );
 }
 

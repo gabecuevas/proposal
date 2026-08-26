@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const auth = await getRequestAuthContext(request);
-  assertRole(auth, "ADMIN");
+  assertRole(auth, "MEMBER");
 
   const payload = (await request.json()) as {
     name?: string;
@@ -39,11 +39,12 @@ export async function POST(request: NextRequest) {
       tags: Array.isArray(payload.tags) ? payload.tags.map(String).slice(0, 20) : undefined,
     });
     return jsonWithRequestId(request, { template }, { status: 201 });
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error && error.message === "Forbidden" ? "Forbidden" : "Failed to create template";
     return errorResponse(request, {
-      status: 500,
-      code: "template_create_failed",
-      message: "Failed to create template",
+      status: message === "Forbidden" ? 403 : 500,
+      code: message === "Forbidden" ? "forbidden" : "template_create_failed",
+      message: message === "Forbidden" ? "You do not have permission to create templates." : "Failed to create template",
     });
   }
 }

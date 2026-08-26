@@ -18,7 +18,7 @@ declare module "@tiptap/core" {
 export const TextBox = Node.create({
   name: "textBox",
   group: "block",
-  content: "paragraph+",
+  content: "(paragraph | heading | bulletList | orderedList)+",
   isolating: true,
   draggable: true,
 
@@ -40,6 +40,9 @@ export const TextBox = Node.create({
   addKeyboardShortcuts() {
     return {
       Enter: () => {
+        if (!this.editor.isActive(this.name)) {
+          return false;
+        }
         const { selection } = this.editor.state;
         if (selection instanceof NodeSelection && selection.node.type.name === this.name) {
           return this.editor.commands.setTextSelection(selection.from + 1);

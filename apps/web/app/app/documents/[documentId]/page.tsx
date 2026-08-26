@@ -17,6 +17,7 @@ import { insertSignerFieldAtPoint, insertSignerFieldBlock } from "@/lib/editor/i
 import { migrateSignerFieldsDoc } from "@/lib/editor/migrate-signer-fields";
 import { pageSizeFromDoc, pageSizeSpec, withPageSize, type PageSizeId } from "@/lib/editor/page-geometry";
 import { openPrintPreview } from "@/lib/editor/print-document";
+import { AUTOSAVE_DELAY_MS } from "@/lib/editor/autosave";
 import { calculateQuoteTotals } from "@/lib/editor/quote";
 import { renderComputedHtml } from "@/lib/editor/render";
 import { SaveQueue } from "@/lib/editor/save-queue";
@@ -24,7 +25,7 @@ import type { SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
 import { serializeStable } from "@/lib/editor/stable";
 import type { EditorDoc, PricingModel, VariableContext, VariableRegistry } from "@/lib/editor/types";
 import { resolveTemplateVariables } from "@/lib/editor/variables";
-import { documentTitleFromEditorJson } from "@/lib/ui/document-title";
+import { applyTitleToDoc, documentTitleFromEditorJson } from "@/lib/ui/document-title";
 import { pageCountFromEditor } from "@/lib/ui/template-meta";
 
 type Params = {
@@ -124,20 +125,6 @@ function statusLabel(status: string | undefined): string {
   return status.charAt(0) + status.slice(1).toLowerCase();
 }
 
-function applyTitleToDoc(doc: EditorDoc, title: string): EditorDoc {
-  const next = structuredClone(doc);
-  const first = next.content[0];
-  if (first && (first.type === "heading" || first.type === "paragraph")) {
-    first.content = title ? [{ type: "text", text: title }] : [];
-    return next;
-  }
-  next.content = [
-    { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: title || "Untitled" }] },
-    ...next.content,
-  ];
-  return next;
-}
-
 export default function DocumentDetailPage({ params }: Params) {
   const router = useRouter();
   const [documentId, setDocumentId] = useState("");
@@ -157,6 +144,7 @@ export default function DocumentDetailPage({ params }: Params) {
   const [selectedRecipientId, setSelectedRecipientId] = useState("");
   const [name, setName] = useState("");
   const [visualPages, setVisualPages] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<PageSizeId>("letter");
   const pageSizeRef = useRef(pageSize);
   pageSizeRef.current = pageSize;
@@ -164,6 +152,8 @@ export default function DocumentDetailPage({ params }: Params) {
   const saveQueueRef = useRef(new SaveQueue());
   const expectedUpdatedAtRef = useRef("");
   const lastSavedSnapshotRef = useRef("");
+  const nameRef = useRef(name);
+  nameRef.current = name;
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -174,6 +164,8 @@ export default function DocumentDetailPage({ params }: Params) {
       setSerializedDoc(serializeStable(withPageSize(nextEditor.getJSON() as EditorDoc, pageSizeRef.current)));
     },
   });
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
 
   const parsedVariables = asJsonObject(variablesText, document?.variables_json ?? {});
   const variableOutput = resolveTemplateVariables(variableRegistry, parsedVariables);
@@ -198,15 +190,7 @@ export default function DocumentDetailPage({ params }: Params) {
     }
   }, [document, serializedDoc]);
 
-  const saveStatusLine = useMemo(() => {
-    if (status === "Saving...") {
-      return "Saving…";
-    }
-    if (status === "Saved" || status === "Idle") {
-      return "Saved just now";
-    }
-    return status;
-  }, [status]);
+  const saveStatusLine = status;
 
   async function loadDocument(targetDocumentId: string) {
     setError("");
@@ -233,6 +217,7 @@ export default function DocumentDetailPage({ params }: Params) {
     setSerializedDoc(nextDoc);
     const snapshot = JSON.stringify({
       doc: nextDoc,
+      name: documentTitleFromEditorJson(payload.document.editor_json, payload.document.id),
       variables: JSON.stringify(payload.document.variables_json),
       pricing: JSON.stringify(payload.document.pricing_json),
       recipients: JSON.stringify(loadedRecipients),
@@ -282,9 +267,23 @@ export default function DocumentDetailPage({ params }: Params) {
         }
         setError("");
         setStatus("Saving...");
+        editorRef.current?.commands.refreshPageFlow();
+
+      const liveDoc = editorRef.current
+        ? serializeStable(withPageSize(editorRef.current.getJSON() as EditorDoc, pageSizeRef.current))
+        : serializedDoc;
+      if (liveDoc !== serializedDoc) {
+        setSerializedDoc(liveDoc);
+      }
+
+      const liveName = nameRef.current.trim();
+      const editorDoc = liveName
+        ? applyTitleToDoc(JSON.parse(liveDoc) as EditorDoc, liveName)
+        : (JSON.parse(liveDoc) as EditorDoc);
+      const persisted = serializeStable(withPageSize(editorDoc, pageSizeRef.current));
 
       const payload = {
-        editor_json: JSON.parse(serializedDoc) as EditorDoc,
+        editor_json: editorDoc,
         variables_json: parsedVariables,
         pricing_json: pricing,
         recipients_json: parsedRecipients,
@@ -327,7 +326,8 @@ export default function DocumentDetailPage({ params }: Params) {
         expectedUpdatedAtRef.current = result.document.updated_at;
       }
       const snapshot = JSON.stringify({
-        doc: serializedDoc,
+        doc: persisted,
+        name: liveName || documentTitleFromEditorJson(editorDoc),
         variables: JSON.stringify(parsedVariables),
         pricing: JSON.stringify(pricing),
         recipients: JSON.stringify(parsedRecipients),
@@ -335,6 +335,10 @@ export default function DocumentDetailPage({ params }: Params) {
       });
       lastSavedSnapshotRef.current = snapshot;
       setLastSavedSnapshot(snapshot);
+      setSerializedDoc(persisted);
+      if (persisted !== liveDoc && editorRef.current) {
+        editorRef.current.commands.setContent(editorDoc);
+      }
       setSaveConflict(null);
       setStatus("Saved");
       } catch {
@@ -396,10 +400,16 @@ export default function DocumentDetailPage({ params }: Params) {
 
   function renameDocument(nextName: string) {
     setName(nextName);
-    if (!editor) {
-      return;
+  }
+
+  async function saveAs(nextName: string) {
+    const trimmed = nextName.trim() || "Untitled document";
+    setName(trimmed);
+    nameRef.current = trimmed;
+    if (editor) {
+      editor.commands.setContent(applyTitleToDoc(editor.getJSON() as EditorDoc, trimmed));
     }
-    editor.commands.setContent(applyTitleToDoc(editor.getJSON() as EditorDoc, nextName));
+    await saveNow();
   }
 
   function insertSignerField(type: SignerFieldEditorType) {
@@ -442,15 +452,20 @@ export default function DocumentDetailPage({ params }: Params) {
       body: JSON.stringify({
         name: name || derivedTitle,
         editor_json: editor.getJSON() as EditorDoc,
-        tags: ["from-document"],
+        tags: ["from-document", "document"],
       }),
     });
     if (!response.ok) {
-      setError("Could not save this document as a template.");
+      const body = (await response.json().catch(() => null)) as {
+        error?: string | { message?: string };
+      } | null;
+      const msg =
+        typeof body?.error === "string" ? body.error : body?.error?.message;
+      setError(msg || "Could not save this document as a template.");
       return;
     }
-    const payload = (await response.json()) as { template: { id: string } };
-    router.push(`/app/templates/${payload.template.id}`);
+    setStatus("Saved as template");
+    router.push("/app/templates?tab=mine");
   }
 
   useEffect(() => {
@@ -490,9 +505,10 @@ export default function DocumentDetailPage({ params }: Params) {
     if (!documentId || !document || document.status !== "DRAFTED" || saveConflict) {
       return;
     }
-    const id = window.setInterval(() => {
+    const id = window.setTimeout(() => {
       const currentSnapshot = JSON.stringify({
         doc: serializedDoc,
+        name,
         variables: JSON.stringify(parsedVariables),
         pricing: JSON.stringify(pricing),
         recipients: JSON.stringify(parsedRecipients),
@@ -502,13 +518,14 @@ export default function DocumentDetailPage({ params }: Params) {
         return;
       }
       void saveNow();
-    }, 1400);
-    return () => window.clearInterval(id);
+    }, AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(id);
   }, [
     contactId,
     document,
     documentId,
     lastSavedSnapshot,
+    name,
     parsedRecipients,
     parsedVariables,
     pricing,
@@ -521,6 +538,7 @@ export default function DocumentDetailPage({ params }: Params) {
     function currentSnapshot() {
       return JSON.stringify({
         doc: serializedDoc,
+        name,
         variables: JSON.stringify(parsedVariables),
         pricing: JSON.stringify(pricing),
         recipients: JSON.stringify(parsedRecipients),
@@ -600,6 +618,8 @@ export default function DocumentDetailPage({ params }: Params) {
             editor?.commands.setPageSize(size);
           }}
           onSave={() => void saveNow()}
+          onSaveAs={(nextName) => saveAs(nextName)}
+          saveAsKind="document"
           onPrint={() => openPrintPreview(previewHtml(), pageSize)}
           onInsertField={insertSignerField}
           variableKeys={Object.keys(variableRegistry)}
@@ -655,12 +675,12 @@ export default function DocumentDetailPage({ params }: Params) {
           </div>
         ) : null}
 
-        <div className="flex min-h-0 flex-1">
-          <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <CreatorPageStrip
               name={name || derivedTitle}
               pageCount={pageCount}
-              currentPage={1}
+              currentPage={currentPage}
               pageSizeLabel={pageSizeSpec(pageSize).shortLabel}
               onAddPage={() => editor && insertPageBreak(editor)}
             />
@@ -668,7 +688,9 @@ export default function DocumentDetailPage({ params }: Params) {
               editor={editor}
               pageSize={pageSize}
               documentId={documentId || undefined}
+              documentName={name || derivedTitle}
               onPageCountChange={setVisualPages}
+              onVisiblePageChange={setCurrentPage}
               onDropField={(type, clientX, clientY) => {
                 const recipientId = selectedRecipientId || parsedRecipients[0]?.id;
                 if (!editor || !recipientId) {

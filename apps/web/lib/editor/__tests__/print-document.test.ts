@@ -21,6 +21,7 @@ describe("print document", () => {
 describe("textBox", () => {
   it("keeps Enter from splitting the box into a new element", () => {
     expect(TextBox.config.isolating).toBe(true);
+    expect(TextBox.config.content).toBe("(paragraph | heading | bulletList | orderedList)+");
     expect(TextBox.config.defining).toBeUndefined();
   });
 });

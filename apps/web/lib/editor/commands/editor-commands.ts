@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/core";
+import { NodeSelection } from "@tiptap/pm/state";
 import {
   insertDivider,
   insertHeading,
@@ -13,6 +14,9 @@ import { insertSignerFieldBlock } from "../insert-signer-field";
 import type { BlockStyleId } from "./format-presets";
 
 export type { BlockStyleId };
+
+/** Last caret inside a paragraph/heading so toolbar clicks can recover after blur. */
+let lastTextblockPos: number | null = null;
 
 export type EditorFormatState = {
   blockStyle: BlockStyleId;
@@ -39,6 +43,89 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+function rememberTextCaret(editor: Editor): void {
+  const { $from } = editor.state.selection;
+  if ($from.parent.isTextblock) {
+    lastTextblockPos = $from.pos;
+  }
+}
+
+function restoreTextCaret(editor: Editor): boolean {
+  if (editor.state.selection.$from.parent.isTextblock) {
+    return true;
+  }
+  if (lastTextblockPos == null) {
+    return false;
+  }
+  const max = editor.state.doc.content.size;
+  const pos = Math.min(Math.max(1, lastTextblockPos), Math.max(1, max));
+  const $pos = editor.state.doc.resolve(pos);
+  if (!$pos.parent.isTextblock) {
+    return false;
+  }
+  editor.commands.setTextSelection(pos);
+  return true;
+}
+
+/** Move into an isolating block (text box) so heading/list commands can run. */
+function focusInsideSelectedBlock(editor: Editor): void {
+  rememberTextCaret(editor);
+  const { selection, doc } = editor.state;
+  if (selection instanceof NodeSelection && selection.node.childCount > 0 && !selection.node.isAtom) {
+    editor.commands.setTextSelection(selection.from + 1);
+    rememberTextCaret(editor);
+    return;
+  }
+  if (selection.$from.depth > 0 && selection.$from.parent.isTextblock) {
+    return;
+  }
+
+  let innerPos: number | null = null;
+  doc.nodesBetween(selection.from, Math.max(selection.to, selection.from + 1), (node, pos) => {
+    if (innerPos !== null) {
+      return false;
+    }
+    if (node.isTextblock) {
+      innerPos = pos + 1;
+      return false;
+    }
+    return true;
+  });
+  if (innerPos !== null) {
+    editor.commands.setTextSelection(innerPos);
+    rememberTextCaret(editor);
+    return;
+  }
+  restoreTextCaret(editor);
+}
+
+/**
+ * Font/size are marks. A collapsed caret only sets "next typed character" marks,
+ * which looks like the toolbar did nothing — expand to the current block first.
+ */
+function chainOnCurrentText(editor: Editor) {
+  focusInsideSelectedBlock(editor);
+  const { empty, $from } = editor.state.selection;
+  const chain = editor.chain().focus();
+  if (empty && $from.parent.isTextblock && $from.start() < $from.end()) {
+    chain.setTextSelection({ from: $from.start(), to: $from.end() });
+  }
+  return chain;
+}
+
+function runListCommand(editor: Editor, command: "toggleBulletList" | "toggleOrderedList"): boolean {
+  focusInsideSelectedBlock(editor);
+  const chain = editor.chain().focus();
+  // listItem content is `paragraph block*`, so a heading cannot wrap until it is a paragraph.
+  if (editor.isActive("heading")) {
+    chain.setParagraph();
+  }
+  if (command === "toggleBulletList") {
+    return chain.toggleBulletList().run();
+  }
+  return chain.toggleOrderedList().run();
+}
+
 export function getBlockStyle(editor: Editor): BlockStyleId {
   if (editor.isActive("heading", { level: 1 })) {
     return "h1";
@@ -53,6 +140,7 @@ export function getBlockStyle(editor: Editor): BlockStyleId {
 }
 
 export function getEditorFormatState(editor: Editor): EditorFormatState {
+  rememberTextCaret(editor);
   const textStyle = editor.getAttributes("textStyle");
   const highlight = editor.getAttributes("highlight");
   const link = editor.getAttributes("link");
@@ -92,25 +180,34 @@ export function getEditorFormatState(editor: Editor): EditorFormatState {
 }
 
 export function setBlockStyle(editor: Editor, style: BlockStyleId): boolean {
+  focusInsideSelectedBlock(editor);
   if (style === "paragraph") {
+    if (getBlockStyle(editor) === "paragraph") {
+      return true;
+    }
     return editor.chain().focus().setParagraph().run();
   }
   const level = Number(style.slice(1)) as 1 | 2 | 3;
-  return editor.chain().focus().toggleHeading({ level }).run();
+  if (getBlockStyle(editor) === style) {
+    return true;
+  }
+  return editor.chain().focus().setHeading({ level }).run();
 }
 
 export function setFontFamily(editor: Editor, fontFamily: string): boolean {
+  const chain = chainOnCurrentText(editor);
   if (!fontFamily) {
-    return editor.chain().focus().unsetFontFamily().run();
+    return chain.unsetFontFamily().run();
   }
-  return editor.chain().focus().setFontFamily(fontFamily).run();
+  return chain.setFontFamily(fontFamily).run();
 }
 
 export function setFontSize(editor: Editor, fontSize: string): boolean {
+  const chain = chainOnCurrentText(editor);
   if (!fontSize) {
-    return editor.chain().focus().unsetFontSize().run();
+    return chain.unsetFontSize().run();
   }
-  return editor.chain().focus().setFontSize(fontSize).run();
+  return chain.setFontSize(fontSize).run();
 }
 
 export function toggleBold(editor: Editor): boolean {
@@ -161,28 +258,31 @@ export function setAlignment(editor: Editor, align: "left" | "center" | "right" 
 }
 
 export function toggleBulletList(editor: Editor): boolean {
-  return editor.chain().focus().toggleBulletList().run();
+  return runListCommand(editor, "toggleBulletList");
 }
 
 export function toggleOrderedList(editor: Editor): boolean {
-  return editor.chain().focus().toggleOrderedList().run();
+  return runListCommand(editor, "toggleOrderedList");
 }
 
 export function indentSelection(editor: Editor): boolean {
-  if (editor.can().sinkListItem("listItem")) {
+  focusInsideSelectedBlock(editor);
+  if (editor.isActive("listItem") && editor.can().sinkListItem("listItem")) {
     return editor.chain().focus().sinkListItem("listItem").run();
   }
   return editor.chain().focus().increaseIndent().run();
 }
 
 export function outdentSelection(editor: Editor): boolean {
-  if (editor.can().liftListItem("listItem")) {
+  focusInsideSelectedBlock(editor);
+  if (editor.isActive("listItem") && editor.can().liftListItem("listItem")) {
     return editor.chain().focus().liftListItem("listItem").run();
   }
   return editor.chain().focus().decreaseIndent().run();
 }
 
 export function setLineHeight(editor: Editor, lineHeight: string): boolean {
+  focusInsideSelectedBlock(editor);
   if (!lineHeight) {
     return editor.chain().focus().unsetLineHeight().run();
   }

@@ -11,7 +11,15 @@ describe("hitTestBlocks", () => {
     expect(hitTestBlocks(20, blocks, 1056)).toEqual({
       kind: "gap",
       insertPos: 0,
-      topPx: 36,
+      topPx: 46,
+    });
+  });
+
+  it("treats the top edge of the first block as insert-above", () => {
+    expect(hitTestBlocks(50, blocks, 1056)).toEqual({
+      kind: "gap",
+      insertPos: 0,
+      topPx: 46,
     });
   });
 
@@ -36,11 +44,11 @@ describe("hitTestBlocks", () => {
     });
   });
 
-  it("returns an insert slot on empty paper", () => {
+  it("returns an insert slot on empty paper at the pointer", () => {
     expect(hitTestBlocks(80, [], 1056)).toEqual({
       kind: "gap",
       insertPos: 0,
-      topPx: 48,
+      topPx: 80,
     });
   });
 

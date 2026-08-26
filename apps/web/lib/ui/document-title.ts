@@ -14,16 +14,44 @@ function textFromNode(node: unknown): string {
   return "";
 }
 
-/** First meaningful line from TipTap JSON for list/table display */
-export function documentTitleFromEditorJson(doc: EditorDoc | null | undefined, fallbackId: string): string {
-  if (!doc?.content?.length) {
-    return `Document ${fallbackId.slice(0, 8)}…`;
+function titleFromAttrs(doc: EditorDoc | null | undefined): string {
+  const value = doc?.attrs?.title;
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function clipTitle(value: string): string {
+  return value.length > 72 ? `${value.slice(0, 69)}…` : value;
+}
+
+/**
+ * Prefer an explicit Save-as / header title when one is stored on the doc.
+ * Otherwise use the first non-empty line of content.
+ */
+export function documentTitleFromEditorJson(doc: EditorDoc | null | undefined, _fallbackId?: string): string {
+  const named = titleFromAttrs(doc);
+  if (named) {
+    return clipTitle(named);
   }
-  for (const block of doc.content) {
-    const t = textFromNode(block).trim();
-    if (t.length > 0) {
-      return t.length > 72 ? `${t.slice(0, 69)}…` : t;
+  if (doc?.content?.length) {
+    for (const block of doc.content) {
+      const t = textFromNode(block).trim();
+      if (t.length > 0) {
+        return clipTitle(t);
+      }
     }
   }
-  return `Document ${fallbackId.slice(0, 8)}…`;
+  return "Untitled document";
+}
+
+/** Persist the gallery/header title without changing body content. */
+export function applyTitleToDoc(doc: EditorDoc, title: string): EditorDoc {
+  const next = structuredClone(doc);
+  const trimmed = title.trim();
+  next.attrs = { ...next.attrs };
+  if (trimmed) {
+    next.attrs.title = trimmed;
+  } else {
+    delete next.attrs.title;
+  }
+  return next;
 }

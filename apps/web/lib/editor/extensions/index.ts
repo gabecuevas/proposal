@@ -23,6 +23,7 @@ import { ContentBlockEmbed } from "./content-block-embed";
 import { CreatorDocument } from "./creator-document";
 import { FieldCanvas } from "./field-canvas";
 import { FieldOverlay } from "./field-overlay";
+import { FlowGaps } from "./flow-gaps";
 import { FontSize } from "./font-size";
 import { Indent } from "./indent";
 import { LineHeight } from "./line-height";
@@ -91,9 +92,9 @@ export const editorExtensions = [
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener" } }),
   Placeholder.configure({
-    placeholder: ({ node }) =>
-      node.type.name === "heading" ? "Document title" : "Type / to insert an element…",
+    placeholder: ({ node }) => (node.type.name === "heading" ? "Document title" : ""),
   }),
+  FlowGaps,
   Table.configure({ resizable: true, lastColumnResizable: false }),
   TableRow,
   TableHeader,

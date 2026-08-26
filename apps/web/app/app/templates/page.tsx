@@ -59,6 +59,20 @@ export default function AppTemplatesPage() {
     setFavorites(loadFavoriteSet());
   }, []);
 
+  useEffect(() => {
+    const next = new URLSearchParams(window.location.search).get("tab");
+    if (next === "suggested" || next === "mine" || next === "uploads") {
+      setTab(next);
+    }
+  }, []);
+
+  function selectTab(id: TabId) {
+    setTab(id);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", id);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+  }
+
   const loadTemplates = useCallback(async () => {
     setError("");
     const params = new URLSearchParams();
@@ -107,10 +121,8 @@ export default function AppTemplatesPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl space-y-8">
-      <h1 className="font-app-serif text-3xl font-normal tracking-tight text-foreground md:text-4xl">
-        Templates
-      </h1>
+    <main className="mx-auto max-w-6xl space-y-6">
+      <h1 className="sr-only">Templates</h1>
 
       <UploadDropzone onUploaded={() => void loadTemplates()} />
 
@@ -125,7 +137,7 @@ export default function AppTemplatesPage() {
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => setTab(item.id)}
+                  onClick={() => selectTab(item.id)}
                   className={`relative -mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
                     active
                       ? "border-primary text-primary"

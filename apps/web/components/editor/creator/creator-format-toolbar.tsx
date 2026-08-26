@@ -3,13 +3,10 @@
 import type { Editor } from "@tiptap/core";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  clearFormatting,
   getEditorFormatState,
   indentSelection,
   outdentSelection,
   redo,
-  runClipboardAction,
-  selectAll,
   setAlignment,
   setBlockStyle,
   setFontFamily,
@@ -62,7 +59,7 @@ type Props = {
   editor: Editor | null;
 };
 
-type PopoverId = "color" | "highlight" | "link" | "more" | "line" | null;
+type PopoverId = "color" | "highlight" | "link" | "line" | "style" | "font" | "size" | null;
 
 export function CreatorFormatToolbar({ editor }: Props) {
   const tick = useEditorEventTick(editor);
@@ -95,13 +92,17 @@ export function CreatorFormatToolbar({ editor }: Props) {
   const state = getEditorFormatState(editor);
 
   function keepFocus(event: React.MouseEvent) {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("input, textarea")) {
+      return;
+    }
     event.preventDefault();
   }
 
   return (
     <div
       ref={barRef}
-      className="creator-format-toolbar flex h-10 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border bg-surface px-2"
+      className="creator-format-toolbar relative z-20 flex min-h-10 shrink-0 flex-wrap items-center gap-0.5 border-b border-border bg-surface px-2 py-1"
       onMouseDown={keepFocus}
     >
       <ToolButton label="Undo" disabled={!state.canUndo} onClick={() => undo(editor)}>
@@ -112,54 +113,74 @@ export function CreatorFormatToolbar({ editor }: Props) {
       </ToolButton>
       <Divider />
 
-      <label className="sr-only" htmlFor="creator-block-style">
-        Paragraph style
-      </label>
-      <select
-        id="creator-block-style"
-        className="h-7 max-w-[8.5rem] rounded border border-transparent bg-transparent px-1 text-xs text-foreground hover:border-border"
-        value={state.blockStyle}
-        onChange={(event) => setBlockStyle(editor, event.target.value as BlockStyleId)}
+      <MenuSelect
+        label="Paragraph style"
+        open={open === "style"}
+        value={BLOCK_STYLES.find((style) => style.id === state.blockStyle)?.label ?? "Normal text"}
+        onToggle={() => setOpen(open === "style" ? null : "style")}
       >
         {BLOCK_STYLES.map((style) => (
-          <option key={style.id} value={style.id}>
+          <MenuOption
+            key={style.id}
+            active={state.blockStyle === style.id}
+            onClick={() => {
+              setBlockStyle(editor, style.id);
+              setOpen(null);
+            }}
+          >
             {style.label}
-          </option>
+          </MenuOption>
         ))}
-      </select>
+      </MenuSelect>
 
-      <label className="sr-only" htmlFor="creator-font-family">
-        Font
-      </label>
-      <select
-        id="creator-font-family"
-        className="h-7 max-w-[7.5rem] rounded border border-transparent bg-transparent px-1 text-xs text-foreground hover:border-border"
-        value={state.fontFamily}
-        onChange={(event) => setFontFamily(editor, event.target.value)}
+      <MenuSelect
+        label="Font"
+        open={open === "font"}
+        value={FONT_FAMILIES.find((font) => font.id === state.fontFamily)?.label ?? "Default"}
+        onToggle={() => setOpen(open === "font" ? null : "font")}
       >
         {FONT_FAMILIES.map((font) => (
-          <option key={font.id || "default"} value={font.id}>
-            {font.label}
-          </option>
+          <MenuOption
+            key={font.id || "default"}
+            active={state.fontFamily === font.id}
+            onClick={() => {
+              setFontFamily(editor, font.id);
+              setOpen(null);
+            }}
+          >
+            <span style={{ fontFamily: font.id || "inherit" }}>{font.label}</span>
+          </MenuOption>
         ))}
-      </select>
+      </MenuSelect>
 
-      <label className="sr-only" htmlFor="creator-toolbar-font-size">
-        Font size
-      </label>
-      <select
-        id="creator-toolbar-font-size"
-        className="h-7 w-14 rounded border border-transparent bg-transparent px-1 text-xs text-foreground hover:border-border"
-        value={state.fontSize}
-        onChange={(event) => setFontSize(editor, event.target.value)}
+      <MenuSelect
+        label="Font size"
+        open={open === "size"}
+        value={state.fontSize ? state.fontSize.replace("px", "") : "Size"}
+        onToggle={() => setOpen(open === "size" ? null : "size")}
       >
-        <option value="">Size</option>
+        <MenuOption
+          active={!state.fontSize}
+          onClick={() => {
+            setFontSize(editor, "");
+            setOpen(null);
+          }}
+        >
+          Default
+        </MenuOption>
         {FONT_SIZES.map((size) => (
-          <option key={size} value={size}>
+          <MenuOption
+            key={size}
+            active={state.fontSize === size}
+            onClick={() => {
+              setFontSize(editor, size);
+              setOpen(null);
+            }}
+          >
             {size.replace("px", "")}
-          </option>
+          </MenuOption>
         ))}
-      </select>
+      </MenuSelect>
       <Divider />
 
       <ToolButton label="Bold" active={state.bold} onClick={() => toggleBold(editor)}>
@@ -347,64 +368,6 @@ export function CreatorFormatToolbar({ editor }: Props) {
           ))}
         </div>
       </PopoverWrap>
-      <Divider />
-
-      <PopoverWrap
-        open={open === "more"}
-        button={
-          <button
-            type="button"
-            className="rounded px-2 py-1 text-xs text-muted hover:bg-slate-100 hover:text-foreground"
-            aria-expanded={open === "more"}
-            onClick={() => setOpen(open === "more" ? null : "more")}
-          >
-            More
-          </button>
-        }
-      >
-        <div className="min-w-40 py-1 text-xs">
-          <button
-            type="button"
-            className="block w-full px-3 py-1.5 text-left hover:bg-slate-50"
-            onClick={() => {
-              void runClipboardAction(editor, "cut");
-              setOpen(null);
-            }}
-          >
-            Cut
-          </button>
-          <button
-            type="button"
-            className="block w-full px-3 py-1.5 text-left hover:bg-slate-50"
-            onClick={() => {
-              void runClipboardAction(editor, "copy");
-              setOpen(null);
-            }}
-          >
-            Copy
-          </button>
-          <button
-            type="button"
-            className="block w-full px-3 py-1.5 text-left hover:bg-slate-50"
-            onClick={() => {
-              selectAll(editor);
-              setOpen(null);
-            }}
-          >
-            Select all
-          </button>
-          <button
-            type="button"
-            className="block w-full px-3 py-1.5 text-left hover:bg-slate-50"
-            onClick={() => {
-              clearFormatting(editor);
-              setOpen(null);
-            }}
-          >
-            Clear formatting
-          </button>
-        </div>
-      </PopoverWrap>
     </div>
   );
 }
@@ -442,6 +405,65 @@ function ToolButton({
   );
 }
 
+function MenuSelect({
+  label,
+  value,
+  open,
+  onToggle,
+  children,
+}: {
+  label: string;
+  value: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <PopoverWrap
+      open={open}
+      button={
+        <button
+          type="button"
+          aria-label={label}
+          aria-expanded={open}
+          title={label}
+          onClick={onToggle}
+          className="inline-flex h-7 max-w-[8.5rem] shrink-0 items-center rounded px-1.5 text-xs text-foreground hover:bg-slate-100"
+        >
+          <span className="truncate">{value}</span>
+          <span className="ml-1 text-[9px] text-muted" aria-hidden>
+            ▾
+          </span>
+        </button>
+      }
+    >
+      <div className="max-h-64 min-w-36 overflow-y-auto py-1">{children}</div>
+    </PopoverWrap>
+  );
+}
+
+function MenuOption({
+  active,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className={`block w-full px-3 py-1.5 text-left text-xs ${
+        active ? "bg-primary/10 text-primary" : "hover:bg-slate-50"
+      }`}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
 function PopoverWrap({
   open,
   button,
@@ -455,7 +477,7 @@ function PopoverWrap({
     <div className="relative">
       {button}
       {open ? (
-        <div className="absolute left-0 top-8 z-40 rounded-md border border-border bg-surface shadow-lg">{children}</div>
+        <div className="absolute left-0 top-full z-50 mt-1 rounded-md border border-border bg-surface shadow-lg">{children}</div>
       ) : null}
     </div>
   );

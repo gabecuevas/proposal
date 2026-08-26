@@ -3,6 +3,7 @@
 import type { Editor } from "@tiptap/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { hitTestBlocks, type TopLevelBlock } from "@/lib/editor/block-hit-test";
+import { isScaffoldFlowNode } from "@/lib/editor/extensions/flow-gaps";
 import { BlockOptionsMenu } from "./block-options-menu";
 import { ElementMenu } from "./element-menu";
 import { IconDragHandle, IconGear, IconPlus } from "./creator-icons";
@@ -26,18 +27,19 @@ function readTopLevelBlocks(editor: Editor, paper: HTMLElement): TopLevelBlock[]
   const paperTop = paper.getBoundingClientRect().top;
   const blocks: TopLevelBlock[] = [];
   editor.state.doc.forEach((node, offset, index) => {
-    if (!PINNED_NODES.has(node.type.name)) {
-      const dom = editor.view.nodeDOM(offset);
-      if (dom instanceof HTMLElement) {
-        const rect = dom.getBoundingClientRect();
-        blocks.push({
-          index,
-          pos: offset,
-          size: node.nodeSize,
-          top: rect.top - paperTop,
-          bottom: rect.bottom - paperTop,
-        });
-      }
+    if (PINNED_NODES.has(node.type.name) || isScaffoldFlowNode(node)) {
+      return;
+    }
+    const dom = editor.view.nodeDOM(offset);
+    if (dom instanceof HTMLElement) {
+      const rect = dom.getBoundingClientRect();
+      blocks.push({
+        index,
+        pos: offset,
+        size: node.nodeSize,
+        top: rect.top - paperTop,
+        bottom: rect.bottom - paperTop,
+      });
     }
   });
   return blocks;
@@ -59,11 +61,6 @@ function isFieldTarget(target: EventTarget | null): boolean {
 
 function isGapTarget(target: EventTarget | null): boolean {
   return target instanceof Element && Boolean(target.closest("[data-creator-insert-gap]"));
-}
-
-function focusInsertPos(editor: Editor, insertPos: number): void {
-  const pos = Math.max(0, Math.min(insertPos, editor.state.doc.content.size));
-  editor.chain().focus().setTextSelection(pos).run();
 }
 
 export function CreatorBlockControls({ editor, paperRef, documentId, templateId }: Props) {
@@ -145,15 +142,21 @@ export function CreatorBlockControls({ editor, paperRef, documentId, templateId 
       const hit = hitTestBlocks(y, blocks, paper.getBoundingClientRect().height);
       if (hit?.kind === "block") {
         setDismissed(false);
-      } else {
-        setDismissed(true);
-        setHover(null);
+        return;
       }
+      setDismissed(true);
+      setHover(null);
+      if (hit?.kind === "gap") {
+        event.preventDefault();
+        setInsertSlot({ insertPos: hit.insertPos, topPx: hit.topPx });
+        return;
+      }
+      setInsertSlot(null);
     };
 
     paper.addEventListener("pointermove", onPointerMove);
     paper.addEventListener("pointerleave", onPointerLeave);
-    paper.addEventListener("pointerdown", onPointerDown);
+    paper.addEventListener("pointerdown", onPointerDown, true);
     const scroller = paper.parentElement?.parentElement;
     const onScrollerDown = (event: PointerEvent) => {
       if (paper.contains(event.target as Node) || containerRef.current?.contains(event.target as Node)) {
@@ -170,7 +173,7 @@ export function CreatorBlockControls({ editor, paperRef, documentId, templateId 
       editor.off("transaction", syncSelected);
       paper.removeEventListener("pointermove", onPointerMove);
       paper.removeEventListener("pointerleave", onPointerLeave);
-      paper.removeEventListener("pointerdown", onPointerDown);
+      paper.removeEventListener("pointerdown", onPointerDown, true);
       scroller?.removeEventListener("pointerdown", onScrollerDown);
     };
   }, [editor, menuOpen, paperRef]);
@@ -266,7 +269,8 @@ export function CreatorBlockControls({ editor, paperRef, documentId, templateId 
           className="creator-insert-gap pointer-events-none"
           style={{ top: insertSlot.topPx }}
         >
-          <div className="creator-block-handle pointer-events-auto">
+          <div className="creator-insert-line" aria-hidden />
+          <div className="creator-insert-plus pointer-events-auto">
             <button
               type="button"
               onClick={() => {
@@ -277,7 +281,7 @@ export function CreatorBlockControls({ editor, paperRef, documentId, templateId 
               aria-label="Add element"
               title="Add element"
               aria-expanded={addMenuOpen}
-              className="flex h-6 w-6 items-center justify-center rounded-full border border-border bg-surface text-muted shadow-sm hover:text-foreground"
+              className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500 shadow-sm hover:border-slate-400 hover:text-foreground"
             >
               <IconPlus className="h-3.5 w-3.5" />
             </button>
@@ -285,8 +289,11 @@ export function CreatorBlockControls({ editor, paperRef, documentId, templateId 
               <div className="absolute left-0 top-8 z-40">
                 <ElementMenu
                   editor={editor}
-                  onDone={() => setAddMenuOpen(false)}
-                  onBeforeInsert={() => focusInsertPos(editor, insertSlot.insertPos)}
+                  insertPos={insertSlot.insertPos}
+                  onDone={() => {
+                    setAddMenuOpen(false);
+                    setInsertSlot(null);
+                  }}
                 />
               </div>
             ) : null}
@@ -332,13 +339,11 @@ export function CreatorBlockControls({ editor, paperRef, documentId, templateId 
               <div className="absolute left-0 top-8 z-40">
                 <ElementMenu
                   editor={editor}
-                  onDone={() => setAddMenuOpen(false)}
-                  onBeforeInsert={() => {
+                  insertPos={(() => {
                     const node = editor.state.doc.nodeAt(active.pos);
-                    if (node) {
-                      editor.commands.focus(active.pos + node.nodeSize - 1);
-                    }
-                  }}
+                    return node ? active.pos + node.nodeSize : active.pos;
+                  })()}
+                  onDone={() => setAddMenuOpen(false)}
                 />
               </div>
             ) : null}

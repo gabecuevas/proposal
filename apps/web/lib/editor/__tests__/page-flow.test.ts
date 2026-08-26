@@ -1,5 +1,8 @@
+/** @vitest-environment happy-dom */
+
 import { describe, expect, it } from "vitest";
 import { paginationTortureDoc } from "./fixtures/pagination-torture";
+import { createFlowBreakElement, pauseOverlayHitTesting } from "../extensions/page-flow";
 import { contentOffsetFromVisual, flowBreakPositions } from "../page-flow";
 
 function walkTypes(node: { type?: string; content?: unknown[] }, into: Set<string>) {
@@ -62,6 +65,31 @@ describe("flowBreakPositions", () => {
 describe("contentOffsetFromVisual", () => {
   it("strips page padding and already-rendered spacers", () => {
     expect(contentOffsetFromVisual(1136, 48, 128)).toBe(960);
+  });
+});
+
+describe("flow-break spacer widgets", () => {
+  it("sets an explicit height so the gutter skip does not depend on CSS inheritance", () => {
+    const el = createFlowBreakElement(128);
+    expect(el.style.height).toBe("128px");
+    expect(el.style.minHeight).toBe("128px");
+    expect(el.tagName).toBe("SPAN");
+    expect(el.style.display).toBe("block");
+    expect(el.getAttribute("data-creator-flow-break")).toBe("true");
+  });
+
+  it("hides overlay nodes during measurement and restores them", () => {
+    const root = document.createElement("div");
+    const overlay = document.createElement("div");
+    overlay.className = "field-overlay";
+    overlay.style.visibility = "visible";
+    root.append(overlay);
+    let seen = "";
+    pauseOverlayHitTesting(root, () => {
+      seen = overlay.style.visibility;
+    });
+    expect(seen).toBe("hidden");
+    expect(overlay.style.visibility).toBe("visible");
   });
 });
 

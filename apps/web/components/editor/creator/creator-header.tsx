@@ -26,12 +26,14 @@ import {
 import { BLOCK_STYLES } from "@/lib/editor/commands/format-presets";
 import { FONT_SIZES } from "@/lib/editor/extensions/font-size";
 import { insertNodeAfter } from "@/lib/editor/library-blocks";
+import { formatEditorSaveStatus, isEditorSaving } from "@/lib/editor/autosave";
 import { PAGE_SIZES, type PageSizeId } from "@/lib/editor/page-geometry";
 import type { SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
 import { ContentLibraryModal } from "./content-library-modal";
 import { CreatorFormatToolbar } from "./creator-format-toolbar";
 import { IconArrowLeft, IconClose, IconKebab, IconSend } from "./creator-icons";
 import { ElementMenu } from "./element-menu";
+import { SaveAsModal } from "./save-as-modal";
 
 export type CreatorMoreItem = {
   label: string;
@@ -50,11 +52,14 @@ type Props = {
   onPageSizeChange?: (size: PageSizeId) => void;
   fileItems?: CreatorMoreItem[];
   onSave?: () => void;
+  onSaveAs?: (name: string) => void | Promise<void>;
+  saveAsKind?: "document" | "template";
   onPrint?: () => void;
   onInsertField?: (type: SignerFieldEditorType) => void;
   variableKeys?: string[];
   statusLabel?: string;
   primaryActionLabel?: string;
+  primaryActionShowsSendIcon?: boolean;
   onPrimaryAction?: () => void;
   moreItems?: CreatorMoreItem[];
   extraActions?: ReactNode;
@@ -70,19 +75,24 @@ export function CreatorHeader({
   onPageSizeChange,
   fileItems,
   onSave,
+  onSaveAs,
+  saveAsKind = "document",
   onPrint,
   onInsertField,
   variableKeys,
   statusLabel = "Draft",
   primaryActionLabel = "Review and send",
+  primaryActionShowsSendIcon = true,
   onPrimaryAction,
   moreItems,
   extraActions,
 }: Props) {
   const tick = useEditorEventTick(editor);
-  const saved = saveStatus === "Saved" || saveStatus === "Idle" || saveStatus === "Document sent." || saveStatus.startsWith("Saved");
+  const saveLabel = formatEditorSaveStatus(saveStatus);
+  const saving = isEditorSaving(saveStatus);
   const [open, setOpen] = useState<MenuId>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [saveAsOpen, setSaveAsOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   void tick;
@@ -123,10 +133,18 @@ export function CreatorHeader({
           />
           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-muted">{statusLabel}</span>
           <span
-            className={`h-1.5 w-1.5 rounded-full ${saved ? "bg-emerald-500" : "bg-amber-400"}`}
+            className={`truncate text-[11px] ${
+              saveLabel === "Save failed" || saveLabel === "Conflict"
+                ? "text-red-600"
+                : saving
+                  ? "text-amber-700"
+                  : "text-muted"
+            }`}
+            aria-live="polite"
             title={saveStatus}
-            aria-label={saveStatus}
-          />
+          >
+            {saveLabel}
+          </span>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
@@ -161,10 +179,11 @@ export function CreatorHeader({
           <button
             type="button"
             onClick={onPrimaryAction}
-            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-95"
+            disabled={!onPrimaryAction || (primaryActionShowsSendIcon === false && saving)}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-95 disabled:opacity-60"
           >
-            <IconSend className="h-3.5 w-3.5" />
-            {primaryActionLabel}
+            {primaryActionShowsSendIcon ? <IconSend className="h-3.5 w-3.5" /> : null}
+            {primaryActionShowsSendIcon === false && saving ? "Saving…" : primaryActionLabel}
           </button>
           {moreItems && moreItems.length > 0 ? (
             <div className="relative">
@@ -216,6 +235,16 @@ export function CreatorHeader({
         {open === "file" ? (
           <MenuPanel>
             {onSave ? <MenuItem onClick={() => runAndClose(onSave)}>Save</MenuItem> : null}
+            {onSaveAs ? (
+              <MenuItem
+                onClick={() => {
+                  setOpen(null);
+                  setSaveAsOpen(true);
+                }}
+              >
+                Save as…
+              </MenuItem>
+            ) : null}
             {(fileItems ?? []).map((item) => (
               <MenuItem
                 key={item.label}
@@ -378,6 +407,17 @@ export function CreatorHeader({
 
       <CreatorFormatToolbar editor={editor} />
       <ContentLibraryModal editor={editor} open={libraryOpen} onClose={() => setLibraryOpen(false)} />
+      <SaveAsModal
+        open={saveAsOpen}
+        kind={saveAsKind}
+        initialName={name}
+        saving={saving}
+        onClose={() => setSaveAsOpen(false)}
+        onSave={async (nextName) => {
+          await onSaveAs?.(nextName);
+          setSaveAsOpen(false);
+        }}
+      />
     </header>
   );
 }

@@ -1,4 +1,5 @@
 import { Extension } from "@tiptap/core";
+import { mapTextBlocks } from "./indent";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -34,16 +35,12 @@ export const LineHeight = Extension.create({
     return {
       setLineHeight:
         (lineHeight: string) =>
-        ({ commands, editor }) => {
-          const type = editor.isActive("heading") ? "heading" : "paragraph";
-          return commands.updateAttributes(type, { lineHeight });
-        },
+        ({ state, tr, dispatch }) =>
+          mapTextBlocks(state, tr, dispatch, () => ({ lineHeight })),
       unsetLineHeight:
         () =>
-        ({ commands, editor }) => {
-          const type = editor.isActive("heading") ? "heading" : "paragraph";
-          return commands.resetAttributes(type, "lineHeight");
-        },
+        ({ state, tr, dispatch }) =>
+          mapTextBlocks(state, tr, dispatch, () => ({ lineHeight: null })),
     };
   },
 });

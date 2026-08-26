@@ -17,6 +17,7 @@ import { insertSignerFieldAtPoint, insertSignerFieldBlock } from "@/lib/editor/i
 import { migrateSignerFieldsDoc } from "@/lib/editor/migrate-signer-fields";
 import { pageSizeFromDoc, pageSizeSpec, withPageSize, type PageSizeId } from "@/lib/editor/page-geometry";
 import { openPrintPreview } from "@/lib/editor/print-document";
+import { AUTOSAVE_DELAY_MS } from "@/lib/editor/autosave";
 import { calculateQuoteTotals } from "@/lib/editor/quote";
 import { renderComputedHtml } from "@/lib/editor/render";
 import { SaveQueue } from "@/lib/editor/save-queue";
@@ -25,6 +26,7 @@ import { serializeStable } from "@/lib/editor/stable";
 import { resolveTemplateVariables } from "@/lib/editor/variables";
 import type { EditorNode, EditorDoc, PricingModel, VariableContext, VariableRegistry } from "@/lib/editor/types";
 import { pageCountFromEditor } from "@/lib/ui/template-meta";
+import { applyTitleToDoc } from "@/lib/ui/document-title";
 
 type ContentBlockSummary = {
   id: string;
@@ -76,6 +78,7 @@ export function TemplateEditor({
   const [lastSavedSerialized, setLastSavedSerialized] = useState(() =>
     serializeStable(withPageSize(migratedInitial, pageSizeFromDoc(migratedInitial))),
   );
+  const [lastSavedName, setLastSavedName] = useState(initialName);
   const [registryText, setRegistryText] = useState(() => JSON.stringify(initialVariableRegistry, null, 2));
   const [variablesText, setVariablesText] = useState(
     '{\n  "client": { "name": "Acme Corp", "company": "Acme Corp" },\n  "deal": { "value": 12000 }\n}',
@@ -88,12 +91,23 @@ export function TemplateEditor({
   const [mode, setMode] = useState<"sender-preview" | "recipient-fill" | "finalized">("sender-preview");
   const [debugOpen, setDebugOpen] = useState(false);
   const [visualPages, setVisualPages] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<PageSizeId>(() => pageSizeFromDoc(migratedInitial));
   const pageSizeRef = useRef(pageSize);
   pageSizeRef.current = pageSize;
   const saveQueueRef = useRef(new SaveQueue());
   const lastSavedSerializedRef = useRef(lastSavedSerialized);
   lastSavedSerializedRef.current = lastSavedSerialized;
+  const lastSavedNameRef = useRef(lastSavedName);
+  lastSavedNameRef.current = lastSavedName;
+  const nameRef = useRef(name);
+  nameRef.current = name;
+  const serializedRef = useRef(serialized);
+  serializedRef.current = serialized;
+  const pricingRef = useRef(pricing);
+  pricingRef.current = pricing;
+  const registryTextRef = useRef(registryText);
+  registryTextRef.current = registryText;
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -104,6 +118,8 @@ export function TemplateEditor({
       setSerialized(serializeStable(withPageSize(nextEditor.getJSON() as EditorDoc, pageSizeRef.current)));
     },
   });
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
 
   const variableRegistry = parseJsonText<VariableRegistry>(registryText, initialVariableRegistry);
   const variableContext = parseJsonText<VariableContext>(variablesText, {});
@@ -126,28 +142,45 @@ export function TemplateEditor({
     await saveQueueRef.current.run(async () => {
       try {
         setStatus("Saving...");
+        editorRef.current?.commands.refreshPageFlow();
+        const liveDoc = editorRef.current
+          ? serializeStable(withPageSize(editorRef.current.getJSON() as EditorDoc, pageSizeRef.current))
+          : serializedRef.current;
+        if (liveDoc !== serializedRef.current) {
+          setSerialized(liveDoc);
+        }
+        const liveName = nameRef.current.trim() || "Untitled template";
+        const liveRegistry = parseJsonText<VariableRegistry>(registryTextRef.current, initialVariableRegistry);
+        const editorDoc = applyTitleToDoc(JSON.parse(liveDoc) as EditorDoc, liveName);
+        const persisted = serializeStable(withPageSize(editorDoc, pageSizeRef.current));
         const response = await fetch(`/api/templates/${templateId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name,
-            editor_json: JSON.parse(serialized) as EditorDoc,
-            variable_registry: variableRegistry,
-            pricing_json: pricing,
+            name: liveName,
+            editor_json: editorDoc,
+            variable_registry: liveRegistry,
+            pricing_json: pricingRef.current,
           }),
         });
         if (!response.ok) {
           setStatus("Save failed");
           return;
         }
-        lastSavedSerializedRef.current = serialized;
-        setLastSavedSerialized(serialized);
+        lastSavedSerializedRef.current = persisted;
+        lastSavedNameRef.current = liveName;
+        setSerialized(persisted);
+        setLastSavedSerialized(persisted);
+        setLastSavedName(liveName);
+        if (liveDoc !== persisted && editorRef.current) {
+          editorRef.current.commands.setContent(editorDoc);
+        }
         setStatus("Saved");
       } catch {
         setStatus("Save failed");
       }
     });
-  }, [name, pricing, serialized, templateId, variableRegistry]);
+  }, [initialVariableRegistry, templateId]);
 
   useEffect(() => {
     if (!editor) {
@@ -160,28 +193,26 @@ export function TemplateEditor({
     if (!editor) {
       return;
     }
-
-    const id = window.setInterval(() => {
-      if (serialized === lastSavedSerialized) {
-        return;
-      }
+    if (serialized === lastSavedSerialized && name === lastSavedName) {
+      return;
+    }
+    const id = window.setTimeout(() => {
       void saveNow();
-    }, 1200);
-
-    return () => window.clearInterval(id);
-  }, [editor, lastSavedSerialized, saveNow, serialized]);
+    }, AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(id);
+  }, [editor, lastSavedName, lastSavedSerialized, name, saveNow, serialized]);
 
   useEffect(() => {
     function flushIfDirty() {
-      if (serialized === lastSavedSerializedRef.current) {
+      if (serialized === lastSavedSerializedRef.current && name === lastSavedNameRef.current) {
         return;
       }
       void fetch(`/api/templates/${templateId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name,
-          editor_json: JSON.parse(serialized) as EditorDoc,
+          name: nameRef.current.trim() || "Untitled template",
+          editor_json: applyTitleToDoc(JSON.parse(serialized) as EditorDoc, nameRef.current),
           variable_registry: variableRegistry,
           pricing_json: pricing,
         }),
@@ -297,6 +328,16 @@ export function TemplateEditor({
     router.push(`/app/templates/${payload.template.id}`);
   }
 
+  async function saveAs(nextName: string) {
+    const trimmed = nextName.trim() || "Untitled template";
+    setName(trimmed);
+    nameRef.current = trimmed;
+    if (editor) {
+      editor.commands.setContent(applyTitleToDoc(editor.getJSON() as EditorDoc, trimmed));
+    }
+    await saveNow();
+  }
+
   return (
     <SignerRecipientProvider recipients={defaultRecipients}>
       <PricingProvider pricing={pricing}>
@@ -313,20 +354,23 @@ export function TemplateEditor({
             editor?.commands.setPageSize(size);
           }}
           onSave={() => void saveNow()}
+          onSaveAs={(nextName) => saveAs(nextName)}
+          saveAsKind="template"
           onPrint={() => openPrintPreview(buildComputedHtml(), pageSize)}
           onInsertField={insertSignerField}
           variableKeys={Object.keys(variableRegistry)}
           fileItems={[{ label: "Make a copy", onClick: () => void duplicateTemplate() }]}
           primaryActionLabel="Save template"
+          primaryActionShowsSendIcon={false}
           onPrimaryAction={() => void saveNow()}
         />
 
-        <div className="flex min-h-0 flex-1">
-          <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <CreatorPageStrip
               name={name}
               pageCount={pageCount}
-              currentPage={1}
+              currentPage={currentPage}
               pageSizeLabel={pageSizeSpec(pageSize).shortLabel}
               onAddPage={() => editor && insertPageBreak(editor)}
             />
@@ -335,7 +379,9 @@ export function TemplateEditor({
               editor={editor}
               pageSize={pageSize}
               templateId={templateId}
+              documentName={name}
               onPageCountChange={setVisualPages}
+              onVisiblePageChange={setCurrentPage}
               onDropField={(type, clientX, clientY) => {
                 if (!editor || !selectedRecipientId) {
                   return;

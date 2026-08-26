@@ -65,6 +65,9 @@ body {
   --creator-page-count: 1;
   position: relative;
   width: var(--creator-page-width);
+  min-width: var(--creator-page-width);
+  max-width: var(--creator-page-width);
+  flex-shrink: 0;
   /* Each sheet is a full white page; the canvas shows through the gap. */
   background-color: transparent;
   background-image: repeating-linear-gradient(
@@ -76,7 +79,24 @@ body {
   );
 }
 
-/* Dashed guides showing where one sheet ends and the next begins. Hidden for now. */
+.creator-page-index {
+  position: absolute;
+  left: 50%;
+  z-index: 2;
+  transform: translate(-50%, -26px);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: #94a3b8;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+@media print {
+  .creator-page-index,
+  .creator-insert-gap {
+    display: none !important;
+  }
+}
 .creator-page-guides {
   display: none;
 }
@@ -144,6 +164,15 @@ body {
   margin: 0 0 0.75rem;
   padding-left: 1.5rem;
 }
+.tiptap-creator ul {
+  list-style-type: disc;
+}
+.tiptap-creator ol {
+  list-style-type: decimal;
+}
+.tiptap-creator li {
+  display: list-item;
+}
 .tiptap-creator blockquote {
   margin: 0 0 0.75rem;
   border-left: 3px solid #cbd5e1;
@@ -179,6 +208,21 @@ body {
   color: #94a3b8;
   pointer-events: none;
 }
+/* Empty top-level paragraphs are insert gaps, not typeable text elements. */
+.tiptap-creator > p.is-empty,
+.tiptap-creator > p.is-editor-empty {
+  margin: 0;
+  height: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+}
+.tiptap-creator > p.is-empty::before,
+.tiptap-creator > p.is-editor-empty::before,
+.tiptap-creator > p.is-editor-empty:first-child::before {
+  content: none;
+}
 
 /* Elements ---------------------------------------------------------------- */
 .tiptap-creator .creator-image-block {
@@ -190,7 +234,7 @@ body {
   border: none;
   border-radius: 4px;
   background: transparent;
-  overflow-x: hidden;
+  overflow: visible;
 }
 .tiptap-creator .creator-text-box:focus-within,
 .tiptap-creator .ProseMirror-selectednode.creator-text-box,
@@ -272,17 +316,24 @@ body {
 
 /* Height-only spacer so text can continue on the next sheet without painting
    over the canvas gap or page margins. */
-.creator-flow-break {
-  display: block;
+.creator-flow-break,
+.tiptap-creator span.ProseMirror-widget.creator-flow-break {
+  display: block !important;
   pointer-events: none;
   user-select: none;
   height: var(--creator-flow-break-height, 128px);
+  min-height: var(--creator-flow-break-height, 128px);
   width: 100%;
   margin: 0;
   padding: 0;
+  border: 0;
+  line-height: 0;
+  font-size: 0;
+  overflow: hidden;
+  clear: both;
   background: transparent !important;
   box-shadow: none !important;
-  break-before: page;
+  break-before: auto;
 }
 
 /* Signer fields ---------------------------------------------------------- */
@@ -343,6 +394,32 @@ body {
   right: 0;
   z-index: 25;
   height: 0;
+}
+
+.creator-insert-line {
+  position: absolute;
+  left: calc(var(--creator-page-margin, 48px) + 14px);
+  right: var(--creator-page-margin, 48px);
+  top: 0;
+  height: 1px;
+  background: rgba(148, 163, 184, 0.55);
+  pointer-events: none;
+}
+
+.creator-insert-plus {
+  position: absolute;
+  left: var(--creator-page-margin, 48px);
+  top: 0;
+  transform: translate(-50%, -50%);
+}
+
+.creator-page-thumb {
+  pointer-events: none;
+  user-select: none;
+}
+.creator-page-thumb [contenteditable] {
+  caret-color: transparent;
+  outline: none;
 }
 
 .creator-insert-gap .creator-block-handle {

@@ -27,6 +27,12 @@ export const CreatorDocument = Node.create({
           "data-page-size": parsePageSize(attributes.pageSize),
         }),
       },
+      title: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-doc-title"),
+        renderHTML: (attributes) =>
+          attributes.title ? { "data-doc-title": String(attributes.title) } : {},
+      },
     };
   },
 

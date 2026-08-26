@@ -17,7 +17,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   const auth = await getRequestAuthContext(request);
-  assertRole(auth, "ADMIN");
+  assertRole(auth, "MEMBER");
 
   const { templateId } = await params;
   const payload = (await request.json()) as {

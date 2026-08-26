@@ -118,5 +118,8 @@ export function templateSubtitleFromTags(tags: string[]): string {
     return "General";
   }
   const t = tags[0]!;
+  if (t.toLowerCase() === "from-document" || t.toLowerCase() === "document") {
+    return "Document";
+  }
   return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
 }
