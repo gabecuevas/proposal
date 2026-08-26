@@ -3,7 +3,9 @@ import {
   PAGE_HEIGHT_PX,
   PAGE_MARGIN_PX,
   flowBreakHeightPx,
+  pageAtVisualOffset,
   pageContentHeightPx,
+  visualTopForPage,
 } from "./page-geometry";
 import { flowBreakPositions } from "./page-flow";
 
@@ -36,6 +38,23 @@ export function printableContentHeight(metrics: PageSeamMetrics): number {
 
 export function seamSpacerHeight(metrics: PageSeamMetrics): number {
   return flowBreakHeightPx(metrics.margin, metrics.gap);
+}
+
+/**
+ * Explicit page breaks can sit anywhere on a sheet. The spacer after them has
+ * to fill the rest of that sheet plus the canvas gap so following content
+ * starts at the top of the next page — overflow spacers are only the seam.
+ */
+export function forcedBreakSpacerHeight(
+  breakBottomPx: number,
+  pageHeightPx: number,
+  gapPx: number,
+  marginPx: number,
+  seamHeightPx: number,
+): number {
+  const page = pageAtVisualOffset(breakBottomPx, pageHeightPx, gapPx);
+  const nextPrintableTop = visualTopForPage(page + 1, pageHeightPx, gapPx) + marginPx;
+  return Math.max(seamHeightPx, Math.round(nextPrintableTop - breakBottomPx));
 }
 
 /** Bottom margin + canvas gap + next top margin, in visual paper/editor coordinates. */

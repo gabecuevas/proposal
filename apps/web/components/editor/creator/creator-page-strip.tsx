@@ -30,7 +30,7 @@ export function CreatorPageStrip({ name, pageCount, currentPage, pageSizeLabel, 
       <button
         type="button"
         onClick={onAddPage}
-        className="ml-auto inline-flex h-5 w-5 items-center justify-center rounded text-muted hover:bg-slate-100 hover:text-foreground"
+        className="ml-auto inline-flex h-6 w-6 items-center justify-center rounded text-muted hover:bg-slate-100 hover:text-foreground"
         aria-label="Add page"
       >
         <IconPlus className="h-3.5 w-3.5" />

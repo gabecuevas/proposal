@@ -326,6 +326,35 @@ export function IconKebab({ className }: IconProps) {
   );
 }
 
+export function IconEllipsis({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <circle cx="5" cy="12" r="1.5" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+      <circle cx="19" cy="12" r="1.5" fill="currentColor" />
+    </Svg>
+  );
+}
+
+export function IconSliders({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M4 8h10M18 8h2M4 16h2M10 16h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <circle cx="16" cy="8" r="2.1" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="8" cy="16" r="2.1" stroke="currentColor" strokeWidth="1.6" />
+    </Svg>
+  );
+}
+
+export function IconBan({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M7.2 16.8L16.8 7.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 export function IconImage({ className }: IconProps) {
   return (
     <Svg className={className}>
@@ -623,6 +652,21 @@ export function IconDuplicate({ className }: IconProps) {
       <rect x="8" y="8" width="11" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
       <path
         d="M8 16H6.5A1.5 1.5 0 015 14.5v-9A1.5 1.5 0 016.5 4h9A1.5 1.5 0 0117 5.5V8"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeDasharray="2.2 1.6"
+      />
+    </Svg>
+  );
+}
+
+export function IconDuplicatePage({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <rect x="7" y="7" width="12" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M13 10v6M10 13h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path
+        d="M7 16H5.5A1.5 1.5 0 014 14.5v-9A1.5 1.5 0 015.5 4h9A1.5 1.5 0 0116 5.5V7"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeDasharray="2.2 1.6"

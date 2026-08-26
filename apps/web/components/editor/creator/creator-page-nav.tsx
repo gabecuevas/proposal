@@ -49,7 +49,7 @@ export function CreatorPageNav({
 
   useEffect(() => {
     const paper = paperRef.current;
-    const source = paper?.querySelector(".tiptap-creator, .ProseMirror") as HTMLElement | null;
+    const source = paper?.querySelector("[data-creator-surface], .tiptap-creator, .ProseMirror") as HTMLElement | null;
     if (!source) {
       return;
     }

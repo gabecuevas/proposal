@@ -1,10 +1,17 @@
 import { Node } from "@tiptap/core";
 import { DEFAULT_PAGE_SIZE, parsePageSize, type PageSizeId } from "../page-geometry";
+import {
+  parsePageBackgrounds,
+  patchPageBackground,
+  type PageBackground,
+} from "../page-backgrounds";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     creatorDocument: {
       setPageSize: (pageSize: PageSizeId) => ReturnType;
+      setPageBackground: (pageIndex: number, patch: Partial<PageBackground>) => ReturnType;
+      clearPageBackground: (pageIndex: number) => ReturnType;
     };
   }
 }
@@ -33,6 +40,16 @@ export const CreatorDocument = Node.create({
         renderHTML: (attributes) =>
           attributes.title ? { "data-doc-title": String(attributes.title) } : {},
       },
+      pageBackgrounds: {
+        default: null,
+        parseHTML: (element) => parsePageBackgrounds(element.getAttribute("data-page-backgrounds")),
+        renderHTML: (attributes) => {
+          const parsed = parsePageBackgrounds(attributes.pageBackgrounds);
+          return Object.keys(parsed).length
+            ? { "data-page-backgrounds": JSON.stringify(parsed) }
+            : {};
+        },
+      },
     };
   },
 
@@ -40,8 +57,35 @@ export const CreatorDocument = Node.create({
     return {
       setPageSize:
         (pageSize) =>
-        ({ commands }) =>
-          commands.updateAttributes("doc", { pageSize: parsePageSize(pageSize) }),
+        ({ tr, dispatch }) => {
+          tr.setDocAttribute("pageSize", parsePageSize(pageSize));
+          dispatch?.(tr);
+          return true;
+        },
+      setPageBackground:
+        (pageIndex, patch) =>
+        ({ tr, editor, dispatch }) => {
+          const next = patchPageBackground(
+            parsePageBackgrounds(editor.state.doc.attrs.pageBackgrounds),
+            pageIndex,
+            patch,
+          );
+          tr.setDocAttribute("pageBackgrounds", next);
+          dispatch?.(tr);
+          return true;
+        },
+      clearPageBackground:
+        (pageIndex) =>
+        ({ tr, editor, dispatch }) => {
+          const next = patchPageBackground(
+            parsePageBackgrounds(editor.state.doc.attrs.pageBackgrounds),
+            pageIndex,
+            { color: null, imageKey: null },
+          );
+          tr.setDocAttribute("pageBackgrounds", next);
+          dispatch?.(tr);
+          return true;
+        },
     };
   },
 });

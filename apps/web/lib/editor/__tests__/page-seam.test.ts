@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   childIndexesNeedingBreakBefore,
+  forcedBreakSpacerHeight,
   rangeOverlapsSeam,
   validFlowPos,
   visualSeamBand,
@@ -25,6 +26,11 @@ describe("page seams", () => {
     expect(validFlowPos(3922, 0)).toBeNull();
     expect(validFlowPos(3922, 3922)).toBeNull();
     expect(validFlowPos(3922, 2846)).toBe(2846);
+  });
+
+  it("fills the rest of the sheet after an explicit page break", () => {
+    expect(forcedBreakSpacerHeight(100, 1056, 32, 48, 128)).toBe(1036);
+    expect(forcedBreakSpacerHeight(1008, 1056, 32, 48, 128)).toBe(128);
   });
 
   it("breaks before a pricing-table row that would overflow the printable page", () => {

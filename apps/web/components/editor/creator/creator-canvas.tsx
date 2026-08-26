@@ -9,8 +9,16 @@ import {
   visualTopForPage,
   type PageSizeId,
 } from "@/lib/editor/page-geometry";
+import {
+  deleteVisualPage,
+  duplicateVisualPage,
+  savePageToLibrary,
+} from "@/lib/editor/page-actions";
 import { CreatorBlockControls } from "./creator-block-controls";
+import { CreatorPageBackgrounds } from "./creator-page-backgrounds";
+import { CreatorPageMenu } from "./creator-page-menu";
 import { CreatorPageNav, readVisiblePage } from "./creator-page-nav";
+import { useCreatorPageActions } from "./creator-page-workspace";
 import { CreatorSelectionToolbar } from "./creator-selection-toolbar";
 import { FIELD_DRAG_MIME } from "./field-types";
 import { SlashInsertMenu } from "./slash-insert-menu";
@@ -46,6 +54,8 @@ export function CreatorCanvas({
   const spec = pageSizeSpec(pageSize);
   const [pageCount, setPageCount] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
+  const [openMenuPage, setOpenMenuPage] = useState<number | null>(null);
+  const pageActions = useCreatorPageActions();
 
   useEffect(() => {
     const paper = paperRef.current;
@@ -54,7 +64,12 @@ export function CreatorCanvas({
       return;
     }
     const measure = () => {
-      const pages = pageCountForPaperHeight(paper.scrollHeight, spec.heightPx, PAGE_GAP_PX);
+      const flow = paper.querySelector(".ProseMirror") as HTMLElement | null;
+      const pages = pageCountForPaperHeight(
+        flow?.scrollHeight || paper.scrollHeight,
+        spec.heightPx,
+        PAGE_GAP_PX,
+      );
       setPageCount(pages);
       onPageCountChange?.(pages);
       if (scroller) {
@@ -66,6 +81,10 @@ export function CreatorCanvas({
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(paper);
+    const flow = paper.querySelector(".ProseMirror");
+    if (flow) {
+      observer.observe(flow);
+    }
     scroller?.addEventListener("scroll", measure, { passive: true });
     return () => {
       observer.disconnect();
@@ -150,14 +169,48 @@ export function CreatorCanvas({
             {Array.from({ length: pageCount }, (_, index) => (
               <div
                 key={index}
-                className="creator-page-index"
+                className="creator-page-chrome"
                 style={{ top: visualTopForPage(index, spec.heightPx, PAGE_GAP_PX) }}
-                aria-hidden
               >
-                Page {index + 1} of {pageCount}
+                <div className="creator-page-index">
+                  Page {index + 1} of {pageCount}
+                </div>
+                {pageActions ? (
+                  <CreatorPageMenu
+                    page={index + 1}
+                    pageCount={pageCount}
+                    open={openMenuPage === index + 1}
+                    onToggle={() => setOpenMenuPage((current) => (current === index + 1 ? null : index + 1))}
+                    onClose={() => setOpenMenuPage(null)}
+                    onPageProperties={() => pageActions.openPageProperties(index + 1)}
+                    onImportBackground={() => pageActions.openImportBackground(index + 1)}
+                    onDuplicate={() => {
+                      if (!editor) {
+                        return;
+                      }
+                      duplicateVisualPage(editor, paperRef.current, index);
+                    }}
+                    onSaveToLibrary={async () => {
+                      if (!editor) {
+                        return "Could not save";
+                      }
+                      const result = await savePageToLibrary(editor, paperRef.current, index);
+                      return result.message;
+                    }}
+                    onDelete={() => {
+                      if (!editor) {
+                        return;
+                      }
+                      deleteVisualPage(editor, paperRef.current, index, pageCount);
+                    }}
+                  />
+                ) : null}
               </div>
             ))}
-            <EditorContent editor={editor} />
+            <div data-creator-surface className="relative">
+              <CreatorPageBackgrounds editor={editor} pageCount={pageCount} spec={spec} />
+              <EditorContent editor={editor} />
+            </div>
             <CreatorBlockControls
               editor={editor}
               paperRef={paperRef}

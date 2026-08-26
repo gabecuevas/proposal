@@ -4,6 +4,7 @@ import { fieldCanvasAspectRatio } from "./extensions/field-canvas";
 import { clampImageWidth, parseImageAlign } from "./extensions/resizable-image";
 import { collectHeadings } from "./extensions/table-of-contents";
 import { migrateSignerFieldsDoc } from "./migrate-signer-fields";
+import { renderPageBackgroundsHtml } from "./page-backgrounds";
 import { calculateQuoteTotals } from "./quote";
 import { parseSignerFieldAttrs } from "./signer-field-attrs";
 import { renderVariableText } from "./variables";
@@ -339,8 +340,15 @@ function renderNode(node: EditorNode, input: RenderInput): string {
 export function renderComputedHtml(input: RenderInput): string {
   const doc = migrateSignerFieldsDoc(input.doc);
   const body = doc.content.map((node) => renderNode(node, input)).join("");
+  const backgrounds = renderPageBackgroundsHtml(doc, {
+    assetBaseUrl: input.assetBaseUrl,
+    assetToken: input.assetToken,
+  });
+  const article = backgrounds
+    ? `<div class="print-root">${backgrounds}<article>${body}</article></div>`
+    : `<article>${body}</article>`;
   if (input.mode !== "finalized") {
-    return `<article>${body}</article>`;
+    return article;
   }
   const certificate = input.certificate;
   const certificateBody = certificate
@@ -354,5 +362,5 @@ export function renderComputedHtml(input: RenderInput): string {
         `<p>Artifact key: ${escapeHtml(certificate.pdfKey ?? "pending")}</p>`,
       ].join("")
     : "<p>Document finalized with immutable audit trail.</p>";
-  return `<article>${body}</article><section class="certificate-page"><h2>Certificate</h2>${certificateBody}</section>`;
+  return `${article}<section class="certificate-page"><h2>Certificate</h2>${certificateBody}</section>`;
 }

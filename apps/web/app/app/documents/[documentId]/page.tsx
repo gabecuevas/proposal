@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { CreatorCanvas } from "@/components/editor/creator/creator-canvas";
 import { CreatorFieldsSidebar } from "@/components/editor/creator/creator-fields-sidebar";
 import { CreatorHeader } from "@/components/editor/creator/creator-header";
-import { CreatorPageStrip } from "@/components/editor/creator/creator-page-strip";
+import { CreatorPageWorkspace } from "@/components/editor/creator/creator-page-workspace";
 import { SignerRecipientProvider } from "@/components/editor/signer-field-context";
 import { PricingProvider } from "@/components/editor/pricing-context";
 import { defaultPricingModel } from "@/lib/editor/defaults";
@@ -15,7 +15,7 @@ import { editorExtensions } from "@/lib/editor/extensions";
 import { insertPageBreak } from "@/lib/editor/insert-elements";
 import { insertSignerFieldAtPoint, insertSignerFieldBlock } from "@/lib/editor/insert-signer-field";
 import { migrateSignerFieldsDoc } from "@/lib/editor/migrate-signer-fields";
-import { pageSizeFromDoc, pageSizeSpec, withPageSize, type PageSizeId } from "@/lib/editor/page-geometry";
+import { pageSizeFromDoc, withPageSize, type PageSizeId } from "@/lib/editor/page-geometry";
 import { openPrintPreview } from "@/lib/editor/print-document";
 import { AUTOSAVE_DELAY_MS } from "@/lib/editor/autosave";
 import { calculateQuoteTotals } from "@/lib/editor/quote";
@@ -676,14 +676,14 @@ export default function DocumentDetailPage({ params }: Params) {
         ) : null}
 
         <div className="flex min-h-0 min-w-0 flex-1">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <CreatorPageStrip
-              name={name || derivedTitle}
-              pageCount={pageCount}
-              currentPage={currentPage}
-              pageSizeLabel={pageSizeSpec(pageSize).shortLabel}
-              onAddPage={() => editor && insertPageBreak(editor)}
-            />
+          <CreatorPageWorkspace
+            editor={editor}
+            name={name || derivedTitle}
+            pageCount={pageCount}
+            currentPage={currentPage}
+            pageSize={pageSize}
+            onAddPage={() => editor && insertPageBreak(editor)}
+          >
             <CreatorCanvas
               editor={editor}
               pageSize={pageSize}
@@ -704,7 +704,7 @@ export default function DocumentDetailPage({ params }: Params) {
                 });
               }}
             />
-          </div>
+          </CreatorPageWorkspace>
 
           <CreatorFieldsSidebar
             editor={editor}

@@ -52,6 +52,20 @@ export function sliceNodeToDoc(node: EditorNode): EditorDoc {
   return { type: "doc", content: [node] };
 }
 
+export function sliceNodesToDoc(nodes: EditorNode[]): EditorDoc {
+  return { type: "doc", content: nodes.length ? nodes : [{ type: "paragraph" }] };
+}
+
+export function defaultLibraryNameFromNodes(nodes: EditorNode[], fallback: string): string {
+  for (const node of nodes) {
+    const text = firstTextFromNode(node).replace(/\s+/g, " ").trim();
+    if (text) {
+      return text.slice(0, 60);
+    }
+  }
+  return fallback;
+}
+
 export function firstTextFromNode(node: EditorNode | undefined): string {
   if (!node) {
     return "";

@@ -1,3 +1,4 @@
+import { printPageBackgroundCss } from "./page-backgrounds";
 import {
   pageSizeFromDoc,
   pageSizeSpec,
@@ -18,7 +19,7 @@ export function printDocumentCss(spec: PageSizeSpec): string {
   const contentWidthPx = spec.widthPx - 2 * spec.marginPx;
   return `
 @page { size: ${cssPageSize(spec.id)}; margin: ${marginIn}in; }
-html, body { margin: 0; padding: 0; background: #fff; }
+html, body { margin: 0; padding: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 article {
   position: relative;
   width: ${contentWidthPx}px;
@@ -75,6 +76,7 @@ td, th { border: 1px solid #cbd5e1; padding: 6px 8px; }
   --creator-page-gap: 0px;
   --creator-page-height: ${spec.heightPx}px;
 }
+${printPageBackgroundCss(spec)}
 `.trim();
 }
 

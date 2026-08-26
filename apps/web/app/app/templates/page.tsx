@@ -121,7 +121,7 @@ export default function AppTemplatesPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       <h1 className="sr-only">Templates</h1>
 
       <UploadDropzone onUploaded={() => void loadTemplates()} />
@@ -150,7 +150,7 @@ export default function AppTemplatesPage() {
             })}
           </div>
 
-          <div className="relative mb-2 w-full max-w-xs">
+          <div className="relative mb-2 w-full min-w-0 sm:max-w-xs">
             <span
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
               aria-hidden
@@ -172,7 +172,7 @@ export default function AppTemplatesPage() {
 
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(11.5rem,1fr))] gap-4">
           <Link
             href="/app/templates/new"
             className="group flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-sm transition-shadow hover:shadow-md"
@@ -253,6 +253,6 @@ export default function AppTemplatesPage() {
           </p>
         ) : null}
       </section>
-    </main>
+    </div>
   );
 }

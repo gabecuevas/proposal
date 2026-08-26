@@ -10,6 +10,7 @@ describe("print document", () => {
     expect(html).toContain("break-inside: auto");
     expect(html).toContain(".creator-text-box");
     expect(html).toContain("--creator-page-height: 1056px");
+    expect(html).toContain(".print-page-background");
     expect(html).toContain("<!DOCTYPE html>");
   });
 

@@ -39,38 +39,56 @@ export default function ContentLibraryPage() {
   }, []);
 
   return (
-    <main className="space-y-4">
+    <div className="w-full min-w-0 space-y-4">
       <h1 className="text-2xl font-semibold">Content Library</h1>
       <div className="rounded-lg border border-border bg-surface p-3">
         <p className="mb-2 text-sm text-muted">Create reusable block</p>
-        <div className="grid gap-2 md:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_12rem_auto]">
           <input
-            className="rounded border border-border bg-background px-2 py-1 text-sm"
+            className="min-w-0 rounded border border-border bg-background px-2 py-1 text-sm"
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Block name"
           />
           <input
-            className="rounded border border-border bg-background px-2 py-1 text-sm"
+            className="min-w-0 rounded border border-border bg-background px-2 py-1 text-sm"
             value={blockType}
             onChange={(event) => setBlockType(event.target.value)}
             placeholder="Block type"
           />
-          <button onClick={create} className="rounded bg-primary px-3 py-1 text-sm text-primary-foreground">
+          <button
+            onClick={create}
+            className="rounded bg-primary px-3 py-1 text-sm text-primary-foreground sm:justify-self-start"
+          >
             Create
           </button>
         </div>
       </div>
-      <div className="space-y-2">
-        {items.map((item) => (
-          <div key={item.id} className="rounded border border-border bg-surface p-3 text-sm">
-            <p className="font-medium">
-              {item.name} (v{item.version})
-            </p>
-            <p className="text-xs text-muted">{item.block_type}</p>
-          </div>
-        ))}
+      <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+        <table className="w-full min-w-[28rem] text-left text-sm">
+          <thead className="border-b border-border bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-muted">
+            <tr>
+              <th className="px-4 py-3">Name</th>
+              <th className="px-4 py-3">Type</th>
+              <th className="px-4 py-3">Version</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.id} className="border-b border-border last:border-0 hover:bg-slate-50/60">
+                <td className="min-w-0 px-4 py-3 font-medium text-foreground">
+                  <span className="truncate">{item.name}</span>
+                </td>
+                <td className="whitespace-nowrap px-4 py-3 text-muted">{item.block_type}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-muted">v{item.version}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {items.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-muted">No content blocks yet.</p>
+        ) : null}
       </div>
-    </main>
+    </div>
   );
 }

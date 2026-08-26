@@ -12,6 +12,7 @@ import {
   IconSettings,
 } from "./shell-icons";
 import { appSections, type SectionId } from "./nav-config";
+import { APP_SIDEBAR_WIDTH_CLASS } from "./shell-metrics";
 
 const sectionIcons: Record<SectionId, (props: { className?: string }) => React.ReactElement> = {
   dashboard: IconHome,
@@ -51,28 +52,38 @@ export function AppTopBar({
   const initials = (userInitials || "DS").slice(0, 2).toUpperCase();
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-1 border-b border-border bg-surface px-2 sm:gap-3 sm:px-4">
-      <button
-        type="button"
-        onClick={onToggleSidebar}
-        aria-expanded={sidebarOpen}
-        aria-controls="app-shell-sidebar"
-        aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-        className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-slate-100 hover:text-foreground"
+    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center border-b border-border bg-surface pr-2 sm:pr-4">
+      <div
+        className={cn(
+          "flex h-full shrink-0 items-center gap-1 px-2 sm:gap-3 sm:px-4",
+          sidebarOpen ? APP_SIDEBAR_WIDTH_CLASS : "w-auto",
+        )}
       >
-        <IconMenu />
-      </button>
+        <button
+          type="button"
+          onClick={onToggleSidebar}
+          aria-expanded={sidebarOpen}
+          aria-controls="app-shell-sidebar"
+          aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+          className="shrink-0 rounded-md p-2 text-muted transition-colors hover:bg-slate-100 hover:text-foreground"
+        >
+          <IconMenu />
+        </button>
 
-      <Link
-        href="/app"
-        className="font-app-serif shrink-0 pr-1 text-lg font-semibold tracking-tight text-foreground sm:pr-3"
-      >
-        DoxySign
-      </Link>
+        <Link
+          href="/app"
+          className="font-app-serif shrink-0 text-lg font-semibold tracking-tight text-foreground"
+        >
+          DoxySign
+        </Link>
+      </div>
 
       <nav
         aria-label="Primary"
-        className="flex h-full min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto"
+        className={cn(
+          "flex h-full min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto",
+          sidebarOpen && "border-l border-border",
+        )}
       >
         {appSections.map((section) => {
           const Icon = sectionIcons[section.id];

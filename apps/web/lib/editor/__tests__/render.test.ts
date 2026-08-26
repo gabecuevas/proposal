@@ -272,4 +272,32 @@ describe("renderComputedHtml", () => {
     expect(html).toContain("USD 9.00");
     expect(html).toContain("USD 189.00");
   });
+
+  test("paints per-page backgrounds behind article content", () => {
+    const html = renderComputedHtml({
+      doc: {
+        type: "doc",
+        attrs: {
+          pageSize: "letter",
+          pageBackgrounds: {
+            "0": { color: "#dc2626", colorOpacity: 100, imageKey: "workspaces/ws/uploads/bg.png" },
+          },
+        },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Cover" }] }],
+      },
+      mode: "sender-preview",
+      resolvedVariables: {},
+      signerFieldValues: [],
+      assetBaseUrl: "https://app.example.test",
+      assetToken: "tok_bg",
+    });
+    expect(html).toContain("print-root");
+    expect(html).toContain("print-page-background");
+    expect(html).toContain("background-color:#dc2626");
+    expect(html).toContain(
+      "https://app.example.test/api/uploads/workspaces/ws/uploads/bg.png?token=tok_bg",
+    );
+    expect(html).toContain("<article>");
+    expect(html).toContain("Cover");
+  });
 });

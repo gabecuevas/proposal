@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultLibraryName,
+  defaultLibraryNameFromNodes,
   libraryCategoryForType,
   libraryCategoryLabel,
   resolveLibraryCategory,
   sliceNodeToDoc,
+  sliceNodesToDoc,
 } from "../library-blocks";
 import type { EditorNode } from "../types";
 
@@ -32,5 +34,16 @@ describe("library-blocks", () => {
     expect(defaultLibraryName({ type: "image" })).toBe("Images");
     expect(resolveLibraryCategory("clause")).toBe("text");
     expect(resolveLibraryCategory("video")).toBe("video");
+  });
+
+  it("slices several page elements into one library document", () => {
+    const nodes: EditorNode[] = [
+      { type: "paragraph", content: [{ type: "text", text: "Cover title" }] },
+      { type: "image", attrs: { src: "photo.png" } },
+    ];
+    expect(sliceNodesToDoc(nodes)).toEqual({ type: "doc", content: nodes });
+    expect(defaultLibraryNameFromNodes(nodes, "Page 1")).toBe("Cover title");
+    expect(defaultLibraryNameFromNodes([], "Page 2")).toBe("Page 2");
+    expect(sliceNodesToDoc([])).toEqual({ type: "doc", content: [{ type: "paragraph" }] });
   });
 });

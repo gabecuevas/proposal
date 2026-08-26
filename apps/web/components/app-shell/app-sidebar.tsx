@@ -6,6 +6,7 @@ import { cn } from "@repo/ui/utils";
 import { useLogout } from "@/components/auth/logout-button";
 import { IconPower, IconSearch } from "./shell-icons";
 import { isNavItemActive, navItemHrefHash, type AppSection, type CountKey, type SectionId } from "./nav-config";
+import { APP_SIDEBAR_WIDTH_CLASS } from "./shell-metrics";
 
 type AppSidebarProps = {
   section: AppSection;
@@ -131,12 +132,12 @@ export function AppSidebar({
       className={cn(
         "sticky top-14 z-20 flex h-[calc(100vh-3.5rem)] shrink-0 flex-col overflow-hidden border-r border-border bg-surface transition-[width] duration-200 ease-out",
         "max-md:fixed max-md:bottom-0 max-md:left-0 max-md:top-14 max-md:z-40 max-md:h-auto max-md:shadow-xl",
-        open ? "w-[240px]" : "w-0 border-r-0",
+        open ? APP_SIDEBAR_WIDTH_CLASS : "w-0 border-r-0",
       )}
     >
       <div
         className={cn(
-          "flex h-full w-[240px] min-w-[240px] flex-col",
+          `flex h-full ${APP_SIDEBAR_WIDTH_CLASS} min-w-[240px] flex-col`,
           !open && "pointer-events-none opacity-0",
         )}
       >

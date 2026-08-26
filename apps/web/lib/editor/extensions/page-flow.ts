@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { contentOffsetFromVisual, flowBreakPositions, type FlowLine } from "../page-flow";
 import {
+  forcedBreakSpacerHeight,
   pageSeamMetricsFromStyles,
   printableContentHeight,
   seamSpacerHeight,
@@ -207,14 +208,51 @@ function posForLine(view: EditorView, line: VisualLine): number | null {
   return pos;
 }
 
-function forcedBreakPositions(view: EditorView): number[] {
-  const positions: number[] = [];
-  view.state.doc.descendants((node, pos) => {
-    if (node.type.name === "pageBreak") {
-      positions.push(pos + node.nodeSize);
+function overlayPos(doc: EditorView["state"]["doc"]): number {
+  let found = doc.content.size;
+  doc.forEach((node, pos) => {
+    if (node.type.name === "fieldOverlay") {
+      found = pos;
     }
   });
+  return found;
+}
+
+function forcedBreakPositions(view: EditorView): number[] {
+  const overlay = overlayPos(view.state.doc);
+  const positions: number[] = [];
+  view.state.doc.descendants((node, pos) => {
+    if (node.type.name === "fieldOverlay") {
+      return false;
+    }
+    if (node.type.name === "pageBreak" && pos < overlay) {
+      positions.push(pos + node.nodeSize);
+    }
+    return true;
+  });
   return positions;
+}
+
+function pageBreakBottomPx(view: EditorView, afterPos: number): number | null {
+  const $pos = view.state.doc.resolve(afterPos);
+  const before = $pos.nodeBefore;
+  if (before?.type.name !== "pageBreak") {
+    return null;
+  }
+  const breakPos = afterPos - before.nodeSize;
+  const dom = view.nodeDOM(breakPos);
+  if (!(dom instanceof HTMLElement)) {
+    return null;
+  }
+  const paper = (view.dom.closest("[data-creator-paper]") as HTMLElement | null) ?? view.dom;
+  return dom.getBoundingClientRect().bottom - paper.getBoundingClientRect().top;
+}
+
+function decorationSignature(set: DecorationSet): string {
+  return set
+    .find()
+    .map((decoration) => String(decoration.spec.key ?? decoration.from))
+    .join("|");
 }
 
 export function createFlowBreakElement(heightPx: number): HTMLElement {
@@ -243,10 +281,6 @@ export function createFlowBreakElement(heightPx: number): HTMLElement {
   el.style.boxShadow = "none";
   el.style.breakBefore = "auto";
   return el;
-}
-
-function samePositions(a: number[], b: number[]): boolean {
-  return a.length === b.length && a.every((pos, index) => pos === b[index]);
 }
 
 function currentBreakPositions(set: DecorationSet): number[] {
@@ -296,18 +330,31 @@ function buildDecorations(view: EditorView): DecorationSet {
   });
 
   const forced = forcedBreakPositions(view);
-  const positions = [...new Set([...overflow, ...forced])]
-    .map((pos) => validFlowPos(docSize, pos))
-    .filter((pos): pos is number => pos != null)
-    .sort((a, b) => a - b);
+  const forcedValid = new Set(
+    forced.map((pos) => validFlowPos(docSize, pos)).filter((pos): pos is number => pos != null),
+  );
+  const overflowValid = new Set(
+    overflow.map((pos) => validFlowPos(docSize, pos)).filter((pos): pos is number => pos != null),
+  );
+  const positions = [...new Set([...forcedValid, ...overflowValid])].sort((a, b) => a - b);
 
-  const decorations = positions.map((pos) =>
-    Decoration.widget(pos, () => createFlowBreakElement(spacerHeight), {
+  const decorations = positions.map((pos) => {
+    let height = spacerHeight;
+    if (forcedValid.has(pos)) {
+      const bottom = pageBreakBottomPx(view, pos);
+      if (bottom != null) {
+        height = Math.max(
+          height,
+          forcedBreakSpacerHeight(bottom, pageHeight, gap, margin, spacerHeight),
+        );
+      }
+    }
+    return Decoration.widget(pos, () => createFlowBreakElement(height), {
       side: -1,
       ignoreSelection: true,
-      key: `flow-break-${pos}`,
-    }),
-  );
+      key: `flow-break-${pos}-${height}`,
+    });
+  });
   return DecorationSet.create(view.state.doc, decorations);
 }
 
@@ -374,7 +421,7 @@ export const PageFlow = Extension.create({
               const next = buildDecorations(view);
               applyPageCount(view, currentBreakPositions(next).length);
               const prev = key.getState(view.state) ?? DecorationSet.empty;
-              const changed = !samePositions(currentBreakPositions(prev), currentBreakPositions(next));
+              const changed = decorationSignature(prev) !== decorationSignature(next);
               if (changed) {
                 const tr = view.state.tr.setMeta(key, next).setMeta("addToHistory", false);
                 view.dispatch(tr);
