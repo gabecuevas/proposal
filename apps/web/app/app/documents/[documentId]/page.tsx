@@ -23,6 +23,7 @@ import { renderComputedHtml } from "@/lib/editor/render";
 import { SaveQueue } from "@/lib/editor/save-queue";
 import type { SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
 import { serializeStable } from "@/lib/editor/stable";
+import { crmToDocumentVariables } from "@/lib/crm/variables";
 import type { EditorDoc, PricingModel, VariableContext, VariableRegistry } from "@/lib/editor/types";
 import { resolveTemplateVariables } from "@/lib/editor/variables";
 import { applyTitleToDoc, documentTitleFromEditorJson } from "@/lib/ui/document-title";
@@ -96,7 +97,19 @@ function contactToVariables(contact: Contact): VariableContext {
     .filter(Boolean)
     .join(", ");
 
+  const tokens = crmToDocumentVariables(contact, {
+    name: contact.company_name,
+    phone: contact.phone,
+    city: contact.city,
+    address_line_1: contact.address_line_1,
+    address_line_2: contact.address_line_2,
+    state: contact.state,
+    postal_code: contact.postal_code,
+    country: contact.country,
+  });
+
   return {
+    ...tokens,
     contact: {
       id: contact.id,
       first_name: contact.first_name,

@@ -22,6 +22,7 @@ type UpdateContactBody = {
   custom_fields_json?: Record<string, unknown>;
   tags?: string[];
   color_label?: string;
+  company_id?: string | null;
 };
 
 export async function PATCH(request: NextRequest, { params }: Params) {

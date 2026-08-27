@@ -30,6 +30,8 @@ model Workspace {
   members       WorkspaceMember[]
   invites       WorkspaceInvite[]
   contacts      Contact[]
+  companies     Company[]
+  leads         Lead[]
   sentVersions  DocumentSentVersion[]
   owner         User?            @relation("workspace_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
 }
@@ -204,6 +206,8 @@ model User {
   workspace_memberships  WorkspaceMember[]
   owned_workspaces       Workspace[]       @relation("workspace_owner")
   owned_contacts         Contact[]         @relation("contact_owner")
+  owned_companies        Company[]         @relation("company_owner")
+  owned_leads            Lead[]            @relation("lead_owner")
 }
 
 model Contact {
@@ -229,16 +233,75 @@ model Contact {
   tags              Json
   color_label       String?
   last_activity_at  DateTime?
+  company_id        String?
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
   owner     User?     @relation("contact_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
+  company   Company?  @relation(fields: [company_id], references: [id], onDelete: SetNull)
   documents Document[]
+  leads     Lead[]
 
   @@index([workspace_id, updated_at])
   @@index([workspace_id, full_name])
   @@index([workspace_id, email])
+  @@index([workspace_id, company_id])
+}
+
+model Company {
+  id             String   @id @default(cuid())
+  workspace_id   String
+  owner_user_id  String?
+  name           String
+  website        String?
+  phone          String?
+  email          String?
+  address_line_1 String?
+  address_line_2 String?
+  city           String?
+  state          String?
+  postal_code    String?
+  country        String?
+  industry       String?
+  notes          String?
+  tags           Json
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  owner     User?     @relation("company_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
+  people    Contact[]
+  leads     Lead[]
+
+  @@index([workspace_id, updated_at])
+  @@index([workspace_id, name])
+}
+
+model Lead {
+  id            String     @id @default(cuid())
+  workspace_id  String
+  owner_user_id String?
+  title         String
+  status        LeadStatus @default(NEW)
+  source        String?
+  value_minor   Int?
+  currency      String     @default("USD")
+  person_id     String?
+  company_id    String?
+  email         String?
+  phone         String?
+  notes         String?
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  owner     User?     @relation("lead_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
+  person    Contact?  @relation(fields: [person_id], references: [id], onDelete: SetNull)
+  company   Company?  @relation(fields: [company_id], references: [id], onDelete: SetNull)
+
+  @@index([workspace_id, updated_at])
+  @@index([workspace_id, status])
 }
 
 model WorkspaceMember {
@@ -399,6 +462,14 @@ enum WorkspaceRole {
   OWNER
   ADMIN
   MEMBER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  UNQUALIFIED
+  CONVERTED
 }
 
 enum WebhookDeliveryStatus {

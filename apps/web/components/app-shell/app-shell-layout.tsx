@@ -10,7 +10,7 @@ import { isImmersivePath, resolveSection } from "./nav-config";
 type AppShellLayoutProps = {
   children: ReactNode;
   userEmail: string;
-  userRole: string;
+  userName: string;
   userInitials?: string;
 };
 
@@ -23,7 +23,18 @@ function initialsFromEmail(email: string): string {
   return local.slice(0, 2).toUpperCase() || "DS";
 }
 
-function AppShellChrome({ children, userEmail, userRole, userInitials }: AppShellLayoutProps) {
+function initialsFromIdentity(name: string, email: string): string {
+  const nameParts = name.trim().split(/\s+/).filter(Boolean);
+  if (nameParts.length >= 2) {
+    return `${nameParts[0]![0]!}${nameParts[1]![0]!}`.toUpperCase();
+  }
+  if (nameParts[0] && nameParts[0].length >= 2) {
+    return nameParts[0].slice(0, 2).toUpperCase();
+  }
+  return initialsFromEmail(email);
+}
+
+function AppShellChrome({ children, userEmail, userName, userInitials }: AppShellLayoutProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -31,7 +42,7 @@ function AppShellChrome({ children, userEmail, userRole, userInitials }: AppShel
 
   const section = resolveSection(pathname);
   const tabParam = searchParams.get("tab");
-  const resolvedInitials = userInitials?.trim() || initialsFromEmail(userEmail);
+  const resolvedInitials = userInitials?.trim() || initialsFromIdentity(userName, userEmail);
 
   const isCompact = useCallback(
     () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches,
@@ -99,7 +110,8 @@ function AppShellChrome({ children, userEmail, userRole, userInitials }: AppShel
           hash={hash}
           onHashChange={setHash}
           userEmail={userEmail}
-          userRole={userRole}
+          userName={userName}
+          userInitials={resolvedInitials}
           open={sidebarOpen}
           onNavigate={closeIfCompact}
         />

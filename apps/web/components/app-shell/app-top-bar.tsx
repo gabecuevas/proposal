@@ -4,21 +4,21 @@ import Link from "next/link";
 import { cn } from "@repo/ui/utils";
 import {
   IconBell,
+  IconContacts,
   IconDocument,
   IconHome,
   IconLibrary,
   IconMenu,
   IconSearch,
-  IconSettings,
 } from "./shell-icons";
-import { appSections, type SectionId } from "./nav-config";
+import { topNavSections, type SectionId } from "./nav-config";
 import { APP_SIDEBAR_WIDTH_CLASS } from "./shell-metrics";
 
-const sectionIcons: Record<SectionId, (props: { className?: string }) => React.ReactElement> = {
+const sectionIcons: Record<Exclude<SectionId, "settings">, (props: { className?: string }) => React.ReactElement> = {
   dashboard: IconHome,
   documents: IconDocument,
   library: IconLibrary,
-  settings: IconSettings,
+  contacts: IconContacts,
 };
 
 function IconHelp({ className }: { className?: string }) {
@@ -85,8 +85,8 @@ export function AppTopBar({
           sidebarOpen && "border-l border-border",
         )}
       >
-        {appSections.map((section) => {
-          const Icon = sectionIcons[section.id];
+        {topNavSections.map((section) => {
+          const Icon = sectionIcons[section.id as Exclude<SectionId, "settings">];
           const active = section.id === activeSectionId;
           return (
             <Link

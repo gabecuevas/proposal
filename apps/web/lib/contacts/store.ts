@@ -24,6 +24,7 @@ export type ContactRecord = {
   tags: string[];
   color_label: string | null;
   last_activity_at: string | null;
+  company_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -51,6 +52,7 @@ type ContactRow = {
   tags: unknown;
   color_label: string | null;
   last_activity_at: Date | null;
+  company_id: string | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -82,6 +84,7 @@ function parseContact(row: ContactRow): ContactRecord {
     tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
     color_label: row.color_label,
     last_activity_at: row.last_activity_at?.toISOString() ?? null,
+    company_id: row.company_id,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -136,6 +139,7 @@ export async function createContact(input: {
   custom_fields_json?: Record<string, unknown>;
   tags?: string[];
   color_label?: string;
+  company_id?: string;
 }): Promise<ContactRecord> {
   const firstName = input.first_name.trim();
   const lastName = input.last_name.trim();
@@ -162,6 +166,7 @@ export async function createContact(input: {
       custom_fields_json: (input.custom_fields_json ?? {}) as InputJsonValue,
       tags: input.tags ?? [],
       color_label: input.color_label?.trim() || null,
+      company_id: input.company_id?.trim() || null,
       last_activity_at: null,
     },
   });
@@ -189,6 +194,7 @@ export async function updateContact(
     custom_fields_json?: Record<string, unknown>;
     tags?: string[];
     color_label?: string;
+    company_id?: string | null;
   },
 ): Promise<ContactRecord | null> {
   const existing = await prisma.contact.findFirst({
@@ -226,7 +232,13 @@ export async function updateContact(
       tags: input.tags ?? (Array.isArray(existing.tags) ? existing.tags : []),
       color_label:
         input.color_label !== undefined ? input.color_label.trim() || null : existing.color_label,
+      company_id:
+        input.company_id !== undefined ? input.company_id?.trim() || null : existing.company_id,
     },
   });
   return parseContact(row as ContactRow);
+}
+
+export async function countContacts(workspaceId: string): Promise<number> {
+  return prisma.contact.count({ where: { workspace_id: workspaceId } });
 }

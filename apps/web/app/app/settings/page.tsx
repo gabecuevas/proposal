@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { WorkspaceNameCard } from "@/components/settings/workspace-name-card";
 
 type CompliancePolicy = {
   workspaceId: string;
@@ -307,11 +308,15 @@ export default function SettingsPage() {
   return (
     <main className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Settings</h1>
-        <p className="mt-2 text-sm text-muted">Admin controls for compliance, API keys, and webhook trust policy.</p>
+        <h1 className="text-2xl font-semibold">Workspace settings</h1>
+        <p className="mt-2 text-sm text-muted">
+          Workspace identity, compliance, API keys, and webhook trust policy.
+        </p>
         {status ? <p className="mt-2 text-sm text-green-600">{status}</p> : null}
         {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
       </div>
+
+      <WorkspaceNameCard />
 
       <section id="compliance" className="scroll-mt-28 rounded-xl border border-border bg-surface p-4">
         <h2 className="text-lg font-semibold">Compliance Policy</h2>

@@ -290,6 +290,75 @@ export const documentNavIcons = {
   trash: IconTrash,
 } as const;
 
+export function IconLeads({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <path
+        d="M4 5h16l-5.5 7.2V19l-5 1.5v-8.3L4 5z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </StatusIcon>
+  );
+}
+
+export function IconPeople({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <circle cx="9" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M4 18c.5-2.2 2.4-3.5 5-3.5S13.5 15.8 14 18"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <circle cx="16.5" cy="8.5" r="2" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M20.5 18c-.4-1.6-1.8-2.5-3.7-2.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </StatusIcon>
+  );
+}
+
+export function IconCompanies({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <path
+        d="M4 20V8l6-3 6 3v12"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M10 20V12h4v8M20 20V11h-4" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </StatusIcon>
+  );
+}
+
+export function IconSignOut({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <path
+        d="M10 5H6a1 1 0 00-1 1v12a1 1 0 001 1h4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M10 12h10M16 8l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </StatusIcon>
+  );
+}
+
+export const sidebarIcons = {
+  ...documentNavIcons,
+  leads: IconLeads,
+  people: IconPeople,
+  companies: IconCompanies,
+} as const;
+
 export function IconLibrary({ className }: { className?: string }) {
   return (
     <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>

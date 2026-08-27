@@ -4,16 +4,24 @@ import {
   type DocumentCountKey,
 } from "@/lib/ui/document-tracking";
 
-export type CountKey = DocumentCountKey | "templates" | "contentBlocks";
+export type CountKey =
+  | DocumentCountKey
+  | "templates"
+  | "contentBlocks"
+  | "leads"
+  | "people"
+  | "companies";
+
+export type SidebarIconId = DocumentCountKey | "leads" | "people" | "companies";
 
 export type AppNavItem = {
   label: string;
   href: string;
   countKey?: CountKey;
-  icon?: DocumentCountKey;
+  icon?: SidebarIconId;
 };
 
-export type SectionId = "dashboard" | "documents" | "library" | "settings";
+export type SectionId = "dashboard" | "documents" | "library" | "contacts" | "settings";
 
 export type AppNavFilter = {
   id: "departments" | "members";
@@ -32,6 +40,8 @@ export type AppSection = {
   searchPlaceholder?: string;
   /** Scope selectors rendered above the item list. */
   filters?: AppNavFilter[];
+  /** Hide from the top bar (Settings lives in the sidebar footer). */
+  showInTopNav?: boolean;
   items: AppNavItem[];
   /** Rendered under a divider at the bottom of the item list. */
   extras?: AppNavItem[];
@@ -78,14 +88,29 @@ export const appSections: AppSection[] = [
     extras: [{ label: "Create a template", href: "/app/templates/new" }],
   },
   {
+    id: "contacts",
+    label: "Contacts",
+    href: "/app/contacts/people",
+    prefixes: ["/app/contacts"],
+    createCta: false,
+    items: [
+      { label: "Leads", href: "/app/contacts/leads", countKey: "leads", icon: "leads" },
+      { label: "People", href: "/app/contacts/people", countKey: "people", icon: "people" },
+      { label: "Companies", href: "/app/contacts/companies", countKey: "companies", icon: "companies" },
+    ],
+  },
+  {
     id: "settings",
     label: "Settings",
     href: "/app/settings",
-    prefixes: ["/app/contacts", "/app/analytics"],
+    prefixes: ["/app/analytics"],
+    showInTopNav: false,
     createCta: false,
     items: [
       { label: "Workspace", href: "/app/settings" },
-      { label: "My Contacts", href: "/app/contacts" },
+      { label: "Integrations", href: "/app/settings/integrations" },
+      { label: "All users", href: "/app/settings/users" },
+      { label: "Billing", href: "/app/settings/billing" },
       { label: "Analytics", href: "/app/analytics" },
       { label: "Compliance", href: "/app/settings#compliance" },
       { label: "Developer API", href: "/app/settings#api-keys" },
@@ -95,6 +120,8 @@ export const appSections: AppSection[] = [
 ];
 
 const dashboardSection = appSections[0]!;
+
+export const topNavSections = appSections.filter((section) => section.showInTopNav !== false);
 
 export function resolveSection(pathname: string): AppSection {
   const matches = appSections.filter((section) => {

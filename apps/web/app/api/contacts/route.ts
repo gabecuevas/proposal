@@ -38,6 +38,7 @@ type CreateContactBody = {
   custom_fields_json?: Record<string, unknown>;
   tags?: string[];
   color_label?: string;
+  company_id?: string;
 };
 
 export async function POST(request: NextRequest) {
@@ -73,6 +74,7 @@ export async function POST(request: NextRequest) {
       custom_fields_json: body.custom_fields_json,
       tags: body.tags,
       color_label: body.color_label,
+      company_id: body.company_id,
     });
     return jsonWithRequestId(request, { contact }, { status: 201 });
   } catch {

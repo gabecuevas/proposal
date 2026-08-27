@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { cn } from "@repo/ui/utils";
-import { useLogout } from "@/components/auth/logout-button";
 import { documentTrackingCounts } from "@/lib/ui/document-tracking";
-import { documentNavIcons, IconPower, IconSearch } from "./shell-icons";
+import { SettingsMenu } from "./settings-menu";
+import { sidebarIcons, IconSearch } from "./shell-icons";
 import { isNavItemActive, navItemHrefHash, type AppSection, type CountKey, type SectionId } from "./nav-config";
 import { APP_SIDEBAR_WIDTH_CLASS } from "./shell-metrics";
 
@@ -16,7 +16,8 @@ type AppSidebarProps = {
   hash: string;
   onHashChange: (hash: string) => void;
   userEmail: string;
-  userRole: string;
+  userName: string;
+  userInitials: string;
   open: boolean;
   onNavigate: () => void;
 };
@@ -86,11 +87,31 @@ function useShellCounts(sectionId: SectionId): Counts {
       setCounts({ templates, contentBlocks: blocks });
     }
 
+    async function loadCrmCounts() {
+      const response = await fetch("/api/crm/summary");
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as {
+        counts?: { leads?: number; people?: number; companies?: number };
+      };
+      if (cancelled) {
+        return;
+      }
+      setCounts({
+        leads: payload.counts?.leads ?? 0,
+        people: payload.counts?.people ?? 0,
+        companies: payload.counts?.companies ?? 0,
+      });
+    }
+
     setCounts({});
     if (sectionId === "documents") {
       void loadDocumentCounts().catch(() => undefined);
     } else if (sectionId === "library") {
       void loadLibraryCounts().catch(() => undefined);
+    } else if (sectionId === "contacts") {
+      void loadCrmCounts().catch(() => undefined);
     }
 
     return () => {
@@ -108,7 +129,8 @@ export function AppSidebar({
   hash,
   onHashChange,
   userEmail,
-  userRole,
+  userName,
+  userInitials,
   open,
   onNavigate,
 }: AppSidebarProps) {
@@ -116,7 +138,6 @@ export function AppSidebar({
   const teamMemberCount = useTeamMemberCount(
     Boolean(section.filters?.some((filter) => filter.id === "members")),
   );
-  const logout = useLogout();
 
   return (
     <aside
@@ -193,7 +214,7 @@ export function AppSidebar({
             const active = isNavItemActive(item, pathname, tabParam, hash);
             const count = item.countKey ? counts[item.countKey] : undefined;
             const itemHash = navItemHrefHash(item.href);
-            const Icon = item.icon ? documentNavIcons[item.icon] : null;
+            const Icon = item.icon ? sidebarIcons[item.icon] : null;
             return (
               <Link
                 key={item.href}
@@ -243,19 +264,13 @@ export function AppSidebar({
           ) : null}
         </nav>
 
-        <div className="shrink-0 border-t border-border px-3 py-3">
-          <p className="truncate text-xs font-medium text-foreground" title={userEmail}>
-            {userEmail}
-          </p>
-          <p className="mt-0.5 text-[11px] uppercase tracking-wide text-muted">{userRole}</p>
-          <button
-            type="button"
-            onClick={() => void logout()}
-            className="mt-2 flex w-full items-center gap-2 rounded-md py-2 pl-2.5 pr-2 text-sm text-muted transition-colors hover:bg-slate-100/80 hover:text-foreground"
-          >
-            <IconPower className="shrink-0 opacity-80" />
-            Logout
-          </button>
+        <div className="shrink-0 border-t border-border px-2 py-2">
+          <SettingsMenu
+            userName={userName}
+            userEmail={userEmail}
+            userInitials={userInitials}
+            active={section.id === "settings"}
+          />
         </div>
       </div>
     </aside>
