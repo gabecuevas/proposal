@@ -5,6 +5,11 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { EditorDoc } from "@/lib/editor/types";
 import { documentTitleFromEditorJson } from "@/lib/ui/document-title";
+import {
+  documentStatusDisplayLabel,
+  matchesDocumentTab,
+  toDocumentTrackingTab,
+} from "@/lib/ui/document-tracking";
 import { formatRelativeTime } from "@/lib/ui/time";
 
 type Recipient = { id: string; email: string; name: string; role: string };
@@ -18,22 +23,6 @@ type DocumentItem = {
   created_at: string;
   updated_at: string;
 };
-
-type TabKey = "all" | "draft" | "sent" | "viewed" | "completed" | "expired";
-
-/** Keys mirror the Documents entries in the app shell sidebar. */
-const tabMatchers: Record<TabKey, (status: string) => boolean> = {
-  all: () => true,
-  draft: (s) => s === "DRAFTED",
-  sent: (s) => s === "SENT",
-  viewed: (s) => s === "VIEWED" || s === "COMMENTED",
-  completed: (s) => s === "SIGNED" || s === "PAID",
-  expired: (s) => s === "EXPIRED" || s === "VOID",
-};
-
-function toTabKey(value: string | null): TabKey {
-  return value && value in tabMatchers ? (value as TabKey) : "all";
-}
 
 function statusBadgeClass(status: string): string {
   const s = status.toUpperCase();
@@ -50,27 +39,13 @@ function statusBadgeClass(status: string): string {
   if (s === "SIGNED" || s === "PAID") {
     return `${base} bg-emerald-100 text-emerald-800`;
   }
-  if (s === "EXPIRED" || s === "VOID") {
+  if (s === "VOID") {
     return `${base} bg-red-100 text-red-800`;
   }
+  if (s === "EXPIRED") {
+    return `${base} bg-amber-100 text-amber-800`;
+  }
   return `${base} bg-slate-100 text-slate-600`;
-}
-
-function statusDisplayLabel(status: string): string {
-  const s = status.toUpperCase();
-  if (s === "DRAFTED") {
-    return "Draft";
-  }
-  if (s === "SIGNED" || s === "PAID") {
-    return "Completed";
-  }
-  if (s === "VOID") {
-    return "Expired";
-  }
-  if (s === "COMMENTED") {
-    return "Viewed";
-  }
-  return s.charAt(0) + s.slice(1).toLowerCase();
 }
 
 function firstRecipientEmail(recipients: Recipient[]): string {
@@ -84,7 +59,7 @@ export default function DocumentsPage() {
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
 
-  const activeTab = toTabKey(searchParams.get("tab"));
+  const activeTab = toDocumentTrackingTab(searchParams.get("tab"));
 
   const loadDocuments = useCallback(async () => {
     setError("");
@@ -107,7 +82,7 @@ export default function DocumentsPage() {
   }, [loadDocuments]);
 
   const filtered = useMemo(
-    () => documents.filter((d) => tabMatchers[activeTab](d.status.toUpperCase())),
+    () => documents.filter((d) => matchesDocumentTab(activeTab, d.status)),
     [documents, activeTab],
   );
 
@@ -188,7 +163,7 @@ export default function DocumentsPage() {
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
                     <span className={statusBadgeClass(document.status)}>
-                      {statusDisplayLabel(document.status)}
+                      {documentStatusDisplayLabel(document.status)}
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-muted">

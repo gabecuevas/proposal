@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { cn } from "@repo/ui/utils";
 import { useLogout } from "@/components/auth/logout-button";
-import { IconPower, IconSearch } from "./shell-icons";
+import { documentTrackingCounts } from "@/lib/ui/document-tracking";
+import { documentNavIcons, IconPower, IconSearch } from "./shell-icons";
 import { isNavItemActive, navItemHrefHash, type AppSection, type CountKey, type SectionId } from "./nav-config";
 import { APP_SIDEBAR_WIDTH_CLASS } from "./shell-metrics";
 
@@ -62,18 +63,10 @@ function useShellCounts(sectionId: SectionId): Counts {
       }
       const payload = (await response.json()) as { counts?: Record<string, number> };
       const byStatus = payload.counts ?? {};
-      const of = (status: string) => byStatus[status] ?? 0;
       if (cancelled) {
         return;
       }
-      setCounts({
-        all: Object.values(byStatus).reduce((total, value) => total + value, 0),
-        draft: of("DRAFTED"),
-        sent: of("SENT"),
-        viewed: of("VIEWED") + of("COMMENTED"),
-        completed: of("SIGNED") + of("PAID"),
-        expired: of("EXPIRED") + of("VOID"),
-      });
+      setCounts(documentTrackingCounts(byStatus));
     }
 
     async function loadLibraryCounts() {
@@ -200,10 +193,12 @@ export function AppSidebar({
             const active = isNavItemActive(item, pathname, tabParam, hash);
             const count = item.countKey ? counts[item.countKey] : undefined;
             const itemHash = navItemHrefHash(item.href);
+            const Icon = item.icon ? documentNavIcons[item.icon] : null;
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                title={item.label}
                 aria-current={active ? "page" : undefined}
                 onClick={() => {
                   onHashChange(itemHash ?? "");
@@ -216,6 +211,7 @@ export function AppSidebar({
                     : "border-transparent text-muted hover:bg-slate-100/80 hover:text-foreground",
                 )}
               >
+                {Icon ? <Icon className="shrink-0" /> : null}
                 <span className="min-w-0 flex-1 truncate">{item.label}</span>
                 {typeof count === "number" ? (
                   <span

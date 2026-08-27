@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 export function IconHome({ className }: { className?: string }) {
   return (
     <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -150,6 +152,143 @@ export function IconSearch({ className }: { className?: string }) {
     </svg>
   );
 }
+
+function StatusIcon({
+  className,
+  children,
+}: {
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      {children}
+    </svg>
+  );
+}
+
+export function IconInProgress({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <path
+        d="M4 11.5l16-7-7 16-2.2-6.8L4 11.5z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </StatusIcon>
+  );
+}
+
+export function IconCompleted({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M8.5 12.2l2.3 2.3 4.7-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </StatusIcon>
+  );
+}
+
+export function IconViewed({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <path
+        d="M3.5 12s3.2-6 8.5-6 8.5 6 8.5 6-3.2 6-8.5 6-8.5-6-8.5-6z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="2.2" stroke="currentColor" strokeWidth="1.5" />
+    </StatusIcon>
+  );
+}
+
+export function IconUnviewed({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <rect x="3.5" y="6" width="17" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M4 8l8 6 8-6" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </StatusIcon>
+  );
+}
+
+export function IconDeclined({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </StatusIcon>
+  );
+}
+
+export function IconDraft({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <path
+        d="M7 4h7l4 4v12a1 1 0 01-1 1H7a1 1 0 01-1-1V5a1 1 0 011-1z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M14 4v4h4M8.5 13h5M8.5 16h3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </StatusIcon>
+  );
+}
+
+export function IconArchived({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <path d="M4 6.5h16v3H4z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path
+        d="M5.5 9.5V18a1 1 0 001 1h11a1 1 0 001-1V9.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M10 13h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </StatusIcon>
+  );
+}
+
+export function IconPending({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <path
+        d="M7 4h10v2.2L13.2 12 17 17.8V20H7v-2.2L10.8 12 7 6.2V4z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </StatusIcon>
+  );
+}
+
+export function IconTrash({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <path d="M5 7h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M9 7V5h6v2" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path
+        d="M6.5 7l.8 13h9.4l.8-13"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </StatusIcon>
+  );
+}
+
+export const documentNavIcons = {
+  inProgress: IconInProgress,
+  completed: IconCompleted,
+  viewed: IconViewed,
+  unviewed: IconUnviewed,
+  declined: IconDeclined,
+  draft: IconDraft,
+  archived: IconArchived,
+  pending: IconPending,
+  trash: IconTrash,
+} as const;
 
 export function IconLibrary({ className }: { className?: string }) {
   return (

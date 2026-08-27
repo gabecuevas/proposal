@@ -1,17 +1,16 @@
-export type CountKey =
-  | "all"
-  | "draft"
-  | "sent"
-  | "viewed"
-  | "completed"
-  | "expired"
-  | "templates"
-  | "contentBlocks";
+import {
+  DOCUMENT_TRACKING_NAV,
+  toDocumentTrackingTab,
+  type DocumentCountKey,
+} from "@/lib/ui/document-tracking";
+
+export type CountKey = DocumentCountKey | "templates" | "contentBlocks";
 
 export type AppNavItem = {
   label: string;
   href: string;
   countKey?: CountKey;
+  icon?: DocumentCountKey;
 };
 
 export type SectionId = "dashboard" | "documents" | "library" | "settings";
@@ -64,14 +63,7 @@ export const appSections: AppSection[] = [
     prefixes: ["/app/proposals"],
     createCta: true,
     searchPlaceholder: "Search everything",
-    items: [
-      { label: "All", href: "/app/documents", countKey: "all" },
-      { label: "Drafts", href: "/app/documents?tab=draft", countKey: "draft" },
-      { label: "Sent", href: "/app/documents?tab=sent", countKey: "sent" },
-      { label: "Viewed", href: "/app/documents?tab=viewed", countKey: "viewed" },
-      { label: "Completed", href: "/app/documents?tab=completed", countKey: "completed" },
-      { label: "Expired", href: "/app/documents?tab=expired", countKey: "expired" },
-    ],
+    items: [...DOCUMENT_TRACKING_NAV],
   },
   {
     id: "library",
@@ -177,6 +169,9 @@ export function isNavItemActive(
     return hash === itemHash;
   }
   const itemTab = new URLSearchParams(navItemHrefQuery(item.href) ?? "").get("tab");
+  if (pathname === "/app/documents") {
+    return toDocumentTrackingTab(itemTab) === toDocumentTrackingTab(tabParam);
+  }
   if (itemTab) {
     return tabParam === itemTab;
   }
