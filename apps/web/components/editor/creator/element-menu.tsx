@@ -60,7 +60,7 @@ type Entry = {
 };
 
 const entries: Entry[] = [
-  { id: "text", label: "Text box", hint: "Write anywhere", Icon: IconTextT, run: insertTextBlock },
+  { id: "text", label: "Text box", hint: "Place on the page", Icon: IconTextT, run: insertTextBlock },
   {
     id: "heading",
     label: "Heading",

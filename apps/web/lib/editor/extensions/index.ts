@@ -15,6 +15,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 import { FieldCanvasView } from "@/components/editor/field-canvas-view";
 import { FieldOverlayView } from "@/components/editor/field-overlay-view";
+import { TextBoxView } from "@/components/editor/overlay-text-box-view";
 import { ResizableImageView } from "@/components/editor/resizable-image-view";
 import { SignerFieldView } from "@/components/editor/signer-field-view";
 import { TableOfContentsView } from "@/components/editor/table-of-contents-view";
@@ -33,6 +34,7 @@ import { QuoteTable } from "./quote-table";
 import { ResizableImage } from "./resizable-image";
 import { SignerField } from "./signer-field";
 import { TableOfContents } from "./table-of-contents";
+import { OVERLAY_TEXT_BOX_PLACEHOLDER, overlayParentAt } from "../overlay-text-box";
 import { TextBox } from "./text-box";
 import { VariableToken } from "./variable-token";
 import { QuoteTableView } from "@/components/editor/quote-table-view";
@@ -51,7 +53,9 @@ const FieldOverlayWithView = FieldOverlay.extend({
 
 const SignerFieldWithView = SignerField.extend({
   addNodeView() {
-    return ReactNodeViewRenderer(SignerFieldView);
+    return ReactNodeViewRenderer(SignerFieldView, {
+      className: "signer-field-renderer",
+    });
   },
 });
 
@@ -64,6 +68,14 @@ const ResizableImageWithView = ResizableImage.extend({
 const QuoteTableWithView = QuoteTable.extend({
   addNodeView() {
     return ReactNodeViewRenderer(QuoteTableView);
+  },
+});
+
+const TextBoxWithView = TextBox.extend({
+  addNodeView() {
+    return ReactNodeViewRenderer(TextBoxView, {
+      className: "text-box-renderer",
+    });
   },
 });
 
@@ -92,7 +104,15 @@ export const editorExtensions = [
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener" } }),
   Placeholder.configure({
-    placeholder: ({ node }) => (node.type.name === "heading" ? "Document title" : ""),
+    placeholder: ({ node, editor }) => {
+      if (node.type.name === "heading") {
+        return "Document title";
+      }
+      if (editor.isActive("textBox") && overlayParentAt(editor, editor.state.selection.from)) {
+        return OVERLAY_TEXT_BOX_PLACEHOLDER;
+      }
+      return "";
+    },
   }),
   FlowGaps,
   Table.configure({ resizable: true, lastColumnResizable: false }),
@@ -100,7 +120,7 @@ export const editorExtensions = [
   TableHeader,
   TableCell,
   Youtube.configure({ controls: true, nocookie: true, modestBranding: true, width: 640, height: 360 }),
-  TextBox,
+  TextBoxWithView,
   ResizableImageWithView,
   TableOfContentsWithView,
   PageBreak,

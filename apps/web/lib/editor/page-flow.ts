@@ -47,6 +47,44 @@ export function flowBreakPositions(lines: FlowLine[], contentHeight: number): nu
   return breaks;
 }
 
+/**
+ * Page-backed uploads already have one `pageBreak` per original PDF page.
+ * Overflow measurement of those full-sheet images would add extra visual
+ * pages, so pagination uses only the explicit breaks.
+ *
+ * Extra or missing `pageBreak` nodes (common after delete/duplicate) must not
+ * change the painted gap: seams are placed before each canvas after the first.
+ */
+export function selectPageFlowBreaks(forced: number[], overflow: number[], pageBacked: boolean): number[] {
+  const source = pageBacked ? forced : [...forced, ...overflow];
+  return [...new Set(source)].sort((a, b) => a - b);
+}
+
+export type PageFlowTopLevel = { type: string; pos: number };
+
+/**
+ * Grey-gap spacer positions for a PDF-backed document: one seam before every
+ * page canvas except the first. Leftover or duplicate pageBreak nodes are
+ * ignored so delete-page cannot open a hole between sheets.
+ */
+export function canvasSeamPositions(nodes: PageFlowTopLevel[]): number[] {
+  const positions: number[] = [];
+  let first = true;
+  for (const node of nodes) {
+    if (node.type === "fieldOverlay") {
+      continue;
+    }
+    if (node.type !== "fieldCanvas") {
+      continue;
+    }
+    if (!first) {
+      positions.push(node.pos);
+    }
+    first = false;
+  }
+  return positions;
+}
+
 /** Subtracts spacer heights above a visual Y so pagination sees a continuous flow. */
 export function contentOffsetFromVisual(
   visualY: number,

@@ -332,12 +332,35 @@ body {
 
 /* PDF-backed pages ------------------------------------------------------- */
 .tiptap-creator .field-canvas {
-  margin: 0 0 1.5rem;
+  box-sizing: border-box;
+  width: 100%;
+  height: calc(var(--creator-page-height, 1056px) - 2 * var(--creator-page-margin, 48px));
+  max-height: calc(var(--creator-page-height, 1056px) - 2 * var(--creator-page-margin, 48px));
+  margin: 0;
+  padding: 0;
   border-radius: 0;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  border-width: 0;
+  box-shadow: none;
+  aspect-ratio: auto;
 }
 .tiptap-creator .field-canvas:last-child {
   margin-bottom: 0;
+}
+/* Uploaded PDFs are already paginated. Drop the print-safe padding so each
+   page image fills the Letter (or current) sheet instead of overflowing it. */
+.tiptap-creator.is-page-backed {
+  padding: 0;
+}
+.tiptap-creator.is-page-backed .field-canvas {
+  height: var(--creator-page-height, 1056px);
+  max-height: var(--creator-page-height, 1056px);
+  width: 100%;
+}
+.tiptap-creator.is-page-backed .creator-flow-break,
+.tiptap-creator.is-page-backed span.ProseMirror-widget.creator-flow-break {
+  /* Full-sheet page images already fill the paper. Only skip the grey gap. */
+  height: var(--creator-page-gap, 32px) !important;
+  min-height: var(--creator-page-gap, 32px) !important;
 }
 .tiptap-creator .page-break,
 .tiptap-creator [data-node-type="pageBreak"] {
@@ -383,12 +406,25 @@ body {
   display: block;
   height: 100%;
 }
+.field-canvas-content > .signer-field-renderer,
+.field-overlay-content > .signer-field-renderer {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  pointer-events: none;
+}
+.field-canvas-content .signer-field-renderer.is-field-chrome-up,
+.field-overlay-content .signer-field-renderer.is-field-chrome-up {
+  z-index: 40;
+}
 .signer-field-node,
 .rendered-signer-field {
   position: absolute;
   left: calc(var(--field-x) * 100%);
   width: calc(var(--field-w) * 100%);
-  min-height: 36px;
+  min-height: 0;
   pointer-events: auto;
 }
 /* Inside the overlay a field is anchored to a page, so its offset counts whole
@@ -406,6 +442,103 @@ body {
 .rendered-field-canvas .rendered-signer-field {
   top: calc(var(--field-y) * 100%);
   height: calc(var(--field-h) * 100%);
+}
+
+.field-canvas-content > .text-box-renderer,
+.field-overlay-content > .text-box-renderer {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  pointer-events: none;
+}
+.field-canvas-content .text-box-renderer.is-field-chrome-up,
+.field-overlay-content .text-box-renderer.is-field-chrome-up {
+  z-index: 40;
+}
+.overlay-text-box {
+  --overlay-text-box: var(--primary, #1e3a5f);
+  position: absolute;
+  left: calc(var(--field-x) * 100%);
+  width: calc(var(--field-w) * 100%);
+  min-height: 0;
+  pointer-events: auto;
+  z-index: calc(20 + var(--overlay-z, 1));
+}
+.field-overlay .overlay-text-box,
+.rendered-field-overlay .rendered-overlay-text-box {
+  top: calc(
+    var(--field-page) * (var(--creator-page-height, 1056px) + var(--creator-page-gap, 0px)) +
+      var(--field-y) * var(--creator-page-height, 1056px)
+  );
+  height: calc(var(--field-h) * var(--creator-page-height, 1056px));
+}
+.field-canvas-content .overlay-text-box,
+.rendered-field-canvas .rendered-overlay-text-box {
+  top: calc(var(--field-y) * 100%);
+  height: calc(var(--field-h) * 100%);
+}
+.overlay-text-box-frame {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  box-sizing: border-box;
+}
+.overlay-text-box-frame-idle {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.overlay-text-box-frame-active {
+  border: 1.5px solid var(--overlay-text-box, #1e3a5f);
+  background: transparent;
+  box-shadow: none;
+}
+.tiptap-creator .overlay-text-box.ProseMirror-selectednode,
+.tiptap-creator .ProseMirror-selectednode.overlay-text-box,
+.tiptap-creator .field-canvas.ProseMirror-selectednode {
+  outline: none;
+}
+.overlay-text-box[data-chrome="off"] .overlay-text-box-content > .is-empty:first-child::before,
+.overlay-text-box[data-chrome="off"] .overlay-text-box-content > .is-editor-empty:first-child::before,
+.ProseMirror-hideselection .overlay-text-box[data-chrome="off"] .overlay-text-box-content > .is-empty:first-child::before {
+  opacity: 0;
+}
+.overlay-text-box-content {
+  display: block;
+  min-height: 100%;
+  padding: 6px 10px;
+  font-size: 14px;
+  line-height: 1.45;
+  outline: none;
+}
+.overlay-text-box-content > .is-empty:first-child::before,
+.overlay-text-box-content > .is-editor-empty:first-child::before,
+.ProseMirror-hideselection .overlay-text-box-content > .is-empty:first-child::before {
+  color: #94a3b8;
+  float: none;
+  height: auto;
+  pointer-events: none;
+}
+.overlay-text-box-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* NodeSelection adds ProseMirror-hideselection (caret-color: transparent) on
+   the editor. Fillable fields still need a blinking caret while typing. */
+.signer-field-node input,
+.signer-field-node textarea,
+.ProseMirror-hideselection .signer-field-node input,
+.ProseMirror-hideselection .signer-field-node textarea {
+  caret-color: var(--foreground, #1e293b);
+  user-select: text;
+  -webkit-user-select: text;
+}
+.ProseMirror-hideselection .signer-field-node input::selection,
+.ProseMirror-hideselection .signer-field-node textarea::selection {
+  background: #bfdbfe;
+  color: inherit;
 }
 
 /* Block handles ---------------------------------------------------------- */
@@ -453,6 +586,16 @@ body {
 .creator-page-thumb [contenteditable] {
   caret-color: transparent;
   outline: none;
+}
+.creator-page-thumb .creator-page-chrome,
+.creator-page-thumb .creator-insert-gap,
+.creator-page-thumb .creator-block-handle,
+.creator-page-thumb .creator-block-gear,
+.creator-page-thumb .creator-block-frame,
+.creator-page-thumb [data-overlay-drag],
+.creator-page-thumb [data-overlay-gear],
+.creator-page-thumb [data-resize-handle] {
+  display: none !important;
 }
 
 .creator-insert-gap .creator-block-handle {

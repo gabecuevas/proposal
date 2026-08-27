@@ -5,6 +5,8 @@ import {
   pageAtVisualOffset,
   pageSizeFromDoc,
   pageSizeSpec,
+  pageThumbContentTransform,
+  pageThumbHeightPx,
   parsePageSize,
   stackedPaperHeightPx,
   visualTopForPage,
@@ -39,5 +41,13 @@ describe("page sizes", () => {
     expect(visualTopForPage(1, 1056, 32)).toBe(1088);
     expect(stackedPaperHeightPx(1, 1056, 32)).toBe(1056);
     expect(stackedPaperHeightPx(2, 1056, 32)).toBe(1056 * 2 + 32);
+  });
+
+  it("clips each document-preview thumbnail to one sheet, including page 2+", () => {
+    const scale = 120 / 816;
+    expect(pageThumbHeightPx(120, 816, 1056)).toBe(155);
+    expect(pageThumbContentTransform(0, 1056, 32, scale)).toBe(`scale(${scale}) translateY(0px)`);
+    expect(pageThumbContentTransform(1, 1056, 32, scale)).toBe(`scale(${scale}) translateY(-1088px)`);
+    expect(pageThumbContentTransform(2, 1056, 32, scale)).toBe(`scale(${scale}) translateY(-2176px)`);
   });
 });

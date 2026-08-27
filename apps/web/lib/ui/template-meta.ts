@@ -1,4 +1,5 @@
 import type { EditorDoc } from "@/lib/editor/types";
+import { isPageBackedEditorJson } from "@/lib/editor/extensions/field-canvas";
 
 function walkContent(nodes: unknown[], visit: (node: { type?: string; content?: unknown[] }) => void) {
   if (!Array.isArray(nodes)) {
@@ -41,12 +42,19 @@ export function pageCountFromEditor(doc: EditorDoc | null | undefined): number {
   if (!doc?.content?.length) {
     return 1;
   }
+  let canvases = 0;
   let breaks = 0;
   walkContent(doc.content, (n) => {
+    if (n.type === "fieldCanvas") {
+      canvases += 1;
+    }
     if (n.type === "pageBreak") {
       breaks += 1;
     }
   });
+  if (isPageBackedEditorJson(doc) && canvases > 0) {
+    return canvases;
+  }
   return Math.max(1, breaks + 1);
 }
 

@@ -2,7 +2,7 @@
 
 import type { Editor } from "@tiptap/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { hitTestBlocks, type TopLevelBlock } from "@/lib/editor/block-hit-test";
+import { isPageBackedSeamInsert } from "@/lib/editor/overlay-text-box";
 import { isScaffoldFlowNode } from "@/lib/editor/extensions/flow-gaps";
 import { BlockOptionsMenu } from "./block-options-menu";
 import { ElementMenu } from "./element-menu";
@@ -56,7 +56,10 @@ function toHover(block: TopLevelBlock | null): HoverTarget | null {
 }
 
 function isFieldTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest(".signer-field-node"));
+  return (
+    target instanceof Element &&
+    Boolean(target.closest(".signer-field-node, .overlay-text-box, [data-overlay-text-box-id]"))
+  );
 }
 
 function isGapTarget(target: EventTarget | null): boolean {
@@ -109,6 +112,10 @@ export function CreatorBlockControls({ editor, paperRef, documentId, templateId 
         return;
       }
       setHover(null);
+      if (hit?.kind === "gap" && isPageBackedSeamInsert(editor, hit.insertPos)) {
+        setInsertSlot(null);
+        return;
+      }
       setInsertSlot(hit?.kind === "gap" ? { insertPos: hit.insertPos, topPx: hit.topPx } : null);
     };
 
@@ -147,6 +154,10 @@ export function CreatorBlockControls({ editor, paperRef, documentId, templateId 
       setDismissed(true);
       setHover(null);
       if (hit?.kind === "gap") {
+        if (isPageBackedSeamInsert(editor, hit.insertPos)) {
+          setInsertSlot(null);
+          return;
+        }
         event.preventDefault();
         setInsertSlot({ insertPos: hit.insertPos, topPx: hit.topPx });
         return;

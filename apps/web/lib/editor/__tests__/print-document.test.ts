@@ -11,6 +11,7 @@ describe("print document", () => {
     expect(html).toContain(".creator-text-box");
     expect(html).toContain("--creator-page-height: 1056px");
     expect(html).toContain(".print-page-background");
+    expect(html).toContain("article .field-canvas");
     expect(html).toContain("<!DOCTYPE html>");
   });
 

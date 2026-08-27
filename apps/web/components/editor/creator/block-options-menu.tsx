@@ -19,14 +19,16 @@ import {
   IconCopy,
   IconCut,
   IconDuplicate,
+  IconLayers,
   IconLibrary,
   IconLock,
   IconPalette,
   IconSparkle,
   IconTrash,
 } from "./creator-icons";
+import { arrangeOverlayTextBox } from "@/lib/editor/overlay-text-box";
 
-type View = "root" | "ai" | "comment" | "design";
+type View = "root" | "ai" | "comment" | "design" | "arrange";
 
 type Props = {
   editor: Editor;
@@ -34,6 +36,8 @@ type Props = {
   documentId?: string;
   templateId?: string;
   onClose: () => void;
+  /** Overlay text boxes can be stacked in front of or behind siblings. */
+  showArrange?: boolean;
 };
 
 const DESIGNS = [
@@ -42,7 +46,7 @@ const DESIGNS = [
   { id: "muted", label: "Muted" },
 ] as const;
 
-export function BlockOptionsMenu({ editor, pos, documentId, templateId, onClose }: Props) {
+export function BlockOptionsMenu({ editor, pos, documentId, templateId, onClose, showArrange = false }: Props) {
   const node = editor.state.doc.nodeAt(pos);
   const json = (node?.toJSON() ?? null) as EditorNode | null;
   const [view, setView] = useState<View>("root");
@@ -190,14 +194,14 @@ export function BlockOptionsMenu({ editor, pos, documentId, templateId, onClose 
         <textarea
           value={aiPrompt}
           onChange={(event) => setAiPrompt(event.target.value)}
-          className="mb-2 h-20 w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none ring-primary/15 focus:ring-2"
+          className="mb-2 h-20 w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-[13px] outline-none ring-primary/15 focus:ring-2"
           aria-label="AI instructions"
         />
         <button
           type="button"
           disabled={busy}
           onClick={() => void rewriteWithAi()}
-          className="w-full rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+          className="w-full rounded-md bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground disabled:opacity-50"
         >
           {busy ? "Rewriting…" : "Rewrite block"}
         </button>
@@ -214,14 +218,14 @@ export function BlockOptionsMenu({ editor, pos, documentId, templateId, onClose 
           value={comment}
           onChange={(event) => setComment(event.target.value)}
           placeholder="Leave a note on this document"
-          className="mb-2 h-20 w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none ring-primary/15 focus:ring-2"
+          className="mb-2 h-20 w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-[13px] outline-none ring-primary/15 focus:ring-2"
           aria-label="Comment"
         />
         <button
           type="button"
           disabled={busy}
           onClick={() => void addComment()}
-          className="w-full rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+          className="w-full rounded-md bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground disabled:opacity-50"
         >
           {busy ? "Saving…" : "Add comment"}
         </button>
@@ -239,7 +243,7 @@ export function BlockOptionsMenu({ editor, pos, documentId, templateId, onClose 
             key={option.id}
             type="button"
             onClick={() => updateNodeAttrs(editor, pos, { blockDesign: option.id })}
-            className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm ${
+            className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[13px] ${
               design === option.id ? "bg-primary/10 text-primary" : "hover:bg-slate-50"
             }`}
           >
@@ -251,10 +255,40 @@ export function BlockOptionsMenu({ editor, pos, documentId, templateId, onClose 
     );
   }
 
+  if (view === "arrange") {
+    return (
+      <MenuShell>
+        <SubHeader title="Arrange" onBack={() => setView("root")} />
+        <MenuRow
+          Icon={IconLayers}
+          label="Bring to front"
+          onClick={() => {
+            arrangeOverlayTextBox(editor, pos, "front");
+            onClose();
+          }}
+        />
+        <MenuRow
+          Icon={IconLayers}
+          label="Send to back"
+          onClick={() => {
+            arrangeOverlayTextBox(editor, pos, "back");
+            onClose();
+          }}
+        />
+      </MenuShell>
+    );
+  }
+
   return (
     <MenuShell>
+      {showArrange ? (
+        <>
+          <MenuRow Icon={IconLayers} label="Arrange" onClick={() => setView("arrange")} />
+          <Divider />
+        </>
+      ) : null}
       {isText ? (
-        <MenuRow Icon={IconSparkle} label="Edit with AI" onClick={() => setView("ai")} />
+        <MenuRow Icon={IconSparkle} label="Write with AI" onClick={() => setView("ai")} />
       ) : null}
       <MenuRow
         Icon={IconLibrary}
@@ -280,7 +314,7 @@ export function BlockOptionsMenu({ editor, pos, documentId, templateId, onClose 
       <MenuRow Icon={IconTrash} label="Delete" onClick={remove} />
       <Divider />
       <label className="mt-1 block px-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
-        {libraryCategoryLabel(libraryCategoryForType(block.type))} name
+        {isText ? "Text name" : libraryCategoryLabel(libraryCategoryForType(block.type)) + " name"}
       </label>
       <input
         value={name}
@@ -288,7 +322,7 @@ export function BlockOptionsMenu({ editor, pos, documentId, templateId, onClose 
         onBlur={() => updateNodeAttrs(editor, pos, { blockName: name.trim() })}
         placeholder="Text name"
         aria-label="Element name"
-        className="mx-2 mb-1 mt-1 w-[calc(100%-1rem)] rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none ring-primary/15 focus:ring-2"
+        className="mx-2 mb-1 mt-1 w-[calc(100%-1rem)] rounded-md border border-border bg-background px-2 py-1.5 text-[13px] outline-none ring-primary/15 focus:ring-2"
       />
       {status ? <p className="px-2 pb-1 text-xs text-muted">{status}</p> : null}
     </MenuShell>
@@ -299,7 +333,7 @@ function MenuShell({ children }: { children: React.ReactNode }) {
   return (
     <div
       role="menu"
-      className="w-64 overflow-hidden rounded-lg border border-border bg-surface py-1 text-sm text-foreground shadow-xl"
+      className="w-64 overflow-hidden rounded-lg border border-border bg-surface py-1 text-[13px] text-foreground shadow-xl"
     >
       {children}
     </div>

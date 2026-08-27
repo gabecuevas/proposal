@@ -44,8 +44,9 @@ type Props = {
 };
 
 const defaultRecipients = [
-  { id: "recipient-primary", name: "Primary Signer", email: "you@company.com" },
-  { id: "recipient-finance", name: "Finance Signer", email: "finance@company.com" },
+  { id: "sender-self", name: "You", email: "", role: "sender" as const },
+  { id: "recipient-primary", name: "Primary Signer", email: "you@company.com", role: "signer" as const },
+  { id: "recipient-finance", name: "Finance Signer", email: "finance@company.com", role: "signer" as const },
 ];
 
 function parseJsonText<T>(value: string, fallback: T): T {
@@ -87,7 +88,7 @@ export function TemplateEditor({
   const [selectedVariable, setSelectedVariable] = useState(Object.keys(initialVariableRegistry)[0] ?? "");
   const [selectedBlockId, setSelectedBlockId] = useState(contentBlocks[0]?.id ?? "");
   const [availableBlocks, setAvailableBlocks] = useState(contentBlocks);
-  const [selectedRecipientId, setSelectedRecipientId] = useState(defaultRecipients[0]?.id ?? "");
+  const [selectedRecipientId, setSelectedRecipientId] = useState("recipient-primary");
   const [mode, setMode] = useState<"sender-preview" | "recipient-fill" | "finalized">("sender-preview");
   const [debugOpen, setDebugOpen] = useState(false);
   const [visualPages, setVisualPages] = useState(1);

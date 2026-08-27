@@ -170,6 +170,29 @@ export function visualTopForPage(
   return Math.max(0, pageIndex) * (pageHeightPx + gapPx);
 }
 
+/** Thumbnail clip height so a Letter (or current) sheet keeps its aspect. */
+export function pageThumbHeightPx(thumbWidthPx: number, pageWidthPx: number, pageHeightPx: number): number {
+  if (!(thumbWidthPx > 0) || !(pageWidthPx > 0) || !(pageHeightPx > 0)) {
+    return 1;
+  }
+  return Math.round(thumbWidthPx * (pageHeightPx / pageWidthPx));
+}
+
+/**
+ * CSS transform for a full-document clone clipped to one sheet.
+ * Translate in page pixels first, then scale — the other order moves page 2+
+ * out of the thumbnail window.
+ */
+export function pageThumbContentTransform(
+  pageIndex: number,
+  pageHeightPx = PAGE_HEIGHT_PX,
+  gapPx = PAGE_GAP_PX,
+  scale = 1,
+): string {
+  const y = visualTopForPage(pageIndex, pageHeightPx, gapPx);
+  return `scale(${scale}) translateY(${-y}px)`;
+}
+
 /** Live paper height from CSS, so overlay math follows the selected page size. */
 export function readPaperPageHeightPx(from?: Element | null): number {
   const paper =

@@ -57,6 +57,55 @@ export function forcedBreakSpacerHeight(
   return Math.max(seamHeightPx, Math.round(nextPrintableTop - breakBottomPx));
 }
 
+/**
+ * A page canvas fills the whole sheet, so the spacer after its page break is
+ * only the grey gap — not the print-safe margin used for flowing text.
+ */
+export function forcedBreakContentMarginPx(followingIsPageCanvas: boolean, marginPx: number): number {
+  return followingIsPageCanvas ? 0 : marginPx;
+}
+
+export function forcedBreakMinSeamPx(followingIsPageCanvas: boolean, gapPx: number, seamHeightPx: number): number {
+  return followingIsPageCanvas ? gapPx : seamHeightPx;
+}
+
+/**
+ * Height of the decoration after an explicit page break.
+ *
+ * Page-backed PDF uploads already occupy one full sheet per canvas. Measuring
+ * the break node (or falling back to the text-flow seam of 128px) would insert
+ * extra space that compounds on every following page, so those seams are
+ * always the canvas gap.
+ */
+export function flowSpacerHeightForBreak(input: {
+  pageBacked: boolean;
+  followingIsPageCanvas: boolean;
+  measuredBottomPx: number | null;
+  pageHeightPx: number;
+  gapPx: number;
+  marginPx: number;
+  defaultSeamPx: number;
+}): number {
+  if (input.pageBacked) {
+    return input.gapPx;
+  }
+  if (input.measuredBottomPx == null) {
+    return input.defaultSeamPx;
+  }
+  const nextMargin = forcedBreakContentMarginPx(input.followingIsPageCanvas, input.marginPx);
+  const minSeam = forcedBreakMinSeamPx(input.followingIsPageCanvas, input.gapPx, input.defaultSeamPx);
+  return Math.max(
+    minSeam,
+    forcedBreakSpacerHeight(
+      input.measuredBottomPx,
+      input.pageHeightPx,
+      input.gapPx,
+      nextMargin,
+      minSeam,
+    ),
+  );
+}
+
 /** Bottom margin + canvas gap + next top margin, in visual paper/editor coordinates. */
 export function visualSeamBand(
   pageIndex: number,

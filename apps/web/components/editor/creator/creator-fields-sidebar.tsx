@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
 import { SignerFieldPropertiesPanel } from "@/components/editor/signer-field-properties";
 import type { Editor } from "@tiptap/core";
-import { FIELD_DRAG_MIME, fieldTypes } from "./field-types";
+import { FIELD_DRAG_MIME, fieldTypes, setFieldDragPreview } from "./field-types";
 import {
   IconBraces,
   IconChevron,
@@ -13,7 +13,7 @@ import {
   IconTable,
 } from "./creator-icons";
 
-type Recipient = { id: string; name: string; email?: string };
+type Recipient = { id: string; name: string; email?: string; role?: "signer" | "sender" | "approver" | "viewer" };
 
 type Props = {
   editor: Editor | null;
@@ -140,7 +140,9 @@ export function CreatorFieldsSidebar({
         {selected ? (
           <div className="mt-2 rounded-lg border border-border bg-background px-3 py-2">
             <p className="truncate text-sm font-medium text-foreground">{selected.name}</p>
-            <p className="mt-0.5 text-[11px] uppercase tracking-wide text-muted">Signer</p>
+            <p className="mt-0.5 text-[11px] uppercase tracking-wide text-muted">
+              {"role" in selected && selected.role === "sender" ? "Sender" : "Signer"}
+            </p>
             {selected.email ? (
               <p className="mt-0.5 truncate text-xs text-muted">{selected.email}</p>
             ) : null}
@@ -207,6 +209,7 @@ function FieldRow({
         }
         event.dataTransfer.setData(FIELD_DRAG_MIME, field.editorType);
         event.dataTransfer.effectAllowed = "copy";
+        setFieldDragPreview(event, field.label);
       }}
       title={enabled ? `Add ${field.label}` : `${field.label} is coming soon`}
       className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
@@ -247,6 +250,7 @@ function FieldIconButton({
         }
         event.dataTransfer.setData(FIELD_DRAG_MIME, field.editorType);
         event.dataTransfer.effectAllowed = "copy";
+        setFieldDragPreview(event, field.label);
       }}
       aria-label={enabled ? `Add ${field.label}` : `${field.label} is coming soon`}
       title={enabled ? field.label : `${field.label} is coming soon`}

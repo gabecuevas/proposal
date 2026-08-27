@@ -1,10 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState, type RefObject } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type RefObject } from "react";
 import {
   PAGE_GAP_PX,
   pageAtVisualOffset,
   pageSizeSpec,
+  pageThumbContentTransform,
+  pageThumbHeightPx,
+  stackedPaperHeightPx,
   visualTopForPage,
   type PageSizeId,
 } from "@/lib/editor/page-geometry";
@@ -40,7 +43,7 @@ export function CreatorPageNav({
   const [open, setOpen] = useState(false);
   const [sourceHtml, setSourceHtml] = useState("");
   const pages = Math.max(1, pageCount);
-  const thumbHeight = Math.round(THUMB_WIDTH * (spec.heightPx / spec.widthPx));
+  const thumbHeight = pageThumbHeightPx(THUMB_WIDTH, spec.widthPx, spec.heightPx);
   const scale = THUMB_WIDTH / spec.widthPx;
 
   useEffect(() => {
@@ -104,6 +107,13 @@ export function CreatorPageNav({
     );
   }
 
+  const thumbVars = {
+    "--creator-page-width": `${spec.widthPx}px`,
+    "--creator-page-height": `${spec.heightPx}px`,
+    "--creator-page-margin": `${spec.marginPx}px`,
+    "--creator-page-gap": `${PAGE_GAP_PX}px`,
+  } as CSSProperties;
+
   return (
     <aside className="flex w-[196px] shrink-0 flex-col border-r border-border bg-surface">
       <div className="flex items-start justify-between gap-1 border-b border-border px-3 py-2.5">
@@ -126,7 +136,7 @@ export function CreatorPageNav({
           «
         </button>
       </div>
-      <nav className="min-h-0 flex-1 overflow-y-auto px-2 py-2" aria-label="Page thumbnails">
+      <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-3" aria-label="Page thumbnails">
         {Array.from({ length: pages }, (_, index) => {
           const active = currentPage === index + 1;
           return (
@@ -135,22 +145,24 @@ export function CreatorPageNav({
               type="button"
               onClick={() => jumpTo(index)}
               aria-current={active ? "page" : undefined}
-              className={`mb-2 flex w-full flex-col items-start gap-1 rounded-md p-1.5 text-left ${
-                active ? "bg-slate-100 shadow-[inset_-2px_0_0_var(--primary)]" : "hover:bg-slate-50"
-              }`}
+              className="mb-3 mx-auto flex w-fit flex-col items-center gap-1.5 last:mb-0"
             >
-              <span className="px-0.5 text-[11px] text-muted">{index + 1} · Page</span>
+              <span className={`text-[11px] ${active ? "font-medium text-foreground" : "text-muted"}`}>
+                {index + 1} · Page
+              </span>
               <span
-                className={`relative block overflow-hidden rounded border bg-white shadow-sm ${
-                  active ? "border-primary" : "border-border"
+                className={`relative block overflow-hidden bg-white shadow-sm ${
+                  active ? "border-2 border-primary" : "border border-border"
                 }`}
                 style={{ width: THUMB_WIDTH, height: thumbHeight }}
               >
                 <span
                   className="creator-page-thumb pointer-events-none absolute left-0 top-0 origin-top-left"
                   style={{
+                    ...thumbVars,
                     width: spec.widthPx,
-                    transform: `translateY(${-visualTopForPage(index, spec.heightPx, PAGE_GAP_PX)}px) scale(${scale})`,
+                    height: stackedPaperHeightPx(pages, spec.heightPx, PAGE_GAP_PX),
+                    transform: pageThumbContentTransform(index, spec.heightPx, PAGE_GAP_PX, scale),
                   }}
                   dangerouslySetInnerHTML={sourceHtml ? { __html: sourceHtml } : undefined}
                 />

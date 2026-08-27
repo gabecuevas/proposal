@@ -4,10 +4,12 @@ import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { afterEach, describe, expect, it } from "vitest";
 import { CreatorDocument } from "../extensions/creator-document";
+import { FieldCanvas } from "../extensions/field-canvas";
 import { FieldOverlay } from "../extensions/field-overlay";
 import { PageBreak } from "../extensions/page-break";
 import { QuoteTable } from "../extensions/quote-table";
 import { SignerField } from "../extensions/signer-field";
+import { TextBox } from "../extensions/text-box";
 import {
   canDeletePage,
   clonePageNodeJson,
@@ -15,6 +17,7 @@ import {
   deleteVisualPage,
   duplicateVisualPage,
   pageLibraryPayload,
+  splitPageBackedPages,
   splitTopLevelByPageBreaks,
 } from "../page-actions";
 import { parsePageBackgrounds } from "../page-backgrounds";
@@ -49,9 +52,11 @@ function createEditor(content: EditorDoc) {
       CreatorDocument,
       StarterKit.configure({ document: false }),
       PageBreak,
+      FieldCanvas,
       FieldOverlay,
       SignerField,
       QuoteTable,
+      TextBox,
     ],
     content,
   });
@@ -186,5 +191,82 @@ describe("page actions", () => {
     expect(payload.block_type).toBe("text");
     expect(payload.editor_json.content.map((node) => node.type)).toEqual(["paragraph"]);
     expect(payload.editor_json.content.some((node) => node.type === "fieldOverlay")).toBe(false);
+  });
+});
+
+describe("page-backed PDF page actions", () => {
+  let editor: Editor;
+
+  afterEach(() => {
+    editor?.destroy();
+  });
+
+  const threeCanvasDoc: EditorDoc = {
+    type: "doc",
+    content: [
+      { type: "fieldCanvas", attrs: { bgKey: "p1", pageNumber: 1 } },
+      { type: "pageBreak" },
+      { type: "fieldCanvas", attrs: { bgKey: "p2", pageNumber: 2 } },
+      { type: "pageBreak" },
+      { type: "fieldCanvas", attrs: { bgKey: "p3", pageNumber: 3 } },
+    ],
+  };
+
+  function canvasKeys(doc: EditorDoc): string[] {
+    return (doc.content ?? [])
+      .filter((node) => node.type === "fieldCanvas")
+      .map((node) => String(node.attrs?.bgKey ?? ""));
+  }
+
+  it("treats each field canvas as one page even with leftover pageBreaks", () => {
+    editor = createEditor({
+      type: "doc",
+      content: [
+        { type: "pageBreak" },
+        { type: "fieldCanvas", attrs: { bgKey: "p1", pageNumber: 1 } },
+        { type: "pageBreak" },
+        { type: "pageBreak" },
+        { type: "fieldCanvas", attrs: { bgKey: "p2", pageNumber: 2 } },
+        { type: "pageBreak" },
+      ],
+    });
+    const pages = splitPageBackedPages(editor.state.doc);
+    expect(pages).toHaveLength(2);
+    expect(pages.map((page) => page[0]?.json.attrs?.bgKey)).toEqual(["p1", "p2"]);
+  });
+
+  it("deletes the last canvas and the pageBreak in front of it", () => {
+    editor = createEditor(threeCanvasDoc);
+    expect(deleteVisualPage(editor, null, 2, 3)).toBe(true);
+    const json = editor.getJSON() as EditorDoc;
+    expect(canvasKeys(json)).toEqual(["p1", "p2"]);
+    expect(types(json).filter((type) => type === "pageBreak")).toHaveLength(1);
+    expect(types(json).at(-1)).toBe("fieldCanvas");
+  });
+
+  it("deletes a middle canvas without leaving a double pageBreak", () => {
+    editor = createEditor(threeCanvasDoc);
+    expect(deleteVisualPage(editor, null, 1, 3)).toBe(true);
+    const json = editor.getJSON() as EditorDoc;
+    expect(canvasKeys(json)).toEqual(["p1", "p3"]);
+    expect(types(json)).toEqual(["fieldCanvas", "pageBreak", "fieldCanvas"]);
+  });
+
+  it("heals a trailing pageBreak left behind after deleting the last sheet", () => {
+    editor = createEditor({
+      type: "doc",
+      content: [
+        { type: "fieldCanvas", attrs: { bgKey: "p1", pageNumber: 1 } },
+        { type: "pageBreak" },
+        { type: "fieldCanvas", attrs: { bgKey: "p2", pageNumber: 2 } },
+        { type: "pageBreak" },
+        { type: "fieldCanvas", attrs: { bgKey: "p3", pageNumber: 3 } },
+        { type: "pageBreak" },
+      ],
+    });
+    expect(deleteVisualPage(editor, null, 2, 3)).toBe(true);
+    const json = editor.getJSON() as EditorDoc;
+    expect(canvasKeys(json)).toEqual(["p1", "p2"]);
+    expect(types(json)).toEqual(["fieldCanvas", "pageBreak", "fieldCanvas"]);
   });
 });

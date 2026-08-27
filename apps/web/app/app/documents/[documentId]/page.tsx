@@ -7,7 +7,7 @@ import { CreatorCanvas } from "@/components/editor/creator/creator-canvas";
 import { CreatorFieldsSidebar } from "@/components/editor/creator/creator-fields-sidebar";
 import { CreatorHeader } from "@/components/editor/creator/creator-header";
 import { CreatorPageWorkspace } from "@/components/editor/creator/creator-page-workspace";
-import { SignerRecipientProvider } from "@/components/editor/signer-field-context";
+import { SignerRecipientProvider, withSenderRecipient } from "@/components/editor/signer-field-context";
 import { PricingProvider } from "@/components/editor/pricing-context";
 import { defaultPricingModel } from "@/lib/editor/defaults";
 import { creatorEditorProps } from "@/lib/editor/editor-config";
@@ -601,7 +601,14 @@ export default function DocumentDetailPage({ params }: Params) {
 
   return (
     <SignerRecipientProvider
-      recipients={parsedRecipients.map((r) => ({ id: r.id, name: r.name || r.email || "Signer" }))}
+      recipients={withSenderRecipient(
+        parsedRecipients.map((r) => ({
+          id: r.id,
+          name: r.name || r.email || "Signer",
+          email: r.email,
+          role: r.role === "viewer" ? "viewer" : r.role === "approver" ? "approver" : "signer",
+        })),
+      )}
     >
       <PricingProvider pricing={pricing}>
       <div className="flex h-screen w-full flex-col bg-background">
@@ -708,11 +715,14 @@ export default function DocumentDetailPage({ params }: Params) {
 
           <CreatorFieldsSidebar
             editor={editor}
-            recipients={parsedRecipients.map((r) => ({
-              id: r.id,
-              name: r.name || "Signer",
-              email: r.email || undefined,
-            }))}
+            recipients={withSenderRecipient(
+              parsedRecipients.map((r) => ({
+                id: r.id,
+                name: r.name || "Signer",
+                email: r.email || undefined,
+                role: r.role === "viewer" ? "viewer" : r.role === "approver" ? "approver" : "signer",
+              })),
+            )}
             selectedRecipientId={selectedRecipientId}
             onSelectRecipient={setSelectedRecipientId}
             onInsertField={insertSignerField}

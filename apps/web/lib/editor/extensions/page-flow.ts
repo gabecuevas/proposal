@@ -1,9 +1,10 @@
 import { Extension, type Editor } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
-import { contentOffsetFromVisual, flowBreakPositions, type FlowLine } from "../page-flow";
+import { isPageBackedDoc } from "./field-canvas";
+import { contentOffsetFromVisual, flowBreakPositions, selectPageFlowBreaks, canvasSeamPositions, type FlowLine } from "../page-flow";
 import {
-  forcedBreakSpacerHeight,
+  flowSpacerHeightForBreak,
   pageSeamMetricsFromStyles,
   printableContentHeight,
   seamSpacerHeight,
@@ -14,11 +15,11 @@ import {
 const key = new PluginKey<DecorationSet>("pageFlow");
 const pendingRefresh = new WeakSet<EditorView>();
 const SKIP_SELECTOR =
-  ".creator-flow-break, .field-overlay, [data-field-overlay], .signer-field-node, .ProseMirror-widget";
-const OVERLAY_HIT_SELECTOR = ".field-overlay, [data-field-overlay], .signer-field-node";
+  ".creator-flow-break, .field-overlay, [data-field-overlay], .signer-field-node, .overlay-text-box, .ProseMirror-widget";
+const OVERLAY_HIT_SELECTOR = ".field-overlay, [data-field-overlay], .signer-field-node, .overlay-text-box";
 const TABLE_SKIP_SELECTOR = "table, [data-node-type='quoteTable'], .quote-table";
 const KEEP_TOGETHER_SELECTOR =
-  "img, hr, [data-node-type='pageBreak'], [data-page-break], [data-youtube-video], .creator-image-block, [data-node-type='quoteTable'], .quote-table";
+  "img, hr, [data-node-type='pageBreak'], [data-page-break], [data-youtube-video], .creator-image-block, [data-node-type='quoteTable'], .quote-table, .field-canvas, [data-node-type='fieldCanvas'], [data-field-canvas]";
 const MAX_LAYOUT_PASSES = 12;
 const CONNECT_RETRY_FRAMES = 30;
 
@@ -208,6 +209,28 @@ function posForLine(view: EditorView, line: VisualLine): number | null {
   return pos;
 }
 
+function nodeAfterIsFieldCanvas(view: EditorView, pos: number): boolean {
+  try {
+    return view.state.doc.resolve(pos).nodeAfter?.type.name === "fieldCanvas";
+  } catch {
+    return false;
+  }
+}
+
+function overflowInsideFieldCanvas(view: EditorView, pos: number): boolean {
+  try {
+    const $pos = view.state.doc.resolve(Math.min(pos, view.state.doc.content.size));
+    for (let depth = $pos.depth; depth > 0; depth -= 1) {
+      if ($pos.node(depth).type.name === "fieldCanvas") {
+        return $pos.before(depth) !== pos;
+      }
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 function overlayPos(doc: EditorView["state"]["doc"]): number {
   let found = doc.content.size;
   doc.forEach((node, pos) => {
@@ -294,7 +317,8 @@ function readPageMetrics(view: EditorView): {
   gap: number;
 } {
   const metrics = pageSeamMetricsFromStyles(view.dom.closest("[data-creator-paper]") ?? view.dom);
-  const paddingTop = Number.parseFloat(getComputedStyle(view.dom).paddingTop) || metrics.margin;
+  const paddingRaw = Number.parseFloat(getComputedStyle(view.dom).paddingTop);
+  const paddingTop = Number.isFinite(paddingRaw) ? paddingRaw : metrics.margin;
   return { pageHeight: metrics.pageHeight, margin: metrics.margin, paddingTop, gap: metrics.gap };
 }
 
@@ -305,50 +329,78 @@ function applyPageCount(view: EditorView, breakCount: number): void {
   paper?.style.setProperty("--creator-page-count", count);
 }
 
+function applyPageBacked(view: EditorView): void {
+  const pageBacked = isPageBackedDoc(view.state.doc);
+  const dom = view.dom as HTMLElement;
+  dom.classList.toggle("is-page-backed", pageBacked);
+  const paper = view.dom.closest("[data-creator-paper]") as HTMLElement | null;
+  paper?.classList.toggle("is-page-backed", pageBacked);
+  // Inline so a stale CSS bundle cannot leave page images at height 0 or
+  // padded into a third sheet.
+  if (pageBacked) {
+    dom.style.padding = "0px";
+    dom.style.setProperty("--field-canvas-height", "var(--creator-page-height, 1056px)");
+  } else {
+    dom.style.padding = "";
+    dom.style.removeProperty("--field-canvas-height");
+  }
+}
+
 function buildDecorations(view: EditorView): DecorationSet {
   const { pageHeight, margin, paddingTop, gap } = readPageMetrics(view);
   const contentHeight = printableContentHeight({ pageHeight, margin, gap });
   const spacerHeight = seamSpacerHeight({ pageHeight, margin, gap });
   const docSize = view.state.doc.content.size;
+  const pageBacked = isPageBackedDoc(view.state.doc);
 
-  const overflow = pauseOverlayHitTesting(view.dom, () => {
-    const visualLines = collectLines(view);
-    const measured: FlowLine[] = [];
-    for (const visual of visualLines) {
-      const pos = posForLine(view, visual);
-      if (pos == null) {
-        continue;
-      }
-      const spacers = spacerHeightAbove(view.dom, visual.top);
-      measured.push({
-        pos,
-        contentTop: contentOffsetFromVisual(visual.top, paddingTop, spacers),
-        contentBottom: contentOffsetFromVisual(visual.bottom, paddingTop, spacers),
+  const overflow = pageBacked
+    ? []
+    : pauseOverlayHitTesting(view.dom, () => {
+        const visualLines = collectLines(view);
+        const measured: FlowLine[] = [];
+        for (const visual of visualLines) {
+          const pos = posForLine(view, visual);
+          if (pos == null) {
+            continue;
+          }
+          const spacers = spacerHeightAbove(view.dom, visual.top);
+          measured.push({
+            pos,
+            contentTop: contentOffsetFromVisual(visual.top, paddingTop, spacers),
+            contentBottom: contentOffsetFromVisual(visual.bottom, paddingTop, spacers),
+          });
+        }
+        return flowBreakPositions(measured, contentHeight);
       });
-    }
-    return flowBreakPositions(measured, contentHeight);
-  });
 
   const forced = forcedBreakPositions(view);
-  const forcedValid = new Set(
-    forced.map((pos) => validFlowPos(docSize, pos)).filter((pos): pos is number => pos != null),
-  );
-  const overflowValid = new Set(
-    overflow.map((pos) => validFlowPos(docSize, pos)).filter((pos): pos is number => pos != null),
-  );
-  const positions = [...new Set([...forcedValid, ...overflowValid])].sort((a, b) => a - b);
+  const forcedValid = forced
+    .map((pos) => validFlowPos(docSize, pos))
+    .filter((pos): pos is number => pos != null);
+  const overflowValid = overflow
+    .map((pos) => validFlowPos(docSize, pos))
+    .filter((pos): pos is number => pos != null && !overflowInsideFieldCanvas(view, pos));
+  const topLevel: { type: string; pos: number }[] = [];
+  view.state.doc.forEach((node, pos) => {
+    topLevel.push({ type: node.type.name, pos });
+  });
+  const positions = pageBacked
+    ? canvasSeamPositions(topLevel)
+        .map((pos) => validFlowPos(docSize, pos))
+        .filter((pos): pos is number => pos != null)
+    : selectPageFlowBreaks(forcedValid, overflowValid, false);
+  const forcedSet = new Set(forcedValid);
 
   const decorations = positions.map((pos) => {
-    let height = spacerHeight;
-    if (forcedValid.has(pos)) {
-      const bottom = pageBreakBottomPx(view, pos);
-      if (bottom != null) {
-        height = Math.max(
-          height,
-          forcedBreakSpacerHeight(bottom, pageHeight, gap, margin, spacerHeight),
-        );
-      }
-    }
+    const height = flowSpacerHeightForBreak({
+      pageBacked,
+      followingIsPageCanvas: pageBacked && nodeAfterIsFieldCanvas(view, pos),
+      measuredBottomPx: forcedSet.has(pos) ? pageBreakBottomPx(view, pos) : null,
+      pageHeightPx: pageHeight,
+      gapPx: gap,
+      marginPx: margin,
+      defaultSeamPx: spacerHeight,
+    });
     return Decoration.widget(pos, () => createFlowBreakElement(height), {
       side: -1,
       ignoreSelection: true,
@@ -418,6 +470,7 @@ export const PageFlow = Extension.create({
             connectRetries = 0;
 
             try {
+              applyPageBacked(view);
               const next = buildDecorations(view);
               applyPageCount(view, currentBreakPositions(next).length);
               const prev = key.getState(view.state) ?? DecorationSet.empty;

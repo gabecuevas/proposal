@@ -5,6 +5,7 @@ import { clampImageWidth, parseImageAlign } from "./extensions/resizable-image";
 import { collectHeadings } from "./extensions/table-of-contents";
 import { migrateSignerFieldsDoc } from "./migrate-signer-fields";
 import { renderPageBackgroundsHtml } from "./page-backgrounds";
+import { pageContentHeightPx, pageSizeFromDoc, pageSizeSpec } from "./page-geometry";
 import { calculateQuoteTotals } from "./quote";
 import { parseSignerFieldAttrs } from "./signer-field-attrs";
 import { renderVariableText } from "./variables";
@@ -207,7 +208,7 @@ function blockInlineStyle(node: EditorNode): string {
   return styles.length ? ` style="${styles.join(";")}"` : "";
 }
 
-function renderNode(node: EditorNode, input: RenderInput): string {
+function renderNode(node: EditorNode, input: RenderInput, parentType?: string): string {
   switch (node.type) {
     case "paragraph":
       return `<p${blockInlineStyle(node)}>${(node.content ?? []).map((child) => renderNode(child, input)).join("")}</p>`;
@@ -244,8 +245,18 @@ function renderNode(node: EditorNode, input: RenderInput): string {
       const src = escapeHtml(String(node.attrs?.src ?? ""));
       return `<figure class="creator-video" data-youtube-video><a href="${src}">Watch video: ${src}</a></figure>`;
     }
-    case "textBox":
-      return `<div class="creator-text-box" data-node-type="textBox">${(node.content ?? []).map((child) => renderNode(child, input)).join("")}</div>`;
+    case "textBox": {
+      const inner = (node.content ?? []).map((child) => renderNode(child, input)).join("");
+      if (parentType === "fieldCanvas" || parentType === "fieldOverlay") {
+        const x = Number(node.attrs?.xPct ?? 0.08);
+        const y = Number(node.attrs?.yPct ?? 0.08);
+        const w = Number(node.attrs?.wPct ?? 0.42);
+        const h = Number(node.attrs?.hPct ?? 0.08);
+        const page = Number(node.attrs?.page ?? 0);
+        return `<div class="overlay-text-box rendered-overlay-text-box" data-node-type="textBox" style="--field-x:${x};--field-y:${y};--field-w:${w};--field-h:${h};--field-page:${page}">${inner}</div>`;
+      }
+      return `<div class="creator-text-box" data-node-type="textBox">${inner}</div>`;
+    }
     case "table":
       return `<table>${(node.content ?? []).map((child) => renderNode(child, input)).join("")}</table>`;
     case "tableRow":
@@ -267,7 +278,7 @@ function renderNode(node: EditorNode, input: RenderInput): string {
     case "pageBreak":
       return '<div class="page-break" data-node-type="pageBreak"></div>';
     case "fieldOverlay":
-      return `<div class="rendered-field-overlay" data-node-type="fieldOverlay">${(node.content ?? []).map((child) => renderNode(child, input)).join("")}</div>`;
+      return `<div class="rendered-field-overlay" data-node-type="fieldOverlay">${(node.content ?? []).map((child) => renderNode(child, input, "fieldOverlay")).join("")}</div>`;
     case "variableToken": {
       const key = String(node.attrs?.key ?? "");
       const fallback = node.attrs?.fallback ? String(node.attrs.fallback) : undefined;
@@ -315,7 +326,7 @@ function renderNode(node: EditorNode, input: RenderInput): string {
       )}</p><p>Total due now: ${formatMoney(totals.totalDueNow, currency)}</p></section>`;
     }
     case "fieldCanvas": {
-      const inner = (node.content ?? []).map((child) => renderNode(child, input)).join("");
+      const inner = (node.content ?? []).map((child) => renderNode(child, input, "fieldCanvas")).join("");
       const aspect = fieldCanvasAspectRatio(node.attrs?.pageWidth, node.attrs?.pageHeight);
       const bgKey = String(node.attrs?.bgKey ?? "");
       const background = bgKey
@@ -327,8 +338,10 @@ function renderNode(node: EditorNode, input: RenderInput): string {
       // for blank canvases.
       const border = bgKey ? "none" : "1px dashed rgba(148,163,184,0.85)";
       const surface = bgKey ? "#ffffff" : "rgba(248,250,252,0.65)";
+      const spec = pageSizeSpec(pageSizeFromDoc(input.doc));
       const minHeight = bgKey ? "" : "min-height:420px;";
-      return `<div class="field-canvas rendered-field-canvas" data-node-type="fieldCanvas" style="position:relative;width:100%;aspect-ratio:${aspect};${minHeight}border:${border};border-radius:0.5rem;background:${surface};overflow:hidden;">${background}${inner}</div>`;
+      const maxHeight = `max-height:${pageContentHeightPx(spec.heightPx, spec.marginPx)}px;`;
+      return `<div class="field-canvas rendered-field-canvas" data-node-type="fieldCanvas" style="position:relative;width:100%;aspect-ratio:${aspect};${minHeight}${maxHeight}border:${border};border-radius:0;background:${surface};overflow:hidden;break-inside:avoid;page-break-inside:avoid;">${background}${inner}</div>`;
     }
     case "signerField":
       return renderSignerFieldNode(node, input);

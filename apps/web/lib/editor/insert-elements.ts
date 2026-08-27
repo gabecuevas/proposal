@@ -1,6 +1,7 @@
 import type { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { requestPageFlowSync } from "./extensions/page-flow";
+import { insertOverlayTextBox } from "./overlay-text-box";
 
 export type UploadedAsset = { key: string; url: string; name: string; contentType: string };
 
@@ -168,6 +169,9 @@ export function insertTable(editor: Editor, rows = 3, cols = 3, at?: number): vo
 }
 
 export function insertTextBlock(editor: Editor, at?: number): void {
+  if (insertOverlayTextBox(editor, at)) {
+    return;
+  }
   const node = { type: "textBox", content: [emptyParagraph()] };
   if (at != null) {
     insertContentAtTopLevel(editor, at, node);

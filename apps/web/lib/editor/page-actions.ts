@@ -1,6 +1,7 @@
 import type { Editor } from "@tiptap/core";
 import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
 import { requestPageFlowSync } from "./extensions/page-flow";
+import { isPageBackedDoc } from "./extensions/field-canvas";
 import {
   defaultLibraryNameFromNodes,
   sliceNodesToDoc,
@@ -48,6 +49,12 @@ function remapCloneIds(node: EditorNode): void {
       fieldId: `field-${newCloneId()}`,
     };
   }
+  if (node.type === "textBox" && node.attrs?.boxId) {
+    node.attrs = {
+      ...(node.attrs ?? {}),
+      boxId: `textbox-${newCloneId()}`,
+    };
+  }
   for (const child of node.content ?? []) {
     remapCloneIds(child);
   }
@@ -75,6 +82,113 @@ export function splitTopLevelByPageBreaks(doc: PMNode): PageBlock[][] {
     });
   });
   return pages;
+}
+
+/**
+ * PDF-backed documents are one field canvas per sheet. Visual Y assignment
+ * drifts after a leftover spacer, so delete/duplicate must use canvas order.
+ */
+export function splitPageBackedPages(doc: PMNode): PageBlock[][] {
+  const pages: PageBlock[][] = [];
+  doc.forEach((node, pos) => {
+    if (node.type.name === "fieldOverlay" || node.type.name === "pageBreak") {
+      return;
+    }
+    const block: PageBlock = {
+      pos,
+      size: node.nodeSize,
+      type: node.type.name,
+      json: node.toJSON() as EditorNode,
+    };
+    if (node.type.name === "fieldCanvas" || pages.length === 0) {
+      pages.push([block]);
+    } else {
+      pages[pages.length - 1]!.push(block);
+    }
+  });
+  return pages;
+}
+
+type MutableDoc = {
+  doc: PMNode;
+  delete: (from: number, to: number) => unknown;
+  insert: (pos: number, node: PMNode) => unknown;
+  mapping: { map: (pos: number) => number };
+};
+
+/**
+ * Keep exactly one pageBreak between canvases so print CSS cannot invent a
+ * blank sheet and the editor gap stays one grey strip.
+ */
+export function normalizePageBackedBreaks(tr: MutableDoc, schema: PMNode["type"]["schema"]): void {
+  if (!isPageBackedDoc(tr.doc)) {
+    return;
+  }
+  const pageBreakType = schema.nodes.pageBreak;
+  if (!pageBreakType) {
+    return;
+  }
+
+  type Item = { name: string; from: number; to: number };
+  const overlay = overlayPos(tr.doc);
+  const items: Item[] = [];
+  tr.doc.forEach((node, pos) => {
+    if (pos >= overlay || node.type.name === "fieldOverlay") {
+      return;
+    }
+    items.push({ name: node.type.name, from: pos, to: pos + node.nodeSize });
+  });
+
+  const deleteRanges: { from: number; to: number }[] = [];
+  const insertAt: number[] = [];
+  let lastKept: "canvas" | "break" | "other" | null = null;
+  let lastCanvasIndex = -1;
+
+  items.forEach((item, index) => {
+    if (item.name === "pageBreak") {
+      if (lastKept !== "canvas") {
+        deleteRanges.push(item);
+      } else {
+        lastKept = "break";
+      }
+      return;
+    }
+    if (item.name === "fieldCanvas") {
+      if (lastKept === "canvas") {
+        insertAt.push(item.from);
+      }
+      lastKept = "canvas";
+      lastCanvasIndex = index;
+      return;
+    }
+    lastKept = "other";
+  });
+
+  for (let i = lastCanvasIndex + 1; i < items.length; i += 1) {
+    if (items[i]!.name === "pageBreak") {
+      deleteRanges.push(items[i]!);
+    }
+  }
+
+  const seen = new Set<number>();
+  const uniqueDeletes = deleteRanges.filter((range) => {
+    if (seen.has(range.from)) {
+      return false;
+    }
+    seen.add(range.from);
+    return true;
+  });
+
+  for (const range of uniqueDeletes.sort((a, b) => b.from - a.from)) {
+    const from = tr.mapping.map(range.from);
+    const to = tr.mapping.map(range.to);
+    if (to > from) {
+      tr.delete(from, to);
+    }
+  }
+  for (const pos of insertAt.sort((a, b) => b - a)) {
+    tr.insert(tr.mapping.map(pos), pageBreakType.create());
+  }
 }
 
 function overlayPos(doc: PMNode): number {
@@ -159,6 +273,9 @@ export function collectPageBlocks(
   pageIndex: number,
 ): PageBlock[] {
   const i = Math.max(0, Math.trunc(pageIndex));
+  if (isPageBackedDoc(editor.state.doc)) {
+    return splitPageBackedPages(editor.state.doc)[i] ?? [];
+  }
   if (paper) {
     const visual = measureVisualBlocks(editor, paper);
     if (visualLayoutUsable(visual)) {
@@ -382,6 +499,7 @@ export function duplicateVisualPage(
         duplicatePageBackgrounds(parsePageBackgrounds(doc.attrs.pageBackgrounds), i),
       );
       dropPageBreaksAfterOverlay(tr);
+      normalizePageBackedBreaks(tr, schema);
       dispatch(tr);
       return true;
     })
@@ -437,6 +555,7 @@ export function deleteVisualPage(
         deletePageBackgrounds(parsePageBackgrounds(doc.attrs.pageBackgrounds), i),
       );
       dropPageBreaksAfterOverlay(tr);
+      normalizePageBackedBreaks(tr, schema);
       dispatch(tr);
       return true;
     })
@@ -490,6 +609,9 @@ export async function savePageToLibrary(
 
 /** Live visual page count when paper is painted; otherwise page-break structure. */
 export function resolvedPageCount(editor: Editor, paper: HTMLElement | null | undefined): number {
+  if (isPageBackedDoc(editor.state.doc)) {
+    return Math.max(1, splitPageBackedPages(editor.state.doc).length);
+  }
   const structural = Math.max(1, splitTopLevelByPageBreaks(editor.state.doc).length);
   if (!paper || paper.scrollHeight <= 0) {
     return structural;

@@ -5,6 +5,8 @@ import {
   attrsToJson,
   clamp01,
   defaultSignerFieldAttrs,
+  defaultPlaceholderForType,
+  defaultSizeForType,
   parseSignerFieldAttrs,
   type SignerFieldEditorType,
 } from "./signer-field-attrs";
@@ -71,6 +73,8 @@ function newFieldAttrs(
         recipientId: input.recipientId,
         type: input.type,
         ...defaultSignerFieldAttrs(),
+        ...defaultSizeForType(input.type),
+        placeholder: defaultPlaceholderForType(input.type),
         label: defaultLabelForType(input.type),
         ...overrides,
       } as Record<string, unknown>,
@@ -90,7 +94,7 @@ export function insertSignerFieldBlock(
     page?: number;
   },
 ): boolean {
-  const defaults = defaultSignerFieldAttrs();
+  const size = defaultSizeForType(input.type);
   const overrides: Record<string, unknown> = {
     ...(typeof input.xPct === "number" ? { xPct: clamp01(input.xPct) } : {}),
     ...(typeof input.yPct === "number" ? { yPct: clamp01(input.yPct) } : {}),
@@ -103,8 +107,8 @@ export function insertSignerFieldBlock(
       const offset = target.node.childCount;
       if (overrides.yPct === undefined) {
         let yPct = clamp01(0.04 + offset * 0.1);
-        if (yPct + defaults.hPct > 1) {
-          yPct = Math.max(0.02, 1 - defaults.hPct - 0.02);
+        if (yPct + size.hPct > 1) {
+          yPct = Math.max(0.02, 1 - size.hPct - 0.02);
         }
         overrides.yPct = yPct;
       }
@@ -140,7 +144,7 @@ export function insertSignerFieldAtPoint(
     clientY: number;
   },
 ): boolean {
-  const defaults = defaultSignerFieldAttrs();
+  const size = defaultSizeForType(input.type);
   const hit = document.elementFromPoint(input.clientX, input.clientY);
   const canvasEl = hit?.closest("[data-field-canvas]") as HTMLElement | null;
 
@@ -148,8 +152,8 @@ export function insertSignerFieldAtPoint(
     const rect = canvasEl.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
       const target = canvasFromElement(editor, canvasEl);
-      const xPct = centered(input.clientX - rect.left, rect.width, defaults.wPct);
-      const yPct = centered(input.clientY - rect.top, rect.height, defaults.hPct);
+      const xPct = centered(input.clientX - rect.left, rect.width, size.wPct);
+      const yPct = centered(input.clientY - rect.top, rect.height, size.hPct);
       if (target) {
         return appendField(
           editor,
@@ -174,12 +178,12 @@ export function insertSignerFieldAtPoint(
 
   const pageHeightPx = readPaperPageHeightPx(paper);
   const gapPx = readPaperPageGapPx(paper);
-  const xPct = centered(input.clientX - paperRect.left, paperRect.width, defaults.wPct);
+  const xPct = centered(input.clientX - paperRect.left, paperRect.width, size.wPct);
   const yFromTop = Math.max(0, input.clientY - paperRect.top);
   const page = pageAtVisualOffset(yFromTop, pageHeightPx, gapPx);
   const yPct = Math.min(
-    Math.max(0, 1 - defaults.hPct),
-    (yFromTop - visualTopForPage(page, pageHeightPx, gapPx)) / pageHeightPx - defaults.hPct / 2,
+    Math.max(0, 1 - size.hPct),
+    (yFromTop - visualTopForPage(page, pageHeightPx, gapPx)) / pageHeightPx - size.hPct / 2,
   );
 
   const overlay = ensureOverlay(editor);
@@ -237,7 +241,7 @@ function defaultLabelForType(type: SignerFieldEditorType): string {
     case "date":
       return "Date";
     case "text":
-      return "Text";
+      return "";
     case "checkbox":
       return "Checkbox";
     case "dropdown":
@@ -245,4 +249,31 @@ function defaultLabelForType(type: SignerFieldEditorType): string {
     default:
       return "Field";
   }
+}
+
+export function pasteCopiedSignerField(
+  editor: Editor,
+  copied: { type: "signerField"; attrs: Record<string, unknown> },
+): boolean {
+  const attrs = parseSignerFieldAttrs(
+    {
+      ...copied.attrs,
+      fieldId: `field-${globalThis.crypto.randomUUID()}`,
+      xPct: clamp01(Number(copied.attrs.xPct ?? 0.04) + 0.03),
+      yPct: clamp01(Number(copied.attrs.yPct ?? 0.04) + 0.03),
+    },
+    0,
+  );
+  const json = attrsToJson(attrs);
+  if (hasCanvas(editor)) {
+    const target = findTargetCanvas(editor);
+    if (target) {
+      return appendField(editor, target, json);
+    }
+  }
+  const overlay = ensureOverlay(editor);
+  if (!overlay) {
+    return false;
+  }
+  return appendField(editor, overlay, json);
 }

@@ -3,7 +3,7 @@
 import type { Editor } from "@tiptap/core";
 import { NodeSelection } from "@tiptap/pm/state";
 import { useEffect, useState } from "react";
-import { parseSignerFieldAttrs, type SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
+import { parseSignerFieldAttrs, SIGNER_FIELD_VALIDATIONS, SINGLE_LINE_FIELD_H_PCT, type SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
 import { useSignerRecipients } from "./signer-field-context";
 
 type Props = {
@@ -110,6 +110,34 @@ export function SignerFieldPropertiesPanel({ editor, hideEmpty }: Props) {
           />
           Required
         </label>
+        {attrs.type === "text" ? (
+          <label className="flex items-center gap-2 text-muted">
+            <input
+              type="checkbox"
+              checked={attrs.multiline}
+              onChange={(event) => update({ multiline: event.target.checked, hPct: event.target.checked ? Math.max(attrs.hPct, 0.09) : SINGLE_LINE_FIELD_H_PCT })}
+            />
+            Multiline
+          </label>
+        ) : null}
+        {attrs.type === "text" || attrs.type === "date" ? (
+          <label className="block text-muted">
+            Validation
+            <select
+              className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-xs"
+              value={attrs.validation}
+              onChange={(event) => update({ validation: event.target.value })}
+            >
+              {SIGNER_FIELD_VALIDATIONS.filter((item) => attrs.type !== "date" || item.id === "none" || item.id === "date").map(
+                (item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ),
+              )}
+            </select>
+          </label>
+        ) : null}
         <label className="block text-muted">
           Label
           <input
@@ -124,6 +152,23 @@ export function SignerFieldPropertiesPanel({ editor, hideEmpty }: Props) {
             className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-xs"
             value={attrs.placeholder}
             onChange={(event) => update({ placeholder: event.target.value })}
+          />
+        </label>
+        <label className="block text-muted">
+          Field ID
+          <input
+            className="mt-1 w-full rounded border border-border bg-background px-2 py-1 font-mono text-xs"
+            value={attrs.fieldId}
+            onChange={(event) => update({ fieldId: event.target.value })}
+          />
+        </label>
+        <label className="block text-muted">
+          Merge field
+          <input
+            className="mt-1 w-full rounded border border-border bg-background px-2 py-1 text-xs"
+            value={attrs.mergeField}
+            placeholder="Enter name of merge field"
+            onChange={(event) => update({ mergeField: event.target.value })}
           />
         </label>
         <label className="block text-muted">

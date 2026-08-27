@@ -1,5 +1,6 @@
 import { mergeAttributes, Node } from "@tiptap/core";
 import { NodeSelection } from "@tiptap/pm/state";
+import { overlayTextBoxSelectionPlugin } from "../overlay-text-box";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -20,18 +21,37 @@ export const TextBox = Node.create({
   group: "block",
   content: "(paragraph | heading | bulletList | orderedList)+",
   isolating: true,
-  draggable: true,
+  draggable: false,
+
+  addAttributes() {
+    return {
+      /** Set when the box is an overlay on a PDF canvas or field overlay. */
+      boxId: { default: "" },
+      xPct: { default: 0.08 },
+      yPct: { default: 0.08 },
+      wPct: { default: 0.42 },
+      hPct: { default: 0.08 },
+      page: { default: 0 },
+      zIndex: { default: 1 },
+    };
+  },
 
   parseHTML() {
     return [{ tag: 'div[data-node-type="textBox"]' }];
   },
 
   renderHTML({ HTMLAttributes }) {
+    const overlay = Boolean(HTMLAttributes.boxId);
     return [
       "div",
       mergeAttributes(HTMLAttributes, {
         "data-node-type": "textBox",
-        class: "creator-text-box",
+        class: overlay ? "overlay-text-box" : "creator-text-box",
+        ...(overlay
+          ? {
+              "data-overlay-text-box-id": String(HTMLAttributes.boxId ?? ""),
+            }
+          : {}),
       }),
       0,
     ];
@@ -66,5 +86,9 @@ export const TextBox = Node.create({
             content: [{ type: "paragraph" }],
           }),
     };
+  },
+
+  addProseMirrorPlugins() {
+    return [overlayTextBoxSelectionPlugin()];
   },
 });

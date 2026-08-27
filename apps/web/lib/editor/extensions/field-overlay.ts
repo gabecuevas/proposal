@@ -13,7 +13,7 @@ import { mergeAttributes, Node } from "@tiptap/core";
 export const FieldOverlay = Node.create({
   name: "fieldOverlay",
   group: "block",
-  content: "signerField*",
+  content: "(signerField | textBox)*",
   isolating: true,
   selectable: false,
 

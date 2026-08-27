@@ -1,6 +1,7 @@
 "use client";
 
 import { EditorContent, type Editor } from "@tiptap/react";
+import { NodeSelection } from "@tiptap/pm/state";
 import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import {
   PAGE_GAP_PX,
@@ -15,6 +16,7 @@ import {
   savePageToLibrary,
 } from "@/lib/editor/page-actions";
 import { CreatorBlockControls } from "./creator-block-controls";
+import { CreatorChromeProvider } from "./creator-chrome-context";
 import { CreatorPageBackgrounds } from "./creator-page-backgrounds";
 import { CreatorPageMenu } from "./creator-page-menu";
 import { CreatorPageNav, readVisiblePage } from "./creator-page-nav";
@@ -22,6 +24,8 @@ import { useCreatorPageActions } from "./creator-page-workspace";
 import { CreatorSelectionToolbar } from "./creator-selection-toolbar";
 import { FIELD_DRAG_MIME } from "./field-types";
 import { SlashInsertMenu } from "./slash-insert-menu";
+import { copySignerFieldNode, readCopiedSignerField } from "@/lib/editor/field-clipboard";
+import { pasteCopiedSignerField } from "@/lib/editor/insert-signer-field";
 
 /** Editor-only gutter for block handles. Not part of the printable page. */
 const PAPER_CHROME_GUTTER_PX = 64;
@@ -65,11 +69,16 @@ export function CreatorCanvas({
     }
     const measure = () => {
       const flow = paper.querySelector(".ProseMirror") as HTMLElement | null;
-      const pages = pageCountForPaperHeight(
-        flow?.scrollHeight || paper.scrollHeight,
-        spec.heightPx,
-        PAGE_GAP_PX,
-      );
+      const pageBacked = flow?.classList.contains("is-page-backed") ?? false;
+      const canvasCount = flow?.querySelectorAll("[data-field-canvas]").length ?? 0;
+      const pages =
+        pageBacked && canvasCount > 0
+          ? canvasCount
+          : pageCountForPaperHeight(
+              flow?.scrollHeight || paper.scrollHeight,
+              spec.heightPx,
+              PAGE_GAP_PX,
+            );
       setPageCount(pages);
       onPageCountChange?.(pages);
       if (scroller) {
@@ -99,7 +108,7 @@ export function CreatorCanvas({
     }
     const centerOverflowX = () => {
       const extra = scroller.scrollWidth - scroller.clientWidth;
-      scroller.scrollLeft = extra > 0 ? Math.round(extra / 2) : 0;
+      scroller.scrollLeft = extra > 2 ? Math.round(extra / 2) : 0;
     };
     centerOverflowX();
     const observer = new ResizeObserver(() => {
@@ -111,6 +120,51 @@ export function CreatorCanvas({
     }
     return () => observer.disconnect();
   }, [spec.widthPx]);
+
+  useEffect(() => {
+    function onFieldKeys(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey)) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      if (!editor) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      const { selection } = editor.state;
+      const fieldSelected =
+        selection instanceof NodeSelection && selection.node.type.name === "signerField";
+
+      if (key === "v") {
+        const copied = readCopiedSignerField();
+        if (!copied) {
+          return;
+        }
+        event.preventDefault();
+        pasteCopiedSignerField(editor, copied);
+        return;
+      }
+
+      if (!fieldSelected) {
+        return;
+      }
+      if (key === "c") {
+        event.preventDefault();
+        copySignerFieldNode({ type: "signerField", attrs: { ...selection.node.attrs } });
+        return;
+      }
+      if (key === "x") {
+        event.preventDefault();
+        copySignerFieldNode({ type: "signerField", attrs: { ...selection.node.attrs } });
+        editor.chain().focus().deleteRange({ from: selection.from, to: selection.to }).run();
+      }
+    }
+    window.addEventListener("keydown", onFieldKeys);
+    return () => window.removeEventListener("keydown", onFieldKeys);
+  }, [editor]);
 
   function onDragOver(event: DragEvent<HTMLDivElement>) {
     if (event.dataTransfer.types.includes(FIELD_DRAG_MIME)) {
@@ -129,6 +183,7 @@ export function CreatorCanvas({
   }
 
   return (
+    <CreatorChromeProvider documentId={documentId} templateId={templateId}>
     <div className="flex min-h-0 min-w-0 flex-1" onDragOver={onDragOver} onDrop={onDrop}>
       <CreatorPageNav
         paperRef={paperRef}
@@ -140,7 +195,7 @@ export function CreatorCanvas({
       />
       <div
         ref={scrollerRef}
-        className="relative flex min-h-0 min-w-0 flex-1 overflow-auto bg-slate-200/70"
+        className="relative flex min-h-0 min-w-0 flex-1 overflow-auto bg-slate-200/70 [scrollbar-gutter:stable]"
       >
         {/* Flexible chrome only. Must yield before the paper so sidebars never clip the sheet. */}
         <div
@@ -148,7 +203,10 @@ export function CreatorCanvas({
           className="min-w-0"
           style={{ flex: `1 1 ${PAPER_CHROME_GUTTER_PX}px` }}
         />
-        <div className="shrink-0 py-10">
+        <div
+          className="shrink-0 py-10"
+          style={{ paddingLeft: PAPER_CHROME_GUTTER_PX, paddingRight: PAPER_CHROME_GUTTER_PX }}
+        >
           <div
             ref={paperRef}
             data-creator-paper
@@ -229,5 +287,6 @@ export function CreatorCanvas({
         />
       </div>
     </div>
+    </CreatorChromeProvider>
   );
 }

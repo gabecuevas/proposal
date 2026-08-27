@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildPageBackedEditorDoc, templateNameFromFileName } from "../pdf-template";
+import { buildPageBackedEditorDoc, inferPageSizeFromPdfPoints, templateNameFromFileName } from "../pdf-template";
+import {
+  fieldCanvasEditorHeightPx,
+  isPageBackedEditorJson,
+} from "../extensions/field-canvas";
+import { pageCountForPaperHeight, PAGE_GAP_PX, PAGE_HEIGHT_PX, stackedPaperHeightPx } from "../page-geometry";
 import { pageCountFromEditor, templateThumbnailKey } from "@/lib/ui/template-meta";
 
 const pages = [
@@ -32,17 +37,63 @@ describe("buildPageBackedEditorDoc", () => {
 
   it("reports a page count matching the uploaded PDF", () => {
     expect(pageCountFromEditor(buildPageBackedEditorDoc(pages))).toBe(3);
+    expect(
+      pageCountFromEditor({
+        type: "doc",
+        content: [
+          { type: "fieldCanvas", attrs: { bgKey: "a" } },
+          { type: "pageBreak" },
+          { type: "fieldCanvas", attrs: { bgKey: "b" } },
+          { type: "pageBreak" },
+        ],
+      }),
+    ).toBe(2);
+  });
+
+  it("treats the upload as page-backed so each canvas fills one sheet", () => {
+    const twoPage = buildPageBackedEditorDoc(pages.slice(0, 2));
+    expect(isPageBackedEditorJson(twoPage)).toBe(true);
+    expect(isPageBackedEditorJson({ type: "doc", content: [{ type: "pageBreak" }, { type: "fieldCanvas" }] })).toBe(
+      true,
+    );
+    expect(isPageBackedEditorJson({ type: "doc", content: [{ type: "paragraph" }] })).toBe(false);
+    expect(fieldCanvasEditorHeightPx(true)).toBe(PAGE_HEIGHT_PX);
+    expect(fieldCanvasEditorHeightPx(false)).toBe(PAGE_HEIGHT_PX - 96);
+    expect(
+      pageCountForPaperHeight(
+        stackedPaperHeightPx(2, fieldCanvasEditorHeightPx(true), PAGE_GAP_PX),
+        PAGE_HEIGHT_PX,
+        PAGE_GAP_PX,
+      ),
+    ).toBe(2);
   });
 
   it("exposes the first page as the gallery thumbnail", () => {
     expect(templateThumbnailKey(buildPageBackedEditorDoc(pages))).toBe(pages[0]!.key);
   });
 
+  it("records the PDF paper size on the document", () => {
+    expect(buildPageBackedEditorDoc(pages).attrs?.pageSize).toBe("letter");
+    expect(
+      buildPageBackedEditorDoc([{ key: "a", pageNumber: 1, width: 595.28, height: 841.89 }]).attrs?.pageSize,
+    ).toBe("a4");
+  });
+
   it("falls back to an empty paragraph when there are no pages", () => {
     expect(buildPageBackedEditorDoc([])).toEqual({
       type: "doc",
+      attrs: { pageSize: "letter" },
       content: [{ type: "paragraph" }],
     });
+  });
+});
+
+describe("inferPageSizeFromPdfPoints", () => {
+  it("recognizes Letter, A4, and Legal from the PDF page box", () => {
+    expect(inferPageSizeFromPdfPoints(612, 792)).toBe("letter");
+    expect(inferPageSizeFromPdfPoints(595.28, 841.89)).toBe("a4");
+    expect(inferPageSizeFromPdfPoints(612, 1008)).toBe("legal");
+    expect(inferPageSizeFromPdfPoints(792, 612)).toBe("letter");
   });
 });
 

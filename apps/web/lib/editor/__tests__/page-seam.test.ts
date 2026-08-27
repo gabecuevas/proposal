@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   childIndexesNeedingBreakBefore,
+  forcedBreakContentMarginPx,
+  forcedBreakMinSeamPx,
   forcedBreakSpacerHeight,
+  flowSpacerHeightForBreak,
   rangeOverlapsSeam,
   validFlowPos,
   visualSeamBand,
@@ -31,6 +34,48 @@ describe("page seams", () => {
   it("fills the rest of the sheet after an explicit page break", () => {
     expect(forcedBreakSpacerHeight(100, 1056, 32, 48, 128)).toBe(1036);
     expect(forcedBreakSpacerHeight(1008, 1056, 32, 48, 128)).toBe(128);
+  });
+
+  it("uses only the canvas gap after a full-sheet page image", () => {
+    expect(forcedBreakContentMarginPx(true, 48)).toBe(0);
+    expect(forcedBreakMinSeamPx(true, 32, 128)).toBe(32);
+    expect(forcedBreakSpacerHeight(1056, 1056, 32, 0, 32)).toBe(32);
+  });
+
+  it("never compounds PDF page seams from a missed measurement or text-flow fallback", () => {
+    const letter = { pageHeightPx: 1056, gapPx: 32, marginPx: 48, defaultSeamPx: 128 };
+    expect(
+      flowSpacerHeightForBreak({
+        pageBacked: true,
+        followingIsPageCanvas: true,
+        measuredBottomPx: null,
+        ...letter,
+      }),
+    ).toBe(32);
+    expect(
+      flowSpacerHeightForBreak({
+        pageBacked: true,
+        followingIsPageCanvas: true,
+        measuredBottomPx: 1100,
+        ...letter,
+      }),
+    ).toBe(32);
+    expect(
+      flowSpacerHeightForBreak({
+        pageBacked: true,
+        followingIsPageCanvas: false,
+        measuredBottomPx: 100,
+        ...letter,
+      }),
+    ).toBe(32);
+    expect(
+      flowSpacerHeightForBreak({
+        pageBacked: false,
+        followingIsPageCanvas: false,
+        measuredBottomPx: null,
+        ...letter,
+      }),
+    ).toBe(128);
   });
 
   it("breaks before a pricing-table row that would overflow the printable page", () => {

@@ -1,5 +1,5 @@
 import type { Editor } from "@tiptap/core";
-import type { EditorDoc, EditorNode, JSONValue } from "./types";
+import { duplicateOverlayTextBox, isOverlayTextBoxNode } from "./overlay-text-box";
 
 export const LIBRARY_CATEGORIES = [
   { id: "text", label: "Text Block" },
@@ -98,6 +98,9 @@ export function duplicateNodeAt(editor: Editor, pos: number): boolean {
   const node = editor.state.doc.nodeAt(pos);
   if (!node) {
     return false;
+  }
+  if (isOverlayTextBoxNode(node)) {
+    return duplicateOverlayTextBox(editor, pos);
   }
   return editor.chain().focus().insertContentAt(pos + node.nodeSize, node.toJSON()).run();
 }

@@ -698,6 +698,21 @@ export function IconLock({ className }: IconProps) {
   );
 }
 
+export function IconLayers({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path
+        d="M12 4l8 4-8 4-8-4 8-4z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M4 12l8 4 8-4" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M4 16l8 4 8-4" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
 export function IconLink({ className }: IconProps) {
   return (
     <Svg className={className}>

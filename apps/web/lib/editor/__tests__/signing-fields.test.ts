@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractSigningFields, isCheckboxField, isDropdownField } from "../signer-field-attrs";
+import { extractSigningFields, isCheckboxField, isDropdownField, parseSignerFieldAttrs } from "../signer-field-attrs";
 import type { EditorDoc } from "../types";
 
 const doc: EditorDoc = {
@@ -55,5 +55,32 @@ describe("extractSigningFields", () => {
     expect(isDropdownField(fields[1]!)).toBe(true);
     expect(isCheckboxField(fields[2]!)).toBe(true);
     expect(fields[2]?.recipientId).toBe("r2");
+  });
+});
+
+describe("signer field defaults", () => {
+  it("gives text fields a single-line size and placeholder", () => {
+    const field = parseSignerFieldAttrs({ type: "text" }, 0);
+    expect(field.placeholder).toBe("Enter text...");
+    expect(field.wPct).toBe(0.32);
+    expect(field.hPct).toBe(0.028);
+    expect(field.multiline).toBe(false);
+    expect(field.validation).toBe("none");
+  });
+
+  it("preserves merge field and validation on existing attrs", () => {
+    const field = parseSignerFieldAttrs(
+      { type: "text", placeholder: "Email", validation: "email", mergeField: "contact.email", multiline: true },
+      0,
+    );
+    expect(field.placeholder).toBe("Email");
+    expect(field.validation).toBe("email");
+    expect(field.mergeField).toBe("contact.email");
+    expect(field.multiline).toBe(true);
+  });
+
+  it("compacts stored single-line height to the tight default", () => {
+    const field = parseSignerFieldAttrs({ type: "text", hPct: 0.042, multiline: false }, 0);
+    expect(field.hPct).toBe(0.028);
   });
 });

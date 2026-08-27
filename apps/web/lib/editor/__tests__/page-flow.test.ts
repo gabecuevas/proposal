@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { paginationTortureDoc } from "./fixtures/pagination-torture";
 import { createFlowBreakElement, pauseOverlayHitTesting } from "../extensions/page-flow";
-import { contentOffsetFromVisual, flowBreakPositions } from "../page-flow";
+import { contentOffsetFromVisual, flowBreakPositions, selectPageFlowBreaks, canvasSeamPositions } from "../page-flow";
 
 function walkTypes(node: { type?: string; content?: unknown[] }, into: Set<string>) {
   if (node.type) {
@@ -59,6 +59,44 @@ describe("flowBreakPositions", () => {
 
   it("does not insert a break at the start of the document", () => {
     expect(flowBreakPositions([{ contentTop: 0, contentBottom: 24, pos: 1 }], 960)).toEqual([]);
+  });
+});
+
+describe("selectPageFlowBreaks", () => {
+  it("ignores overflow breaks on page-backed PDF uploads", () => {
+    expect(selectPageFlowBreaks([5], [5, 12, 40], true)).toEqual([5]);
+  });
+
+  it("keeps overflow breaks for flowing text documents", () => {
+    expect(selectPageFlowBreaks([80], [200, 400], false)).toEqual([80, 200, 400]);
+  });
+});
+
+describe("canvasSeamPositions", () => {
+  it("places one grey gap before every canvas after the first", () => {
+    expect(
+      canvasSeamPositions([
+        { type: "fieldCanvas", pos: 0 },
+        { type: "pageBreak", pos: 10 },
+        { type: "fieldCanvas", pos: 11 },
+        { type: "pageBreak", pos: 21 },
+        { type: "fieldCanvas", pos: 22 },
+      ]),
+    ).toEqual([11, 22]);
+  });
+
+  it("ignores leftover and duplicate pageBreak nodes after delete-page", () => {
+    expect(
+      canvasSeamPositions([
+        { type: "fieldCanvas", pos: 0 },
+        { type: "pageBreak", pos: 10 },
+        { type: "fieldCanvas", pos: 11 },
+        { type: "pageBreak", pos: 21 },
+        { type: "pageBreak", pos: 22 },
+        { type: "fieldCanvas", pos: 23 },
+        { type: "pageBreak", pos: 33 },
+      ]),
+    ).toEqual([11, 23]);
   });
 });
 
