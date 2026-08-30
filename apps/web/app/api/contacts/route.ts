@@ -3,6 +3,7 @@ import { getNextCursorFromTimestampPage, parseCursorPagination } from "@/lib/api
 import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
 import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
 import { createContact, listContacts } from "@/lib/contacts/store";
+import { firstContactDetailsError } from "@/lib/crm/contact-field-validation";
 
 export async function GET(request: NextRequest) {
   const auth = await getRequestAuthContext(request);
@@ -39,17 +40,26 @@ type CreateContactBody = {
   tags?: string[];
   color_label?: string;
   company_id?: string;
+  source?: string;
 };
 
 export async function POST(request: NextRequest) {
   const auth = await getRequestAuthContext(request);
   assertRole(auth, "MEMBER");
   const body = (await request.json()) as CreateContactBody;
-  if (!body.first_name?.trim() || !body.last_name?.trim() || !body.email?.trim()) {
+  const validationMessage = firstContactDetailsError({
+    first_name: body.first_name ?? "",
+    last_name: body.last_name ?? "",
+    email: body.email ?? "",
+    phone: body.phone,
+    title: body.title,
+    website: body.website,
+  });
+  if (validationMessage) {
     return errorResponse(request, {
       status: 400,
       code: "validation_error",
-      message: "first_name, last_name, and email are required",
+      message: validationMessage,
     });
   }
 
@@ -75,6 +85,7 @@ export async function POST(request: NextRequest) {
       tags: body.tags,
       color_label: body.color_label,
       company_id: body.company_id,
+      source: body.source,
     });
     return jsonWithRequestId(request, { contact }, { status: 201 });
   } catch {

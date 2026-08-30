@@ -16,8 +16,10 @@ export type DrawerField = {
   hint?: string;
   showLabel?: boolean;
   type?: DrawerFieldType;
+  inputType?: "text" | "email" | "tel" | "url";
   options?: Array<{ value: string; label: string }>;
   readOnly?: boolean;
+  validate?: (value: string) => string | null;
   onChange: (value: string) => void;
   onCommit?: (value: string) => void;
 };
@@ -74,7 +76,8 @@ export type DrawerIconId =
   | "pin"
   | "web"
   | "industry"
-  | "people";
+  | "people"
+  | "calendar";
 
 function DrawerIcon({ id }: { id: DrawerIconId }) {
   const common = "h-4 w-4 shrink-0 text-muted";
@@ -163,6 +166,14 @@ function DrawerIcon({ id }: { id: DrawerIconId }) {
       </svg>
     );
   }
+  if (id === "calendar") {
+    return (
+      <svg className={common} viewBox="0 0 24 24" fill="none" aria-hidden>
+        <rect x="4" y="5" width="16" height="15" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M4 9.5h16M8 3.5v3M16 3.5v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
   return (
     <svg className={common} viewBox="0 0 24 24" fill="none" aria-hidden>
       <path d="M7 7h10v3H7V7zM7 14h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -172,76 +183,109 @@ function DrawerIcon({ id }: { id: DrawerIconId }) {
 
 function FieldRow({ field }: { field: DrawerField }) {
   const [editing, setEditing] = useState(false);
-  const inputClass =
-    "h-8 w-full rounded border border-border bg-surface px-2 text-sm outline-none ring-primary/15 focus:ring-2";
+  const [attempted, setAttempted] = useState(false);
+  const error = field.validate?.(field.value) ?? null;
+  const showError = Boolean(error && (attempted || field.value.trim()));
+  const inputClass = cn(
+    "h-8 w-full rounded border bg-surface px-2 text-sm outline-none focus:ring-2",
+    showError
+      ? "border-red-400 ring-red-200 focus:ring-red-200"
+      : "border-border ring-primary/15 focus:ring-primary/15",
+  );
 
   if (field.type === "select") {
     return (
-      <label className="flex items-center gap-2.5 py-1.5">
-        <span className="sr-only">{field.label}</span>
+      <label className="flex items-start gap-2.5 py-1.5">
         <DrawerIcon id={field.icon} />
-        <select
-          className={cn(inputClass, "cursor-pointer bg-transparent", !field.value && "text-muted")}
-          value={field.value}
-          disabled={field.readOnly}
-          onChange={(event) => {
-            field.onChange(event.target.value);
-            field.onCommit?.(event.target.value);
-          }}
-        >
-          <option value="">{field.placeholder}</option>
-          {field.options?.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        <span className="min-w-0 flex-1">
+          {field.showLabel ? <span className="block text-[11px] text-muted">{field.label}</span> : null}
+          <select
+            className={cn(inputClass, "cursor-pointer bg-transparent", !field.value && "text-muted")}
+            value={field.value}
+            disabled={field.readOnly}
+            aria-label={field.label}
+            onChange={(event) => {
+              field.onChange(event.target.value);
+              field.onCommit?.(event.target.value);
+            }}
+          >
+            <option value="">{field.placeholder}</option>
+            {field.options?.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </span>
       </label>
     );
   }
 
+  const errorMessage = showError ? (
+    <p className="pl-[1.625rem] pt-0.5 text-xs text-red-600" role="alert">
+      {error}
+    </p>
+  ) : null;
+
   if (field.readOnly || !editing) {
     return (
-      <button
-        type="button"
-        disabled={field.readOnly}
-        onClick={() => setEditing(true)}
-        className="flex w-full items-start gap-2.5 py-1.5 text-left disabled:cursor-default"
-      >
-        <DrawerIcon id={field.icon} />
-        <span className="min-w-0">
-          {field.showLabel ? <span className="block text-[11px] text-muted">{field.label}</span> : null}
-          <span className={cn("block truncate text-sm", field.value ? "text-foreground" : "text-muted")}>
-            {field.value || field.placeholder}
-            {field.hint && field.value ? <span className="ml-1 text-muted">({field.hint})</span> : null}
+      <div className="py-0.5">
+        <button
+          type="button"
+          disabled={field.readOnly}
+          onClick={() => setEditing(true)}
+          className="flex w-full items-start gap-2.5 py-1.5 text-left disabled:cursor-default"
+        >
+          <DrawerIcon id={field.icon} />
+          <span className="min-w-0">
+            {field.showLabel ? <span className="block text-[11px] text-muted">{field.label}</span> : null}
+            <span className={cn("block truncate text-sm", field.value ? "text-foreground" : "text-muted")}>
+              {field.value || field.placeholder}
+              {field.hint && field.value ? <span className="ml-1 text-muted">({field.hint})</span> : null}
+            </span>
           </span>
-        </span>
-      </button>
+        </button>
+        {errorMessage}
+      </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-2.5 py-1">
-      <DrawerIcon id={field.icon} />
-      <input
-        autoFocus
-        className={inputClass}
-        value={field.value}
-        placeholder={field.placeholder}
-        onChange={(event) => field.onChange(event.target.value)}
-        onBlur={() => {
-          setEditing(false);
-          field.onCommit?.(field.value);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            (event.target as HTMLInputElement).blur();
-          }
-          if (event.key === "Escape") {
+    <div className="py-1">
+      <div className="flex items-center gap-2.5">
+        <DrawerIcon id={field.icon} />
+        <input
+          autoFocus
+          type={field.inputType === "url" ? "text" : (field.inputType ?? "text")}
+          autoComplete={field.inputType === "email" ? "email" : field.inputType === "tel" ? "tel" : "off"}
+          inputMode={field.inputType === "email" ? "email" : field.inputType === "tel" ? "tel" : undefined}
+          className={inputClass}
+          value={field.value}
+          placeholder={field.placeholder}
+          aria-invalid={showError}
+          aria-label={field.label}
+          onChange={(event) => field.onChange(event.target.value)}
+          onBlur={(event) => {
+            const next = event.currentTarget.value;
+            const nextError = field.validate?.(next) ?? null;
+            setAttempted(true);
+            if (nextError) {
+              return;
+            }
             setEditing(false);
-          }
-        }}
-      />
+            field.onCommit?.(next);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              (event.target as HTMLInputElement).blur();
+            }
+            if (event.key === "Escape") {
+              setEditing(false);
+            }
+          }}
+        />
+      </div>
+      {errorMessage}
     </div>
   );
 }
@@ -352,6 +396,7 @@ export function CrmRecordDrawer({
   const [tab, setTab] = useState<ActivityTab>("notes");
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [editingTitle, setEditingTitle] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(title);
   const [draftNotes, setDraftNotes] = useState(notes);
   const savedNotesRef = useRef(notes);
   const [focusOpen, setFocusOpen] = useState(true);
@@ -386,10 +431,17 @@ export function CrmRecordDrawer({
     setDraftNotes(notes);
     setTab("notes");
     setHistoryFilter("all");
+    setDraftTitle(title);
     setEditingTitle(!title);
     // Reset editor chrome when switching records, not on each keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- recordKey/open are the record identity
   }, [recordKey, open]);
+
+  useEffect(() => {
+    if (!editingTitle) {
+      setDraftTitle(title);
+    }
+  }, [title, editingTitle]);
 
   useEffect(() => {
     if (!open) {
@@ -436,7 +488,7 @@ export function CrmRecordDrawer({
       ];
 
   return createPortal(
-    <div className="fixed inset-x-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] justify-end">
+    <div className="app-theme fixed inset-x-0 top-14 z-40 flex h-[calc(100vh-3.5rem)] justify-end">
       <button
         type="button"
         aria-label="Close record"
@@ -466,12 +518,16 @@ export function CrmRecordDrawer({
                 id={titleId}
                 autoFocus
                 className="h-9 min-w-0 flex-1 rounded border border-border px-2 text-lg font-semibold outline-none ring-primary/15 focus:ring-2"
-                value={title}
+                value={draftTitle}
                 placeholder={titlePlaceholder}
-                onChange={(event) => onTitleChange(event.target.value)}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setDraftTitle(next);
+                  onTitleChange(next);
+                }}
                 onBlur={() => {
                   setEditingTitle(false);
-                  onTitleCommit?.(title);
+                  onTitleCommit?.(draftTitle);
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
@@ -555,7 +611,7 @@ export function CrmRecordDrawer({
             {status ? <p className="mb-3 text-sm text-emerald-700">{status}</p> : null}
 
             {tab === "notes" ? (
-              <div className="rounded-md border border-amber-200 bg-amber-50">
+              <div className="rounded-md border border-border bg-slate-100">
                 <textarea
                   className="min-h-[120px] w-full resize-y bg-transparent px-3 py-2 text-sm outline-none"
                   value={draftNotes}
@@ -565,7 +621,7 @@ export function CrmRecordDrawer({
                   }}
                   placeholder="Write a note…"
                 />
-                <div className="flex justify-end gap-2 border-t border-amber-200/80 px-3 py-2">
+                <div className="flex justify-end gap-2 border-t border-border px-3 py-2">
                   <button
                     type="button"
                     disabled={!notesChanged}
@@ -667,7 +723,7 @@ export function CrmRecordDrawer({
                     visibleHistory.map((item) => (
                       <li key={item.id} className="text-sm">
                         {item.detail ? (
-                          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-foreground">
+                          <div className="rounded-md border border-border bg-slate-100 px-3 py-2 text-foreground">
                             {item.detail}
                           </div>
                         ) : null}

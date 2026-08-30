@@ -234,6 +234,7 @@ model Contact {
   color_label       String?
   last_activity_at  DateTime?
   company_id        String?
+  source            String?
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
 

@@ -25,6 +25,8 @@ export type ContactRecord = {
   color_label: string | null;
   last_activity_at: string | null;
   company_id: string | null;
+  source: string | null;
+  added_by_name: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -53,9 +55,27 @@ type ContactRow = {
   color_label: string | null;
   last_activity_at: Date | null;
   company_id: string | null;
+  source: string | null;
   created_at: Date;
   updated_at: Date;
+  owner?: { name: string; email: string } | null;
 };
+
+function ownerDisplayName(owner: { name: string; email: string } | null | undefined): string | null {
+  if (!owner) {
+    return null;
+  }
+  if (owner.name.trim()) {
+    return owner.name.trim();
+  }
+  const local = owner.email.split("@")[0] ?? owner.email;
+  const formatted = local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+  return formatted || owner.email;
+}
 
 function parseContact(row: ContactRow): ContactRecord {
   return {
@@ -85,6 +105,8 @@ function parseContact(row: ContactRow): ContactRecord {
     color_label: row.color_label,
     last_activity_at: row.last_activity_at?.toISOString() ?? null,
     company_id: row.company_id,
+    source: row.source,
+    added_by_name: ownerDisplayName(row.owner),
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -115,6 +137,7 @@ export async function listContacts(
     },
     orderBy: [{ updated_at: "desc" }, { id: "desc" }],
     take: options?.limit ?? 50,
+    include: { owner: { select: { name: true, email: true } } },
   });
   return rows.map((row) => parseContact(row as ContactRow));
 }
@@ -140,6 +163,7 @@ export async function createContact(input: {
   tags?: string[];
   color_label?: string;
   company_id?: string;
+  source?: string;
 }): Promise<ContactRecord> {
   const firstName = input.first_name.trim();
   const lastName = input.last_name.trim();
@@ -167,8 +191,10 @@ export async function createContact(input: {
       tags: input.tags ?? [],
       color_label: input.color_label?.trim() || null,
       company_id: input.company_id?.trim() || null,
+      source: input.source?.trim() || null,
       last_activity_at: null,
     },
+    include: { owner: { select: { name: true, email: true } } },
   });
   return parseContact(row as ContactRow);
 }
@@ -195,6 +221,7 @@ export async function updateContact(
     tags?: string[];
     color_label?: string;
     company_id?: string | null;
+    source?: string | null;
   },
 ): Promise<ContactRecord | null> {
   const existing = await prisma.contact.findFirst({
@@ -234,7 +261,9 @@ export async function updateContact(
         input.color_label !== undefined ? input.color_label.trim() || null : existing.color_label,
       company_id:
         input.company_id !== undefined ? input.company_id?.trim() || null : existing.company_id,
+      source: input.source !== undefined ? input.source.trim() || null : existing.source,
     },
+    include: { owner: { select: { name: true, email: true } } },
   });
   return parseContact(row as ContactRow);
 }

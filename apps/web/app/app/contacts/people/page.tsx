@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CrmDataGrid, type CrmGridColumn } from "@/components/crm/data-grid";
 import { CrmRecordDrawer, type DrawerSection } from "@/components/crm/record-drawer";
-import { formatGridDateTime } from "@/lib/ui/datetime";
+import { contactSourceOptions } from "@/lib/crm/contact-sources";
+import {
+  firstContactDetailsError,
+  validateEmail,
+  validatePersonName,
+  validatePhone,
+  validateTitle,
+  validateWebsite,
+} from "@/lib/crm/contact-field-validation";
+import { formatGridDate, formatGridDateTime } from "@/lib/ui/datetime";
 
 type Person = {
   id: string;
@@ -21,6 +30,8 @@ type Person = {
   website: string | null;
   notes: string | null;
   tags: string[];
+  source: string | null;
+  added_by_name: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -44,6 +55,7 @@ type Editor = {
   city: string;
   website: string;
   notes: string;
+  source: string;
 };
 
 const emptyEditor = (): Editor => ({
@@ -57,7 +69,23 @@ const emptyEditor = (): Editor => ({
   city: "",
   website: "",
   notes: "",
+  source: "",
 });
+
+function splitContactName(value: string): { first_name: string; last_name: string } {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { first_name: "", last_name: "" };
+  }
+  const space = trimmed.indexOf(" ");
+  if (space === -1) {
+    return { first_name: trimmed, last_name: "" };
+  }
+  return {
+    first_name: trimmed.slice(0, space),
+    last_name: trimmed.slice(space + 1).trimStart(),
+  };
+}
 
 function ContactLink({ children }: { children: string }) {
   return <span className="font-medium text-primary">{children}</span>;
@@ -180,6 +208,7 @@ export default function PeoplePage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [creating, setCreating] = useState(false);
+  const [currentUserName, setCurrentUserName] = useState("");
 
   const load = useCallback(async () => {
     setError("");
@@ -207,6 +236,32 @@ export default function PeoplePage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSession() {
+      const response = await fetch("/api/auth/session");
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as { user?: { email?: string } | null };
+      const email = payload.user?.email ?? "";
+      if (!email || cancelled) {
+        return;
+      }
+      const local = email.split("@")[0] ?? email;
+      const name = local
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+      setCurrentUserName(name || email);
+    }
+    void loadSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const selected = people.find((person) => person.id === selectedId);
   const displayName = `${editor.first_name} ${editor.last_name}`.trim();
 
@@ -223,6 +278,7 @@ export default function PeoplePage() {
       city: person.city ?? "",
       website: person.website ?? "",
       notes: person.notes ?? "",
+      source: person.source ?? "",
     });
     setStatus("");
     setError("");
@@ -248,7 +304,8 @@ export default function PeoplePage() {
       body: JSON.stringify(body),
     });
     if (!response.ok) {
-      setError("Failed to save person");
+      const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+      setError(payload?.error?.message ?? "Failed to save person");
       return;
     }
     await load();
@@ -256,8 +313,16 @@ export default function PeoplePage() {
 
   async function createPerson() {
     setError("");
-    if (!editor.first_name.trim() || !editor.last_name.trim() || !editor.email.trim()) {
-      setError("First name, last name, and email are required");
+    const detailsError = firstContactDetailsError({
+      first_name: editor.first_name,
+      last_name: editor.last_name,
+      email: editor.email,
+      phone: editor.phone,
+      title: editor.title,
+      website: editor.website,
+    });
+    if (detailsError) {
+      setError(detailsError);
       return;
     }
     setCreating(true);
@@ -273,6 +338,7 @@ export default function PeoplePage() {
         city: editor.city || undefined,
         website: editor.website || undefined,
         notes: editor.notes || undefined,
+        source: editor.source || undefined,
         company_id: editor.company_id || null,
         company_name:
           companies.find((company) => company.id === editor.company_id)?.name || editor.company_name || undefined,
@@ -280,7 +346,8 @@ export default function PeoplePage() {
     });
     setCreating(false);
     if (!response.ok) {
-      setError("Failed to create person");
+      const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+      setError(payload?.error?.message ?? "Failed to create person");
       return;
     }
     const payload = (await response.json()) as { contact: Person };
@@ -294,49 +361,8 @@ export default function PeoplePage() {
   const sections: DrawerSection[] = useMemo(
     () => [
       {
-        id: "summary",
-        label: "Summary",
-        fields: [
-          {
-            id: "email",
-            icon: "mail",
-            label: "Email",
-            value: editor.email,
-            placeholder: "Add email",
-            hint: "Work",
-            onChange: (value) => setEditor((current) => ({ ...current, email: value })),
-            onCommit: (value) => void patchPerson({ email: value }),
-          },
-          {
-            id: "phone",
-            icon: "phone",
-            label: "Phone",
-            value: editor.phone,
-            placeholder: "Add phone",
-            hint: "Work",
-            onChange: (value) => setEditor((current) => ({ ...current, phone: value })),
-            onCommit: (value) => void patchPerson({ phone: value }),
-          },
-          {
-            id: "company_id",
-            icon: "company",
-            label: "Organization",
-            type: "select",
-            value: editor.company_id,
-            placeholder: "Organization",
-            options: companies.map((company) => ({ value: company.id, label: company.name })),
-            onChange: (value) => setEditor((current) => ({ ...current, company_id: value })),
-            onCommit: (value) =>
-              void patchPerson({
-                company_id: value || null,
-                company_name: companies.find((company) => company.id === value)?.name,
-              }),
-          },
-        ],
-      },
-      {
-        id: "details",
-        label: "Details",
+        id: "contact-details",
+        label: "Contact Details",
         fields: [
           {
             id: "first_name",
@@ -346,6 +372,7 @@ export default function PeoplePage() {
             value: editor.first_name,
             placeholder: "First name",
             onChange: (value) => setEditor((current) => ({ ...current, first_name: value })),
+            validate: (value) => validatePersonName(value, "First name"),
             onCommit: (value) => void patchPerson({ first_name: value }),
           },
           {
@@ -356,7 +383,32 @@ export default function PeoplePage() {
             value: editor.last_name,
             placeholder: "Last name",
             onChange: (value) => setEditor((current) => ({ ...current, last_name: value })),
+            validate: (value) => validatePersonName(value, "Last name"),
             onCommit: (value) => void patchPerson({ last_name: value }),
+          },
+          {
+            id: "email",
+            icon: "mail",
+            label: "Email",
+            value: editor.email,
+            placeholder: "Add email",
+            hint: "Work",
+            inputType: "email",
+            onChange: (value) => setEditor((current) => ({ ...current, email: value })),
+            validate: (value) => validateEmail(value),
+            onCommit: (value) => void patchPerson({ email: value }),
+          },
+          {
+            id: "phone",
+            icon: "phone",
+            label: "Phone",
+            value: editor.phone,
+            placeholder: "Add phone",
+            hint: "Work",
+            inputType: "tel",
+            onChange: (value) => setEditor((current) => ({ ...current, phone: value })),
+            validate: (value) => validatePhone(value),
+            onCommit: (value) => void patchPerson({ phone: value }),
           },
           {
             id: "title",
@@ -366,6 +418,7 @@ export default function PeoplePage() {
             value: editor.title,
             placeholder: "Title",
             onChange: (value) => setEditor((current) => ({ ...current, title: value })),
+            validate: (value) => validateTitle(value),
             onCommit: (value) => void patchPerson({ title: value }),
           },
         ],
@@ -399,6 +452,8 @@ export default function PeoplePage() {
             value: linkedCompany?.website ?? editor.website,
             placeholder: "Website",
             onChange: (value) => setEditor((current) => ({ ...current, website: value })),
+            inputType: "url",
+            validate: (value) => validateWebsite(value),
             onCommit: (value) => void patchPerson({ website: value }),
           },
           {
@@ -413,12 +468,45 @@ export default function PeoplePage() {
         ],
       },
       {
-        id: "deals",
-        label: "Deals",
-        fields: [],
+        id: "details",
+        label: "Details",
+        fields: [
+          {
+            id: "date_added",
+            icon: "calendar",
+            label: "Date added",
+            showLabel: true,
+            value: selected ? formatGridDate(selected.created_at) : "",
+            placeholder: "Adds when created",
+            readOnly: true,
+            onChange: () => undefined,
+          },
+          {
+            id: "added_by",
+            icon: "person",
+            label: "Added by",
+            showLabel: true,
+            value: selected?.added_by_name || (!selectedId ? currentUserName : ""),
+            placeholder: "Adds when created",
+            readOnly: true,
+            onChange: () => undefined,
+          },
+          {
+            id: "source",
+            icon: "source",
+            label: "Source",
+            showLabel: true,
+            type: "select",
+            value: editor.source,
+            placeholder: "Select source",
+            options: contactSourceOptions(editor.source),
+            onChange: (value) => setEditor((current) => ({ ...current, source: value })),
+            onCommit: (value) => void patchPerson({ source: value || null }),
+          },
+        ],
       },
     ],
-    [companies, editor, linkedCompany, selectedId],
+    [currentUserName, editor, linkedCompany, selected, selectedId],
   );
 
   return (
@@ -448,23 +536,28 @@ export default function PeoplePage() {
         variant="person"
         recordKey={selectedId || "new-person"}
         title={displayName}
-        titlePlaceholder="Person name"
+        titlePlaceholder="Contact name"
         onTitleChange={(value) => {
-          const parts = value.trim().split(/\s+/);
           setEditor((current) => ({
             ...current,
-            first_name: parts[0] ?? "",
-            last_name: parts.slice(1).join(" "),
+            ...splitContactName(value),
           }));
         }}
         onTitleCommit={(value) => {
-          const parts = value.trim().split(/\s+/);
-          void patchPerson({
-            first_name: parts[0] ?? "",
-            last_name: parts.slice(1).join(" "),
-          });
+          const names = splitContactName(value);
+          const nameError =
+            validatePersonName(names.first_name, "First name") ??
+            validatePersonName(names.last_name, "Last name");
+          if (nameError) {
+            setError(nameError);
+            return;
+          }
+          void patchPerson(names);
         }}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => {
+          setDrawerOpen(false);
+          setError("");
+        }}
         sections={sections}
         notes={editor.notes}
         onNotesSave={(value) => {
