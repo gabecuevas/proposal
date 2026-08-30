@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SheetPage } from "@/components/ui/sheet-table";
 import type { EditorDoc } from "@/lib/editor/types";
 import { documentTitleFromEditorJson } from "@/lib/ui/document-title";
 
@@ -56,13 +57,11 @@ export default function DataExportPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <section className="rounded-lg border border-border bg-surface">
-        <header className="border-b border-border bg-slate-50/80 px-4 py-2 text-center text-sm font-medium text-foreground">
-          Data Export
-        </header>
-        <div className="space-y-3 p-4">
-          <p className="text-sm text-muted">
+    <SheetPage
+      toolbar={
+        <>
+          <h1 className="text-sm font-semibold text-foreground">Data Export</h1>
+          <p className="min-w-0 flex-1 text-sm text-muted">
             Download every document in this workspace as a CSV, including status and lifecycle
             timestamps.
           </p>
@@ -74,9 +73,10 @@ export default function DataExportPage() {
           >
             {busy ? "Preparing export…" : "Export documents (CSV)"}
           </button>
-          {status ? <p className="text-sm text-muted">{status}</p> : null}
-        </div>
-      </section>
-    </div>
+        </>
+      }
+    >
+      {status ? <p className="border-b border-border px-4 py-3 text-sm text-muted">{status}</p> : null}
+    </SheetPage>
   );
 }

@@ -224,7 +224,7 @@ export function WorkspaceTools() {
   }
 
   return (
-    <details className="group rounded-lg border border-border bg-surface">
+    <details className="group border-t border-border bg-surface">
       <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-foreground marker:hidden [&::-webkit-details-marker]:hidden">
         <span className="flex items-center justify-between gap-2">
           Advanced workspace tools

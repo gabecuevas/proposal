@@ -10,6 +10,7 @@ import {
   matchesDocumentTab,
   toDocumentTrackingTab,
 } from "@/lib/ui/document-tracking";
+import { SheetPage, SheetTable, sheetTd, sheetTh, sheetTr } from "@/components/ui/sheet-table";
 import { formatRelativeTime } from "@/lib/ui/time";
 
 type Recipient = { id: string; email: string; name: string; role: string };
@@ -87,102 +88,95 @@ export default function DocumentsPage() {
   );
 
   return (
-    <div className="w-full min-w-0 space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative min-w-0 flex-1">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M16 16l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </span>
-          <input
-            className="h-10 w-full rounded-md border border-border bg-surface pl-9 pr-3 text-sm outline-none ring-primary/15 focus:ring-2"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void loadDocuments()}
-            placeholder="Search documents…"
-          />
-        </div>
-        <button
-          type="button"
-          className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-surface px-3 text-sm text-foreground hover:bg-slate-50"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M4 6h16M7 12h10M10 18h4"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
+    <SheetPage
+      error={error}
+      toolbar={
+        <>
+          <div className="relative min-w-0 flex-1">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M16 16l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </span>
+            <input
+              className="h-10 w-full rounded-md border border-border bg-surface pl-9 pr-3 text-sm outline-none ring-primary/15 focus:ring-2"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void loadDocuments()}
+              placeholder="Search documents…"
             />
-          </svg>
-          Filter
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        </button>
-      </div>
-
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
-
-      <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-        <table className="w-full min-w-[40rem] text-left text-sm">
-          <thead className="border-b border-border bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-muted">
-            <tr>
-              <th className="px-4 py-3">Document</th>
-              <th className="hidden px-4 py-3 sm:table-cell">Recipient</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Updated</th>
-              <th className="w-10 px-2 py-3" aria-label="Actions" />
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((document) => {
-              const title = documentTitleFromEditorJson(document.editor_json, document.id);
-              return (
-                <tr key={document.id} className="border-b border-border last:border-0 hover:bg-slate-50/60">
-                  <td className="min-w-0 px-4 py-3">
-                    <Link
-                      href={`/app/documents/${document.id}`}
-                      className="flex min-w-0 items-center gap-2 font-medium text-foreground hover:text-primary"
-                    >
-                      <span className="shrink-0 text-muted" aria-hidden>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                          <path
-                            d="M8 4h8l4 4v12a1 1 0 01-1 1H8a1 1 0 01-1-1V5a1 1 0 011-1z"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                          />
-                        </svg>
-                      </span>
-                      <span className="truncate">{title}</span>
-                    </Link>
-                  </td>
-                  <td className="hidden max-w-[16rem] truncate px-4 py-3 text-muted sm:table-cell">
-                    {firstRecipientEmail(document.recipients_json)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <span className={statusBadgeClass(document.status)}>
-                      {documentStatusDisplayLabel(document.status)}
+          </div>
+          <p className="text-sm text-muted">
+            {filtered.length} {filtered.length === 1 ? "document" : "documents"}
+          </p>
+          <button
+            type="button"
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-surface px-3 text-sm text-foreground hover:bg-slate-50"
+          >
+            Filter
+          </button>
+        </>
+      }
+    >
+      <SheetTable
+        minWidth="40rem"
+        empty={
+          filtered.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-muted">No documents in this view.</p>
+          ) : null
+        }
+      >
+        <thead>
+          <tr>
+            <th className={sheetTh()}>Document</th>
+            <th className={sheetTh("hidden sm:table-cell")}>Recipient</th>
+            <th className={sheetTh()}>Status</th>
+            <th className={sheetTh()}>Updated</th>
+            <th className={sheetTh("w-10")} aria-label="Actions" />
+          </tr>
+        </thead>
+        <tbody>
+          {filtered.map((document) => {
+            const title = documentTitleFromEditorJson(document.editor_json, document.id);
+            return (
+              <tr key={document.id} className={sheetTr()}>
+                <td className={sheetTd("min-w-0")}>
+                  <Link
+                    href={`/app/documents/${document.id}`}
+                    className="flex min-w-0 items-center gap-2 font-medium text-primary"
+                  >
+                    <span className="shrink-0 text-muted" aria-hidden>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <path
+                          d="M8 4h8l4 4v12a1 1 0 01-1 1H8a1 1 0 01-1-1V5a1 1 0 011-1z"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                        />
+                      </svg>
                     </span>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-muted">
-                    {formatRelativeTime(document.updated_at)}
-                  </td>
-                  <td className="px-2 py-3 text-center text-muted">
-                    <Link href={`/app/documents/${document.id}`} className="inline-block p-1 hover:text-foreground">
-                      ···
-                    </Link>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {filtered.length === 0 ? (
-          <p className="px-4 py-10 text-center text-sm text-muted">No documents in this view.</p>
-        ) : null}
-      </div>
-    </div>
+                    <span className="truncate">{title}</span>
+                  </Link>
+                </td>
+                <td className={sheetTd("hidden max-w-[16rem] truncate sm:table-cell")}>
+                  {firstRecipientEmail(document.recipients_json)}
+                </td>
+                <td className={sheetTd("whitespace-nowrap")}>
+                  <span className={statusBadgeClass(document.status)}>
+                    {documentStatusDisplayLabel(document.status)}
+                  </span>
+                </td>
+                <td className={sheetTd("whitespace-nowrap")}>{formatRelativeTime(document.updated_at)}</td>
+                <td className={sheetTd("text-center")}>
+                  <Link href={`/app/documents/${document.id}`} className="inline-block p-1 hover:text-foreground">
+                    ···
+                  </Link>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </SheetTable>
+    </SheetPage>
   );
 }

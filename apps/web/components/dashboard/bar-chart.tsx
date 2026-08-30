@@ -48,8 +48,8 @@ export function BarChartPanel({ title, icon, points }: BarChartPanelProps) {
   const labelled = labelIndexes(points.length);
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-surface">
-      <header className="flex items-center justify-center gap-2 border-b border-border bg-slate-50/80 px-4 py-2 text-sm font-medium text-foreground">
+    <section className="overflow-hidden border-b border-border bg-surface lg:border-b-0 lg:border-r lg:last:border-r-0">
+      <header className="flex items-center justify-center gap-2 border-b border-border bg-slate-50 px-3 py-2 text-[13px] font-semibold text-foreground">
         <span className="text-muted" aria-hidden>
           {icon}
         </span>

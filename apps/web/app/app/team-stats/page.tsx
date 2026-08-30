@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SheetPage, SheetTable, sheetTd, sheetTh, sheetTr } from "@/components/ui/sheet-table";
 
 type Member = {
   id: string;
@@ -34,44 +35,43 @@ export default function TeamStatsPage() {
   }, []);
 
   return (
-    <div className="space-y-4">
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
-
-      <section className="overflow-hidden rounded-lg border border-border bg-surface">
-        <header className="border-b border-border bg-slate-50/80 px-4 py-2 text-center text-sm font-medium text-foreground">
-          Team Members ({members.length})
-        </header>
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-border text-[11px] font-semibold uppercase tracking-wider text-muted">
-            <tr>
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Role</th>
-              <th className="px-4 py-3">Joined</th>
+    <SheetPage
+      error={error}
+      toolbar={
+        <>
+          <h1 className="text-sm font-semibold text-foreground">Team members</h1>
+          <p className="ml-auto text-sm text-muted">
+            {members.length} {members.length === 1 ? "member" : "members"}
+          </p>
+        </>
+      }
+    >
+      <SheetTable
+        empty={
+          members.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-muted">No team members yet.</p>
+          ) : null
+        }
+      >
+        <thead>
+          <tr>
+            <th className={sheetTh()}>Name</th>
+            <th className={sheetTh()}>Email</th>
+            <th className={sheetTh()}>Role</th>
+            <th className={sheetTh()}>Joined</th>
+          </tr>
+        </thead>
+        <tbody>
+          {members.map((member) => (
+            <tr key={member.id} className={sheetTr()}>
+              <td className={sheetTd("font-medium text-foreground")}>{member.name}</td>
+              <td className={sheetTd()}>{member.email}</td>
+              <td className={sheetTd()}>{member.role}</td>
+              <td className={sheetTd()}>{new Date(member.joinedAt).toLocaleDateString()}</td>
             </tr>
-          </thead>
-          <tbody>
-            {members.map((member) => (
-              <tr key={member.id} className="border-b border-border last:border-0">
-                <td className="px-4 py-3 font-medium text-foreground">{member.name}</td>
-                <td className="px-4 py-3 text-muted">{member.email}</td>
-                <td className="px-4 py-3 text-muted">{member.role}</td>
-                <td className="px-4 py-3 text-muted">
-                  {new Date(member.joinedAt).toLocaleDateString()}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {members.length === 0 ? (
-          <p className="px-4 py-10 text-center text-sm text-muted">No team members yet.</p>
-        ) : null}
-      </section>
-
-      <p className="text-xs text-muted">
-        Per-member proposal totals need an owner on each document, which the current schema does
-        not record.
-      </p>
-    </div>
+          ))}
+        </tbody>
+      </SheetTable>
+    </SheetPage>
   );
 }

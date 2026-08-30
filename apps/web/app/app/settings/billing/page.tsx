@@ -1,5 +1,8 @@
+import { SheetPadded } from "@/components/ui/sheet-table";
+
 export default function BillingPage() {
   return (
+    <SheetPadded>
     <div className="w-full max-w-3xl space-y-4">
       <div>
         <h1 className="text-2xl font-semibold">Billing</h1>
@@ -20,5 +23,6 @@ export default function BillingPage() {
         </button>
       </section>
     </div>
+    </SheetPadded>
   );
 }

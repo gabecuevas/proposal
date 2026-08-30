@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { SheetPage, SheetTable, sheetTd, sheetTh, sheetTr } from "@/components/ui/sheet-table";
 
 type OverviewMetrics = {
   docsSent: number;
@@ -125,118 +125,159 @@ export default function AnalyticsPage() {
     void loadDocumentAnalytics(selectedDocumentId);
   }, [loadDocumentAnalytics, selectedDocumentId]);
 
+  const metrics: Array<{ label: string; value: string | number }> = [
+    { label: "Docs Sent", value: overview?.metrics.docsSent ?? 0 },
+    { label: "Avg Time To Sign", value: formatDuration(overview?.metrics.avgTimeToSignMs ?? null) },
+    {
+      label: "View To Sign",
+      value:
+        overview?.metrics.viewToSignRate === null
+          ? "—"
+          : `${((overview?.metrics.viewToSignRate ?? 0) * 100).toFixed(1)}%`,
+    },
+    { label: "Paid Revenue", value: `$${(overview?.metrics.paidRevenue ?? 0).toFixed(2)}` },
+    {
+      label: "Webhook Dead-Letter Rate",
+      value: `${((overview?.metrics.webhookDeadLetterRate ?? 0) * 100).toFixed(2)}%`,
+    },
+    { label: "Dead Letters", value: overview?.metrics.webhookDeadLetters ?? 0 },
+    { label: "Webhook Deliveries", value: overview?.metrics.webhookTotal ?? 0 },
+    { label: "PDF Queue Failures", value: overview?.metrics.pdfQueueFailures ?? 0 },
+    { label: "Payments Created", value: overview?.metrics.paymentsCreated ?? 0 },
+    { label: "Payments Completed", value: overview?.metrics.paymentsCompleted ?? 0 },
+    {
+      label: "Payments Completed Amount",
+      value: `$${(overview?.metrics.paymentsCompletedAmount ?? 0).toFixed(2)}`,
+    },
+  ];
+
   return (
-    <main className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Analytics</h1>
-          <p className="mt-1 text-sm text-muted">Track signing velocity, conversions, and delivery reliability.</p>
-        </div>
-        <label className="flex items-center gap-2 text-sm">
-          <span className="text-muted">Range (days)</span>
-          <input
-            className="w-24 rounded border border-border bg-background px-2 py-1"
-            value={days}
-            onChange={(event) => setDays(event.target.value)}
-          />
-        </label>
-      </div>
-
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
-
-      <section className="grid gap-3 md:grid-cols-4">
-        <MetricCard label="Docs Sent" value={overview?.metrics.docsSent ?? 0} />
-        <MetricCard label="Avg Time To Sign" value={formatDuration(overview?.metrics.avgTimeToSignMs ?? null)} />
-        <MetricCard
-          label="View To Sign"
-          value={
-            overview?.metrics.viewToSignRate === null
-              ? "—"
-              : `${((overview?.metrics.viewToSignRate ?? 0) * 100).toFixed(1)}%`
-          }
-        />
-        <MetricCard label="Paid Revenue" value={`$${(overview?.metrics.paidRevenue ?? 0).toFixed(2)}`} />
-        <MetricCard
-          label="Webhook Dead-Letter Rate"
-          value={`${((overview?.metrics.webhookDeadLetterRate ?? 0) * 100).toFixed(2)}%`}
-        />
-        <MetricCard label="Dead Letters" value={overview?.metrics.webhookDeadLetters ?? 0} />
-        <MetricCard label="Webhook Deliveries" value={overview?.metrics.webhookTotal ?? 0} />
-        <MetricCard label="PDF Queue Failures" value={overview?.metrics.pdfQueueFailures ?? 0} />
-        <MetricCard label="Payments Created" value={overview?.metrics.paymentsCreated ?? 0} />
-        <MetricCard label="Payments Completed" value={overview?.metrics.paymentsCompleted ?? 0} />
-        <MetricCard
-          label="Payments Completed Amount"
-          value={`$${(overview?.metrics.paymentsCompletedAmount ?? 0).toFixed(2)}`}
-        />
-      </section>
-
-      <section className="rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-lg font-semibold">Per-document analytics</h2>
-        <div className="mt-2 flex items-center gap-2">
-          <select
-            className="w-full rounded border border-border bg-background px-2 py-2 text-sm"
-            value={selectedDocumentId}
-            onChange={(event) => setSelectedDocumentId(event.target.value)}
-          >
-            <option value="">Select a document</option>
-            {documents.map((document) => (
-              <option key={document.id} value={document.id}>
-                {document.id} ({document.status})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {selectedAnalytics ? (
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <div className="rounded border border-border bg-background p-3 text-sm">
-              <p className="font-medium">Timeline</p>
-              <p className="text-xs text-muted">Sent: {formatDate(selectedAnalytics.analytics.timeline.sentAt)}</p>
-              <p className="text-xs text-muted">Viewed: {formatDate(selectedAnalytics.analytics.timeline.viewedAt)}</p>
-              <p className="text-xs text-muted">
-                Finalized: {formatDate(selectedAnalytics.analytics.timeline.finalizedAt)}
-              </p>
-              <p className="text-xs text-muted">
-                PDF Stored: {formatDate(selectedAnalytics.analytics.timeline.pdfStoredAt)}
-              </p>
-            </div>
-            <div className="rounded border border-border bg-background p-3 text-sm">
-              <p className="font-medium">Durations</p>
-              <p className="text-xs text-muted">
-                Sent -&gt; Finalized: {formatDuration(selectedAnalytics.analytics.durationsMs.sentToFinalizedMs)}
-              </p>
-              <p className="text-xs text-muted">
-                Viewed -&gt; Finalized: {formatDuration(selectedAnalytics.analytics.durationsMs.viewedToFinalizedMs)}
-              </p>
-            </div>
-            <div className="rounded border border-border bg-background p-3 text-sm md:col-span-2">
-              <p className="font-medium">Webhook Deliveries</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {selectedAnalytics.analytics.webhookDeliveries.map((row) => (
-                  <span key={row.status} className="rounded border border-border px-2 py-1 text-xs">
-                    {row.status}: {row.count}
-                  </span>
-                ))}
-                {selectedAnalytics.analytics.webhookDeliveries.length === 0 ? (
-                  <span className="text-xs text-muted">No webhook deliveries for this document.</span>
-                ) : null}
-              </div>
-            </div>
+    <SheetPage
+      error={error}
+      toolbar={
+        <>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-sm font-semibold text-foreground">Analytics</h1>
+            <p className="text-xs text-muted">Signing velocity, conversions, and delivery reliability.</p>
           </div>
-        ) : (
-          <p className="mt-3 text-sm text-muted">Select a document to inspect lifecycle metrics.</p>
-        )}
-      </section>
-    </main>
-  );
-}
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-muted">Range (days)</span>
+            <input
+              className="h-10 w-24 rounded-md border border-border bg-surface px-2 text-sm outline-none ring-primary/15 focus:ring-2"
+              value={days}
+              onChange={(event) => setDays(event.target.value)}
+            />
+          </label>
+        </>
+      }
+    >
+      <SheetTable>
+        <thead>
+          <tr>
+            <th className={sheetTh()}>Metric</th>
+            <th className={sheetTh()}>Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {metrics.map((metric) => (
+            <tr key={metric.label} className={sheetTr()}>
+              <td className={sheetTd()}>{metric.label}</td>
+              <td className={sheetTd("font-medium text-foreground")}>{metric.value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </SheetTable>
 
-function MetricCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded border border-border bg-surface p-3">
-      <p className="text-xs text-muted">{label}</p>
-      <p className="text-xl font-semibold">{value}</p>
-    </div>
+      <header className="flex flex-wrap items-center gap-3 border-b border-t border-border bg-slate-50 px-3 py-2">
+        <h2 className="text-[13px] font-semibold text-foreground">Per-document analytics</h2>
+        <select
+          className="h-9 min-w-0 flex-1 rounded-md border border-border bg-surface px-2 text-sm outline-none ring-primary/15 focus:ring-2"
+          value={selectedDocumentId}
+          onChange={(event) => setSelectedDocumentId(event.target.value)}
+        >
+          <option value="">Select a document</option>
+          {documents.map((document) => (
+            <option key={document.id} value={document.id}>
+              {document.id} ({document.status})
+            </option>
+          ))}
+        </select>
+      </header>
+
+      {selectedAnalytics ? (
+        <>
+          <SheetTable>
+            <thead>
+              <tr>
+                <th className={sheetTh()}>Event</th>
+                <th className={sheetTh()}>When</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className={sheetTr()}>
+                <td className={sheetTd()}>Sent</td>
+                <td className={sheetTd()}>{formatDate(selectedAnalytics.analytics.timeline.sentAt)}</td>
+              </tr>
+              <tr className={sheetTr()}>
+                <td className={sheetTd()}>Viewed</td>
+                <td className={sheetTd()}>{formatDate(selectedAnalytics.analytics.timeline.viewedAt)}</td>
+              </tr>
+              <tr className={sheetTr()}>
+                <td className={sheetTd()}>Finalized</td>
+                <td className={sheetTd()}>{formatDate(selectedAnalytics.analytics.timeline.finalizedAt)}</td>
+              </tr>
+              <tr className={sheetTr()}>
+                <td className={sheetTd()}>PDF stored</td>
+                <td className={sheetTd()}>{formatDate(selectedAnalytics.analytics.timeline.pdfStoredAt)}</td>
+              </tr>
+              <tr className={sheetTr()}>
+                <td className={sheetTd()}>Sent → Finalized</td>
+                <td className={sheetTd()}>
+                  {formatDuration(selectedAnalytics.analytics.durationsMs.sentToFinalizedMs)}
+                </td>
+              </tr>
+              <tr className={sheetTr()}>
+                <td className={sheetTd()}>Viewed → Finalized</td>
+                <td className={sheetTd()}>
+                  {formatDuration(selectedAnalytics.analytics.durationsMs.viewedToFinalizedMs)}
+                </td>
+              </tr>
+            </tbody>
+          </SheetTable>
+          <SheetTable
+            empty={
+              selectedAnalytics.analytics.webhookDeliveries.length === 0 ? (
+                <p className="px-4 py-6 text-center text-sm text-muted">
+                  No webhook deliveries for this document.
+                </p>
+              ) : null
+            }
+          >
+            {selectedAnalytics.analytics.webhookDeliveries.length > 0 ? (
+              <>
+                <thead>
+                  <tr>
+                    <th className={sheetTh()}>Webhook status</th>
+                    <th className={sheetTh()}>Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedAnalytics.analytics.webhookDeliveries.map((row) => (
+                    <tr key={row.status} className={sheetTr()}>
+                      <td className={sheetTd()}>{row.status}</td>
+                      <td className={sheetTd("font-medium text-foreground")}>{row.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </>
+            ) : null}
+          </SheetTable>
+        </>
+      ) : (
+        <p className="px-4 py-10 text-center text-sm text-muted">
+          Select a document to inspect lifecycle metrics.
+        </p>
+      )}
+    </SheetPage>
   );
 }

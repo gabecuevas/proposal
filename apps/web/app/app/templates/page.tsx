@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import { SheetPage } from "@/components/ui/sheet-table";
 import { UploadDropzone } from "@/components/templates/upload-dropzone";
 import type { EditorDoc } from "@/lib/editor/types";
 import { assetUrl } from "@/lib/storage/asset-url";
@@ -121,16 +122,12 @@ export default function AppTemplatesPage() {
   }
 
   return (
-    <div className="w-full min-w-0 space-y-6">
-      <h1 className="sr-only">Templates</h1>
-
-      <UploadDropzone onUploaded={() => void loadTemplates()} />
-
-      <section className="space-y-4">
-        <h2 className="text-sm font-semibold text-foreground">Start from a template</h2>
-
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border">
-          <div className="flex flex-wrap gap-1">
+    <SheetPage
+      error={error}
+      toolbar={
+        <>
+          <h1 className="sr-only">Templates</h1>
+          <div className="flex min-w-0 flex-1 flex-wrap gap-1">
             {TABS.map((item) => {
               const active = tab === item.id;
               return (
@@ -138,10 +135,8 @@ export default function AppTemplatesPage() {
                   key={item.id}
                   type="button"
                   onClick={() => selectTab(item.id)}
-                  className={`relative -mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-                    active
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted hover:text-foreground"
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    active ? "bg-slate-100 text-foreground" : "text-muted hover:text-foreground"
                   }`}
                 >
                   {item.label}
@@ -149,8 +144,10 @@ export default function AppTemplatesPage() {
               );
             })}
           </div>
-
-          <div className="relative mb-2 w-full min-w-0 sm:max-w-xs">
+          <p className="text-sm text-muted">
+            {filtered.length} {filtered.length === 1 ? "template" : "templates"}
+          </p>
+          <div className="relative w-full min-w-0 sm:max-w-xs">
             <span
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
               aria-hidden
@@ -161,18 +158,21 @@ export default function AppTemplatesPage() {
               </svg>
             </span>
             <input
-              className="h-9 w-full rounded-md border border-border bg-surface pl-9 pr-3 text-sm outline-none ring-primary/15 focus:ring-2"
+              className="h-10 w-full rounded-md border border-border bg-surface pl-9 pr-3 text-sm outline-none ring-primary/15 focus:ring-2"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search templates…"
               aria-label="Search templates"
             />
           </div>
-        </div>
+        </>
+      }
+    >
+      <div className="border-b border-border px-4 py-3">
+        <UploadDropzone onUploaded={() => void loadTemplates()} />
+      </div>
 
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
-
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(11.5rem,1fr))] gap-4">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(11.5rem,1fr))] gap-4 p-4">
           <Link
             href="/app/templates/new"
             className="group flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-sm transition-shadow hover:shadow-md"
@@ -246,13 +246,12 @@ export default function AppTemplatesPage() {
         </div>
 
         {!loading && filtered.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted">
+          <p className="px-4 py-8 text-center text-sm text-muted">
             {tab === "uploads"
               ? "No uploaded templates yet. Drop a PDF above to create one."
               : "No templates yet."}
           </p>
         ) : null}
-      </section>
-    </div>
+    </SheetPage>
   );
 }

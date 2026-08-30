@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SheetPage, SheetTable, sheetTd, sheetTh, sheetTr } from "@/components/ui/sheet-table";
 
 type ContentBlockItem = {
   id: string;
@@ -39,56 +40,59 @@ export default function ContentLibraryPage() {
   }, []);
 
   return (
-    <div className="w-full min-w-0 space-y-4">
-      <h1 className="text-2xl font-semibold">Content Library</h1>
-      <div className="rounded-lg border border-border bg-surface p-3">
-        <p className="mb-2 text-sm text-muted">Create reusable block</p>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_12rem_auto]">
+    <SheetPage
+      toolbar={
+        <>
           <input
-            className="min-w-0 rounded border border-border bg-background px-2 py-1 text-sm"
+            className="h-10 min-w-0 flex-1 rounded-md border border-border bg-surface px-3 text-sm outline-none ring-primary/15 focus:ring-2"
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Block name"
           />
           <input
-            className="min-w-0 rounded border border-border bg-background px-2 py-1 text-sm"
+            className="h-10 w-40 rounded-md border border-border bg-surface px-3 text-sm outline-none ring-primary/15 focus:ring-2"
             value={blockType}
             onChange={(event) => setBlockType(event.target.value)}
             placeholder="Block type"
           />
+          <p className="text-sm text-muted">
+            {items.length} {items.length === 1 ? "block" : "blocks"}
+          </p>
           <button
-            onClick={create}
-            className="rounded bg-primary px-3 py-1 text-sm text-primary-foreground sm:justify-self-start"
+            type="button"
+            onClick={() => void create()}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-95"
           >
-            Create
+            + Add block
           </button>
-        </div>
-      </div>
-      <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-        <table className="w-full min-w-[28rem] text-left text-sm">
-          <thead className="border-b border-border bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-muted">
-            <tr>
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3">Version</th>
+        </>
+      }
+    >
+      <SheetTable
+        minWidth="28rem"
+        empty={
+          items.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-muted">No content blocks yet.</p>
+          ) : null
+        }
+      >
+        <thead>
+          <tr>
+            <th className={sheetTh()}>Name</th>
+            <th className={sheetTh()}>Type</th>
+            <th className={sheetTh()}>Version</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.id} className={sheetTr()}>
+              <td className={sheetTd("font-medium text-foreground")}>{item.name}</td>
+              <td className={sheetTd()}>{item.block_type}</td>
+              <td className={sheetTd()}>v{item.version}</td>
             </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item.id} className="border-b border-border last:border-0 hover:bg-slate-50/60">
-                <td className="min-w-0 px-4 py-3 font-medium text-foreground">
-                  <span className="truncate">{item.name}</span>
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 text-muted">{item.block_type}</td>
-                <td className="whitespace-nowrap px-4 py-3 text-muted">v{item.version}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {items.length === 0 ? (
-          <p className="px-4 py-10 text-center text-sm text-muted">No content blocks yet.</p>
-        ) : null}
-      </div>
-    </div>
+          ))}
+        </tbody>
+      </SheetTable>
+    </SheetPage>
   );
 }

@@ -123,14 +123,16 @@ function AppShellChrome({ children, userEmail, userName, userInitials }: AppShel
             className="fixed inset-0 top-14 z-30 bg-slate-900/20 md:hidden"
           />
         ) : null}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <AppBreadcrumbs
             section={section}
             pathname={pathname}
             tabParam={tabParam}
             hash={hash}
           />
-          <main className="min-w-0 flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface p-0">
+            {children}
+          </main>
         </div>
       </div>
     </div>

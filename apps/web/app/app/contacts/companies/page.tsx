@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { CompanyVariableHint, crmInputClass } from "@/components/crm/variable-pills";
-import { formatRelativeContact } from "@/lib/ui/time";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CrmDataGrid, type CrmGridColumn } from "@/components/crm/data-grid";
+import { CrmRecordDrawer, type DrawerSection } from "@/components/crm/record-drawer";
+import { formatGridDateTime } from "@/lib/ui/datetime";
 
 type Company = {
   id: string;
@@ -12,7 +13,11 @@ type Company = {
   email: string | null;
   industry: string | null;
   city: string | null;
+  state: string | null;
+  country: string | null;
+  notes: string | null;
   people_count: number;
+  created_at: string;
   updated_at: string;
 };
 
@@ -36,14 +41,103 @@ const emptyEditor = (): Editor => ({
   notes: "",
 });
 
+const COMPANY_COLUMNS: CrmGridColumn<Company>[] = [
+  {
+    id: "name",
+    label: "Company",
+    required: true,
+    width: 220,
+    sortValue: (company) => company.name,
+    cell: (company) => <span className="font-medium text-primary">{company.name}</span>,
+  },
+  {
+    id: "industry",
+    label: "Industry",
+    width: 160,
+    sortValue: (company) => company.industry,
+    cell: (company) => company.industry ?? "—",
+  },
+  {
+    id: "people",
+    label: "People",
+    width: 100,
+    align: "right",
+    sortValue: (company) => company.people_count,
+    cell: (company) => company.people_count,
+  },
+  {
+    id: "website",
+    label: "Website",
+    width: 200,
+    sortValue: (company) => company.website,
+    cell: (company) => company.website ?? "—",
+  },
+  {
+    id: "email",
+    label: "Email",
+    defaultVisible: false,
+    width: 200,
+    sortValue: (company) => company.email,
+    cell: (company) => company.email ?? "—",
+  },
+  {
+    id: "phone",
+    label: "Phone",
+    defaultVisible: false,
+    width: 140,
+    sortValue: (company) => company.phone,
+    cell: (company) => company.phone ?? "—",
+  },
+  {
+    id: "city",
+    label: "City",
+    defaultVisible: false,
+    width: 140,
+    sortValue: (company) => company.city,
+    cell: (company) => company.city ?? "—",
+  },
+  {
+    id: "state",
+    label: "State",
+    defaultVisible: false,
+    width: 100,
+    sortValue: (company) => company.state,
+    cell: (company) => company.state ?? "—",
+  },
+  {
+    id: "country",
+    label: "Country",
+    defaultVisible: false,
+    width: 120,
+    sortValue: (company) => company.country,
+    cell: (company) => company.country ?? "—",
+  },
+  {
+    id: "created",
+    label: "Created",
+    defaultVisible: false,
+    width: 180,
+    sortValue: (company) => company.created_at,
+    cell: (company) => formatGridDateTime(company.created_at),
+  },
+  {
+    id: "updated",
+    label: "Updated",
+    width: 180,
+    sortValue: (company) => company.updated_at,
+    cell: (company) => formatGridDateTime(company.updated_at),
+  },
+];
+
 export default function CompaniesPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState("");
-  const [showForm, setShowForm] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [editor, setEditor] = useState<Editor>(emptyEditor);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     setError("");
@@ -64,184 +158,207 @@ export default function CompaniesPage() {
     void load();
   }, [load]);
 
-  async function save() {
-    setError("");
+  const selected = companies.find((company) => company.id === selectedId);
+
+  function openCompany(company: Company) {
+    setSelectedId(company.id);
+    setEditor({
+      name: company.name,
+      website: company.website ?? "",
+      phone: company.phone ?? "",
+      email: company.email ?? "",
+      industry: company.industry ?? "",
+      city: company.city ?? "",
+      notes: company.notes ?? "",
+    });
     setStatus("");
-    const body = {
-      name: editor.name,
-      website: editor.website || undefined,
-      phone: editor.phone || undefined,
-      email: editor.email || undefined,
-      industry: editor.industry || undefined,
-      city: editor.city || undefined,
-      notes: editor.notes || undefined,
-    };
-    const response = selectedId
-      ? await fetch(`/api/companies/${selectedId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        })
-      : await fetch("/api/companies", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-    if (!response.ok) {
-      setError(selectedId ? "Failed to save company" : "Failed to create company");
+    setError("");
+    setDrawerOpen(true);
+  }
+
+  function openNew() {
+    setSelectedId("");
+    setEditor(emptyEditor());
+    setStatus("");
+    setError("");
+    setDrawerOpen(true);
+  }
+
+  async function patchCompany(body: Record<string, unknown>) {
+    if (!selectedId) {
       return;
     }
-    setStatus(selectedId ? "Company saved." : "Company created.");
-    setShowForm(false);
+    setError("");
+    const response = await fetch(`/api/companies/${selectedId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      setError("Failed to save company");
+      return;
+    }
     await load();
   }
 
-  const selected = companies.find((company) => company.id === selectedId);
+  async function createCompany() {
+    setError("");
+    if (!editor.name.trim()) {
+      setError("Company name is required");
+      return;
+    }
+    setCreating(true);
+    const response = await fetch("/api/companies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: editor.name,
+        website: editor.website || undefined,
+        phone: editor.phone || undefined,
+        email: editor.email || undefined,
+        industry: editor.industry || undefined,
+        city: editor.city || undefined,
+        notes: editor.notes || undefined,
+      }),
+    });
+    setCreating(false);
+    if (!response.ok) {
+      setError("Failed to create company");
+      return;
+    }
+    const payload = (await response.json()) as { company: Company };
+    setStatus("Company created.");
+    setSelectedId(payload.company.id);
+    await load();
+  }
+
+  const sections: DrawerSection[] = useMemo(
+    () => [
+      {
+        id: "details",
+        label: "Details",
+        fields: [
+          {
+            id: "industry",
+            icon: "industry",
+            label: "Industry",
+            value: editor.industry,
+            placeholder: "Industry",
+            onChange: (value) => setEditor((current) => ({ ...current, industry: value })),
+            onCommit: (value) => void patchCompany({ industry: value }),
+          },
+          {
+            id: "email",
+            icon: "mail",
+            label: "Email",
+            value: editor.email,
+            placeholder: "Email",
+            onChange: (value) => setEditor((current) => ({ ...current, email: value })),
+            onCommit: (value) => void patchCompany({ email: value }),
+          },
+          {
+            id: "phone",
+            icon: "phone",
+            label: "Phone",
+            value: editor.phone,
+            placeholder: "Phone",
+            onChange: (value) => setEditor((current) => ({ ...current, phone: value })),
+            onCommit: (value) => void patchCompany({ phone: value }),
+          },
+          {
+            id: "city",
+            icon: "pin",
+            label: "Address",
+            value: editor.city,
+            placeholder: "Address",
+            onChange: (value) => setEditor((current) => ({ ...current, city: value })),
+            onCommit: (value) => void patchCompany({ city: value }),
+          },
+        ],
+      },
+      {
+        id: "organization",
+        label: "Organization",
+        fields: [
+          {
+            id: "website",
+            icon: "web",
+            label: "Website",
+            value: editor.website,
+            placeholder: "Website",
+            onChange: (value) => setEditor((current) => ({ ...current, website: value })),
+            onCommit: (value) => void patchCompany({ website: value }),
+          },
+          {
+            id: "people",
+            icon: "people",
+            label: "People",
+            value: selected ? String(selected.people_count) : "",
+            placeholder: "People",
+            readOnly: true,
+            onChange: () => undefined,
+          },
+        ],
+      },
+    ],
+    [editor, selected, selectedId],
+  );
 
   return (
-    <div className="w-full min-w-0 space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Companies</h1>
-          <p className="mt-1 text-sm text-muted">
-            Linked documents can fill <code className="text-foreground">[Company.Name]</code> and related tokens.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setSelectedId("");
-            setEditor(emptyEditor());
-            setShowForm(true);
-          }}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-95"
-        >
-          + Add company
-        </button>
-      </div>
-
-      <input
-        className={`h-10 w-full max-w-xl ${crmInputClass()}`}
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        onKeyDown={(event) => event.key === "Enter" && void load()}
-        placeholder="Search companies…"
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <h1 className="sr-only">Companies</h1>
+      <CrmDataGrid
+        storageKey="crm-grid-companies"
+        columns={COMPANY_COLUMNS}
+        rows={companies}
+        getRowId={(company) => company.id}
+        emptyLabel="No companies yet."
+        recordNoun="company"
+        recordNounPlural="companies"
+        search={{
+          value: query,
+          placeholder: "Search companies…",
+          onChange: setQuery,
+          onSubmit: () => void load(),
+        }}
+        addLabel="+ Add company"
+        onAdd={openNew}
+        onRowOpen={openCompany}
+        error={error && !drawerOpen ? error : undefined}
       />
-
-      <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-        <table className="w-full min-w-[40rem] text-left text-sm">
-          <thead className="border-b border-border bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-muted">
-            <tr>
-              <th className="px-4 py-3">Company</th>
-              <th className="px-4 py-3">Industry</th>
-              <th className="px-4 py-3">People</th>
-              <th className="px-4 py-3">Website</th>
-              <th className="px-4 py-3">Updated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {companies.map((company) => (
-              <tr
-                key={company.id}
-                className="cursor-pointer border-b border-border last:border-0 hover:bg-slate-50/60"
-                onClick={() => {
-                  setSelectedId(company.id);
-                  setEditor({
-                    name: company.name,
-                    website: company.website ?? "",
-                    phone: company.phone ?? "",
-                    email: company.email ?? "",
-                    industry: company.industry ?? "",
-                    city: company.city ?? "",
-                    notes: "",
-                  });
-                  setShowForm(true);
-                }}
-              >
-                <td className="px-4 py-3 font-medium text-foreground">{company.name}</td>
-                <td className="px-4 py-3 text-muted">{company.industry ?? "—"}</td>
-                <td className="px-4 py-3 tabular-nums text-muted">{company.people_count}</td>
-                <td className="px-4 py-3 text-muted">{company.website ?? "—"}</td>
-                <td className="px-4 py-3 text-muted">{formatRelativeContact(company.updated_at)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {companies.length === 0 ? (
-          <p className="px-4 py-10 text-center text-sm text-muted">No companies yet.</p>
-        ) : null}
-      </div>
-
-      {showForm ? (
-        <section className="rounded-xl border border-border bg-surface p-5 shadow-sm">
-          <h2 className="text-lg font-semibold">{selected ? "Edit company" : "New company"}</h2>
-          <div className="mt-3">
-            <CompanyVariableHint />
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <input
-              className={`${crmInputClass()} md:col-span-2`}
-              value={editor.name}
-              onChange={(event) => setEditor((current) => ({ ...current, name: event.target.value }))}
-              placeholder="Company name"
-            />
-            <input
-              className={crmInputClass()}
-              value={editor.website}
-              onChange={(event) => setEditor((current) => ({ ...current, website: event.target.value }))}
-              placeholder="Website"
-            />
-            <input
-              className={crmInputClass()}
-              value={editor.industry}
-              onChange={(event) => setEditor((current) => ({ ...current, industry: event.target.value }))}
-              placeholder="Industry"
-            />
-            <input
-              className={crmInputClass()}
-              value={editor.email}
-              onChange={(event) => setEditor((current) => ({ ...current, email: event.target.value }))}
-              placeholder="Email"
-            />
-            <input
-              className={crmInputClass()}
-              value={editor.phone}
-              onChange={(event) => setEditor((current) => ({ ...current, phone: event.target.value }))}
-              placeholder="Phone"
-            />
-            <input
-              className={`${crmInputClass()} md:col-span-2`}
-              value={editor.city}
-              onChange={(event) => setEditor((current) => ({ ...current, city: event.target.value }))}
-              placeholder="City"
-            />
-            <textarea
-              className={`min-h-[80px] ${crmInputClass()} md:col-span-2`}
-              value={editor.notes}
-              onChange={(event) => setEditor((current) => ({ ...current, notes: event.target.value }))}
-              placeholder="Notes"
-            />
-          </div>
-          <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              onClick={() => void save()}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-            >
-              {selected ? "Save company" : "Create company"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="rounded-md border border-border px-4 py-2 text-sm hover:bg-background"
-            >
-              Close
-            </button>
-          </div>
-          {status ? <p className="mt-3 text-sm text-emerald-700">{status}</p> : null}
-          {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
-        </section>
-      ) : null}
+      <CrmRecordDrawer
+        open={drawerOpen}
+        recordKey={selectedId || "new-company"}
+        title={editor.name}
+        titlePlaceholder="Company name"
+        onTitleChange={(value) => setEditor((current) => ({ ...current, name: value }))}
+        onTitleCommit={(value) => void patchCompany({ name: value })}
+        onClose={() => setDrawerOpen(false)}
+        sections={sections}
+        notes={editor.notes}
+        onNotesSave={(value) => {
+          setEditor((current) => ({ ...current, notes: value }));
+          if (selectedId) {
+            void patchCompany({ notes: value });
+          }
+        }}
+        onNotesChange={(value) => setEditor((current) => ({ ...current, notes: value }))}
+        history={
+          selected
+            ? [
+                ...(selected.notes
+                  ? [{ id: "note", title: "Note", at: selected.updated_at, detail: selected.notes }]
+                  : []),
+                { id: "created", title: "Company created", at: selected.created_at },
+              ]
+            : []
+        }
+        error={drawerOpen ? error : undefined}
+        status={status}
+        createLabel="Create company"
+        onCreate={selectedId ? undefined : () => void createCompany()}
+        creating={creating}
+      />
     </div>
   );
 }

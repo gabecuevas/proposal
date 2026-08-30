@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { BarChartPanel } from "@/components/dashboard/bar-chart";
 import { WorkspaceTools } from "@/components/dashboard/workspace-tools";
+import { SheetTable, sheetTd, sheetTh, sheetTr } from "@/components/ui/sheet-table";
 import { buildSampleOverview } from "@/lib/dashboard/sample-data";
 import type { DashboardActivityKind, DashboardOverview } from "@/lib/dashboard/types";
 
@@ -209,9 +210,9 @@ export default function AppHomePage() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-auto bg-surface">
       {showSample ? (
-        <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
+        <div className="flex shrink-0 items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm">
           <span className="rounded bg-amber-200/70 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-900">
             Sample Data
           </span>
@@ -231,7 +232,7 @@ export default function AppHomePage() {
           </button>
         </div>
       ) : (
-        <div className="flex justify-end">
+        <div className="flex shrink-0 justify-end border-b border-border px-4 py-2">
           <button
             type="button"
             onClick={restoreSample}
@@ -242,9 +243,12 @@ export default function AppHomePage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 divide-y divide-border rounded-lg border border-border bg-surface sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+      <div className="grid grid-cols-1 border-b border-border sm:grid-cols-3">
         {stats.map((stat) => (
-          <div key={stat.key} className="px-4 py-4 text-center">
+          <div
+            key={stat.key}
+            className="border-b border-border px-3 py-4 text-center last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0"
+          >
             <p className="text-3xl font-semibold tabular-nums text-foreground">{stat.count}</p>
             <p className={`mt-1 flex items-center justify-center gap-1.5 text-xs ${stat.tone}`}>
               {stat.icon}
@@ -257,50 +261,62 @@ export default function AppHomePage() {
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid border-b border-border lg:grid-cols-2">
         <BarChartPanel title="Deliveries" icon={<IconSend />} points={data.series.deliveries} />
         <BarChartPanel title="Views" icon={<IconEye />} points={data.series.views} />
       </div>
 
-      <section className="overflow-hidden rounded-lg border border-border bg-surface">
-        <header className="flex items-center justify-center gap-2 border-b border-border bg-slate-50/80 px-4 py-2 text-sm font-medium text-foreground">
+      <section>
+        <header className="flex items-center gap-2 border-b border-border bg-slate-50 px-3 py-2 text-[13px] font-semibold text-foreground">
           <span className="text-muted" aria-hidden>
             <IconActivity />
           </span>
           Activity
         </header>
 
-        {data.activity.length === 0 ? (
-          <p className="px-4 py-10 text-center text-sm text-muted">No activity yet.</p>
-        ) : (
-          <ul className="divide-y divide-border">
+        <SheetTable
+          empty={
+            data.activity.length === 0 ? (
+              <p className="px-4 py-10 text-center text-sm text-muted">No activity yet.</p>
+            ) : null
+          }
+        >
+          {data.activity.length > 0 ? (
+            <thead>
+              <tr>
+                <th className={sheetTh()}>Type</th>
+                <th className={sheetTh()}>When</th>
+                <th className={sheetTh()}>Actor</th>
+                <th className={sheetTh()}>Document</th>
+              </tr>
+            </thead>
+          ) : null}
+          <tbody>
             {data.activity.map((item) => (
-              <li
-                key={item.id}
-                className="flex flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2.5 text-sm"
-              >
-                <span
-                  className={`inline-flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${activityBadgeClass[item.kind]}`}
-                >
-                  {activityIcon(item.kind)}
-                  {item.kind}
-                </span>
-                <span className="w-44 shrink-0 text-muted">{formatTimestamp(item.occurredAt)}</span>
-                <span className="min-w-0 flex-1 truncate text-foreground">{item.actor}</span>
-                {item.documentId ? (
-                  <Link
-                    href={`/app/documents/${item.documentId}`}
-                    className="shrink-0 truncate text-sky-600 hover:underline"
+              <tr key={item.id} className={sheetTr()}>
+                <td className={sheetTd("whitespace-nowrap")}>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${activityBadgeClass[item.kind]}`}
                   >
-                    {item.documentTitle}
-                  </Link>
-                ) : (
-                  <span className="shrink-0 truncate text-sky-600">{item.documentTitle}</span>
-                )}
-              </li>
+                    {activityIcon(item.kind)}
+                    {item.kind}
+                  </span>
+                </td>
+                <td className={sheetTd("whitespace-nowrap")}>{formatTimestamp(item.occurredAt)}</td>
+                <td className={sheetTd("font-medium text-foreground")}>{item.actor}</td>
+                <td className={sheetTd()}>
+                  {item.documentId ? (
+                    <Link href={`/app/documents/${item.documentId}`} className="text-primary hover:underline">
+                      {item.documentTitle}
+                    </Link>
+                  ) : (
+                    <span>{item.documentTitle}</span>
+                  )}
+                </td>
+              </tr>
             ))}
-          </ul>
-        )}
+          </tbody>
+        </SheetTable>
       </section>
 
       <WorkspaceTools />

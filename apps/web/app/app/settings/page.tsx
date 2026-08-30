@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { WorkspaceNameCard } from "@/components/settings/workspace-name-card";
+import { SheetPadded, SheetTable, sheetTd, sheetTh, sheetTr } from "@/components/ui/sheet-table";
 
 type CompliancePolicy = {
   workspaceId: string;
@@ -306,6 +307,7 @@ export default function SettingsPage() {
   }, []);
 
   return (
+    <SheetPadded>
     <main className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Workspace settings</h1>
@@ -411,40 +413,56 @@ export default function SettingsPage() {
             Secret (shown once): <code>{newApiKeySecret}</code>
           </div>
         ) : null}
-        <div className="mt-4 space-y-2">
-          {apiKeys.map((key) => (
-            <div key={key.id} className="rounded border border-border bg-background p-3 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="font-medium">
-                    {key.name} ({key.role})
-                  </p>
-                  <p className="text-xs text-muted">
-                    Prefix: {key.key_prefix} | Created: {formatDate(key.created_at)} | Last used:{" "}
-                    {formatDate(key.last_used_at)}
-                  </p>
-                  <p className="text-xs text-muted">
-                    Expires: {formatDate(key.expires_at)} | Expired: {key.is_expired ? "yes" : "no"} | Revoked:{" "}
-                    {key.revoked_at ? "yes" : "no"}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => void rotateApiKey(key.id)}
-                    className="rounded border border-border px-2 py-1 text-xs hover:bg-surface"
-                  >
-                    Rotate
-                  </button>
-                  <button
-                    onClick={() => void revokeApiKey(key.id)}
-                    className="rounded border border-border px-2 py-1 text-xs hover:bg-surface"
-                  >
-                    Revoke
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className="-mx-4 mt-4 overflow-x-auto">
+          <SheetTable
+            empty={
+              apiKeys.length === 0 ? (
+                <p className="px-4 py-6 text-center text-sm text-muted">No API keys yet.</p>
+              ) : null
+            }
+          >
+            <thead>
+              <tr>
+                <th className={sheetTh()}>Name</th>
+                <th className={sheetTh()}>Role</th>
+                <th className={sheetTh()}>Prefix</th>
+                <th className={sheetTh()}>Created</th>
+                <th className={sheetTh()}>Last used</th>
+                <th className={sheetTh()}>Expires</th>
+                <th className={sheetTh()}>Status</th>
+                <th className={sheetTh()} aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {apiKeys.map((key) => (
+                <tr key={key.id} className={sheetTr()}>
+                  <td className={sheetTd("font-medium text-foreground")}>{key.name}</td>
+                  <td className={sheetTd()}>{key.role}</td>
+                  <td className={sheetTd()}>{key.key_prefix}</td>
+                  <td className={sheetTd()}>{formatDate(key.created_at)}</td>
+                  <td className={sheetTd()}>{formatDate(key.last_used_at)}</td>
+                  <td className={sheetTd()}>{formatDate(key.expires_at)}</td>
+                  <td className={sheetTd()}>
+                    {key.revoked_at ? "Revoked" : key.is_expired ? "Expired" : "Active"}
+                  </td>
+                  <td className={sheetTd("whitespace-nowrap")}>
+                    <button
+                      onClick={() => void rotateApiKey(key.id)}
+                      className="mr-2 rounded border border-border px-2 py-1 text-xs hover:bg-surface"
+                    >
+                      Rotate
+                    </button>
+                    <button
+                      onClick={() => void revokeApiKey(key.id)}
+                      className="rounded border border-border px-2 py-1 text-xs hover:bg-surface"
+                    >
+                      Revoke
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </SheetTable>
         </div>
       </section>
 
@@ -609,6 +627,7 @@ export default function SettingsPage() {
         </div>
       </section>
     </main>
+    </SheetPadded>
   );
 }
 

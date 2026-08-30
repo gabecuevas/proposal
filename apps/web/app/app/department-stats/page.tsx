@@ -1,6 +1,6 @@
 export default function DepartmentStatsPage() {
   return (
-    <section className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-surface px-6 py-20 text-center">
+    <section className="flex min-h-0 flex-1 flex-col items-center justify-center bg-surface px-6 py-20 text-center">
       <div className="mb-5 rounded-2xl bg-sky-50 p-5 text-sky-600" aria-hidden>
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
           <path d="M4 20V9l6-4 6 4v11" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
