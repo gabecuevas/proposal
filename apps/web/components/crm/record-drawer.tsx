@@ -174,6 +174,22 @@ function DrawerIcon({ id }: { id: DrawerIconId }) {
       </svg>
     );
   }
+  if (id === "title") {
+    return (
+      <svg className={common} viewBox="0 0 24 24" fill="none" aria-hidden>
+        <rect x="4" y="8" width="16" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M8 8V6.5A2.5 2.5 0 0110.5 4h3A2.5 2.5 0 0116 6.5V8" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M8 13h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (id === "industry") {
+    return (
+      <svg className={common} viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path d="M4 20V9l4-2v13M10 20V5l4-2v17M16 20V11l4-2v11" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      </svg>
+    );
+  }
   return (
     <svg className={common} viewBox="0 0 24 24" fill="none" aria-hidden>
       <path d="M7 7h10v3H7V7zM7 14h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -181,111 +197,228 @@ function DrawerIcon({ id }: { id: DrawerIconId }) {
   );
 }
 
+function EditPencilIcon() {
+  return (
+    <svg className="h-3.5 w-3.5 text-foreground" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M11.3 2.3a1.2 1.2 0 011.7 1.7l-7.2 7.2-2.3.6.6-2.3 7.2-7.2z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FieldEditActions({
+  onCancel,
+  onSave,
+  saveDisabled,
+}: {
+  onCancel: () => void;
+  onSave: () => void;
+  saveDisabled?: boolean;
+}) {
+  return (
+    <div className="flex justify-end gap-2 pt-2">
+      <button
+        type="button"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={onCancel}
+        className="rounded-md border border-border bg-white px-3 py-1 text-sm font-medium text-foreground hover:bg-slate-50"
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={onSave}
+        disabled={saveDisabled}
+        className="rounded-md bg-primary px-3 py-1 text-sm font-medium text-primary-foreground disabled:opacity-40"
+      >
+        Save
+      </button>
+    </div>
+  );
+}
+
+function fieldDisplayValue(field: DrawerField): string {
+  if (field.type === "select") {
+    if (!field.value) {
+      return "";
+    }
+    return field.options?.find((option) => option.value === field.value)?.label ?? field.value;
+  }
+  return field.value;
+}
+
+const FIELD_LABEL_CLASS = "w-[5.25rem] shrink-0 pt-1.5 text-xs leading-tight text-foreground";
+const FIELD_ICON_CLASS = "flex w-5 shrink-0 justify-center pt-1.5";
+const FIELD_ROW_CLASS = "flex items-start gap-1.5 py-0.5";
+
+function FieldRowLabel({ field }: { field: DrawerField }) {
+  if (field.showLabel === false) {
+    return <span className="sr-only">{field.label}</span>;
+  }
+  return <span className={FIELD_LABEL_CLASS}>{field.label}</span>;
+}
+
+function FieldRowIcon({ field }: { field: DrawerField }) {
+  return (
+    <span className={FIELD_ICON_CLASS} aria-hidden>
+      <DrawerIcon id={field.icon} />
+    </span>
+  );
+}
+
 function FieldRow({ field }: { field: DrawerField }) {
   const [editing, setEditing] = useState(false);
-  const [attempted, setAttempted] = useState(false);
-  const error = field.validate?.(field.value) ?? null;
-  const showError = Boolean(error && (attempted || field.value.trim()));
+  const [draftValue, setDraftValue] = useState(field.value);
+  const [attemptedSave, setAttemptedSave] = useState(false);
+
+  useEffect(() => {
+    if (!editing) {
+      setDraftValue(field.value);
+    }
+  }, [field.value, editing]);
+
+  const error = editing && attemptedSave ? (field.validate?.(draftValue) ?? null) : null;
+  const showError = Boolean(error);
   const inputClass = cn(
-    "h-8 w-full rounded border bg-surface px-2 text-sm outline-none focus:ring-2",
+    "h-8 w-full rounded-md border bg-white px-2 text-sm outline-none focus:ring-2",
     showError
       ? "border-red-400 ring-red-200 focus:ring-red-200"
       : "border-border ring-primary/15 focus:ring-primary/15",
   );
+  const displayValue = fieldDisplayValue(field);
+  const canEdit = !field.readOnly;
 
-  if (field.type === "select") {
-    return (
-      <label className="flex items-start gap-2.5 py-1.5">
-        <DrawerIcon id={field.icon} />
-        <span className="min-w-0 flex-1">
-          {field.showLabel ? <span className="block text-[11px] text-muted">{field.label}</span> : null}
-          <select
-            className={cn(inputClass, "cursor-pointer bg-transparent", !field.value && "text-muted")}
-            value={field.value}
-            disabled={field.readOnly}
-            aria-label={field.label}
-            onChange={(event) => {
-              field.onChange(event.target.value);
-              field.onCommit?.(event.target.value);
-            }}
-          >
-            <option value="">{field.placeholder}</option>
-            {field.options?.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </span>
-      </label>
-    );
+  function startEditing() {
+    if (!canEdit) {
+      return;
+    }
+    setDraftValue(field.value);
+    setAttemptedSave(false);
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    setDraftValue(field.value);
+    setAttemptedSave(false);
+    setEditing(false);
+  }
+
+  function saveEditing() {
+    setAttemptedSave(true);
+    const nextError = field.validate?.(draftValue) ?? null;
+    if (nextError) {
+      return;
+    }
+    field.onChange(draftValue);
+    field.onCommit?.(draftValue);
+    setAttemptedSave(false);
+    setEditing(false);
   }
 
   const errorMessage = showError ? (
-    <p className="pl-[1.625rem] pt-0.5 text-xs text-red-600" role="alert">
+    <p className="pt-1 text-xs text-red-600" role="alert">
       {error}
     </p>
   ) : null;
 
-  if (field.readOnly || !editing) {
+  if (editing) {
     return (
-      <div className="py-0.5">
-        <button
-          type="button"
-          disabled={field.readOnly}
-          onClick={() => setEditing(true)}
-          className="flex w-full items-start gap-2.5 py-1.5 text-left disabled:cursor-default"
-        >
-          <DrawerIcon id={field.icon} />
-          <span className="min-w-0">
-            {field.showLabel ? <span className="block text-[11px] text-muted">{field.label}</span> : null}
-            <span className={cn("block truncate text-sm", field.value ? "text-foreground" : "text-muted")}>
-              {field.value || field.placeholder}
-              {field.hint && field.value ? <span className="ml-1 text-muted">({field.hint})</span> : null}
-            </span>
-          </span>
-        </button>
-        {errorMessage}
+      <div className={FIELD_ROW_CLASS}>
+        <FieldRowIcon field={field} />
+        <FieldRowLabel field={field} />
+        <div className="min-w-0 flex-1 rounded-lg bg-slate-100 p-1.5">
+          {field.type === "select" ? (
+            <select
+              className={cn(inputClass, "cursor-pointer", !draftValue && "text-muted")}
+              value={draftValue}
+              aria-label={field.label}
+              aria-invalid={showError}
+              onChange={(event) => setDraftValue(event.target.value)}
+            >
+              <option value="">{field.placeholder}</option>
+              {field.options?.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              autoFocus
+              type={field.inputType === "url" ? "text" : (field.inputType ?? "text")}
+              autoComplete={field.inputType === "email" ? "email" : field.inputType === "tel" ? "tel" : "off"}
+              inputMode={field.inputType === "email" ? "email" : field.inputType === "tel" ? "tel" : undefined}
+              className={inputClass}
+              value={draftValue}
+              placeholder={field.placeholder}
+              aria-invalid={showError}
+              aria-label={field.label}
+              onChange={(event) => setDraftValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  saveEditing();
+                }
+                if (event.key === "Escape") {
+                  cancelEditing();
+                }
+              }}
+            />
+          )}
+          <FieldEditActions onCancel={cancelEditing} onSave={saveEditing} />
+          {errorMessage}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="py-1">
-      <div className="flex items-center gap-2.5">
-        <DrawerIcon id={field.icon} />
-        <input
-          autoFocus
-          type={field.inputType === "url" ? "text" : (field.inputType ?? "text")}
-          autoComplete={field.inputType === "email" ? "email" : field.inputType === "tel" ? "tel" : "off"}
-          inputMode={field.inputType === "email" ? "email" : field.inputType === "tel" ? "tel" : undefined}
-          className={inputClass}
-          value={field.value}
-          placeholder={field.placeholder}
-          aria-invalid={showError}
-          aria-label={field.label}
-          onChange={(event) => field.onChange(event.target.value)}
-          onBlur={(event) => {
-            const next = event.currentTarget.value;
-            const nextError = field.validate?.(next) ?? null;
-            setAttempted(true);
-            if (nextError) {
-              return;
-            }
-            setEditing(false);
-            field.onCommit?.(next);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              (event.target as HTMLInputElement).blur();
-            }
-            if (event.key === "Escape") {
-              setEditing(false);
-            }
-          }}
-        />
+    <div className={FIELD_ROW_CLASS}>
+      <FieldRowIcon field={field} />
+      <FieldRowLabel field={field} />
+      <div className="min-w-0 flex-1">
+        <div
+          className={cn(
+            "group flex min-h-8 items-center justify-between rounded-md px-1.5 py-1",
+            canEdit && "cursor-pointer hover:bg-slate-100",
+          )}
+          onClick={canEdit ? startEditing : undefined}
+          onKeyDown={
+            canEdit
+              ? (event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    startEditing();
+                  }
+                }
+              : undefined
+          }
+          role={canEdit ? "button" : undefined}
+          tabIndex={canEdit ? 0 : undefined}
+        >
+          <span className={cn("min-w-0 truncate text-sm", displayValue ? "text-foreground" : "text-muted")}>
+            {displayValue || "—"}
+            {field.hint && field.value ? <span className="ml-1 text-muted">({field.hint})</span> : null}
+          </span>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                startEditing();
+              }}
+              className="ml-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
+              aria-label={`Edit ${field.label}`}
+            >
+              <EditPencilIcon />
+            </button>
+          ) : null}
+        </div>
       </div>
-      {errorMessage}
     </div>
   );
 }
@@ -502,55 +635,91 @@ export function CrmRecordDrawer({
         role="dialog"
         aria-labelledby={titleId}
         className={cn(
-          "relative flex h-full w-full max-w-[68rem] bg-surface shadow-[-12px_0_32px_rgba(15,23,42,0.12)] transition-transform duration-200 ease-out",
+          "relative flex h-full w-full max-w-[76rem] bg-surface shadow-[-12px_0_32px_rgba(15,23,42,0.12)] transition-transform duration-200 ease-out",
           entered ? "translate-x-0" : "translate-x-full",
         )}
       >
-        <div className="flex w-[19rem] shrink-0 flex-col border-r border-border">
-          <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+        <div className="flex w-[26rem] shrink-0 flex-col border-r border-border">
+          <div className="flex items-center gap-2 border-b border-border px-3.5 py-3">
             {isPerson ? (
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
                 {initialsFromTitle(title || titlePlaceholder)}
               </span>
             ) : null}
             {editingTitle ? (
-              <input
-                id={titleId}
-                autoFocus
-                className="h-9 min-w-0 flex-1 rounded border border-border px-2 text-lg font-semibold outline-none ring-primary/15 focus:ring-2"
-                value={draftTitle}
-                placeholder={titlePlaceholder}
-                onChange={(event) => {
-                  const next = event.target.value;
-                  setDraftTitle(next);
-                  onTitleChange(next);
-                }}
-                onBlur={() => {
-                  setEditingTitle(false);
-                  onTitleCommit?.(draftTitle);
-                }}
+              <div className="min-w-0 flex-1 rounded-lg bg-slate-100 p-2">
+                <input
+                  id={titleId}
+                  autoFocus
+                  className="h-9 w-full rounded-md border border-border bg-white px-2 text-lg font-semibold outline-none ring-primary/15 focus:ring-2"
+                  value={draftTitle}
+                  placeholder={titlePlaceholder}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setDraftTitle(next);
+                    onTitleChange(next);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      onTitleCommit?.(draftTitle);
+                      setEditingTitle(false);
+                    }
+                    if (event.key === "Escape") {
+                      setDraftTitle(title);
+                      onTitleChange(title);
+                      setEditingTitle(false);
+                    }
+                  }}
+                />
+                <FieldEditActions
+                  onCancel={() => {
+                    setDraftTitle(title);
+                    onTitleChange(title);
+                    setEditingTitle(false);
+                  }}
+                  onSave={() => {
+                    onTitleCommit?.(draftTitle);
+                    setEditingTitle(false);
+                  }}
+                />
+              </div>
+            ) : (
+              <div
+                className="group min-w-0 flex-1 cursor-pointer rounded-md px-2 py-1 hover:bg-slate-100"
+                onClick={() => setEditingTitle(true)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    (event.target as HTMLInputElement).blur();
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setEditingTitle(true);
                   }
                 }}
-              />
-            ) : (
-              <button
-                type="button"
-                id={titleId}
-                onClick={() => setEditingTitle(true)}
-                className={cn(
-                  "min-w-0 flex-1 text-left text-lg font-semibold",
-                  title ? "text-foreground" : "text-muted",
-                )}
+                role="button"
+                tabIndex={0}
               >
-                {title || titlePlaceholder}
-              </button>
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    id={titleId}
+                    className={cn("truncate text-lg font-semibold", title ? "text-foreground" : "text-muted")}
+                  >
+                    {title || titlePlaceholder}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setEditingTitle(true);
+                    }}
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-white opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
+                    aria-label="Edit title"
+                  >
+                    <EditPencilIcon />
+                  </button>
+                </div>
+              </div>
             )}
             <CloseButton onClick={onClose} />
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-2">
+          <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-2">
             {sections.map((section) => {
               const body = (
                 <div>
