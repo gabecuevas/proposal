@@ -1,10 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { CrmDataGrid, type CrmGridColumn } from "@/components/crm/data-grid";
 import { CrmRecordDrawer, type DrawerSection } from "@/components/crm/record-drawer";
+import { contactSourceOptions } from "@/lib/crm/contact-sources";
+import {
+  findCompanyInList,
+  findContactInList,
+  findLeadInList,
+  openDuplicateMatch,
+} from "@/lib/crm/duplicate-navigation";
+import type { DuplicateMatch } from "@/lib/crm/duplicate-search";
 import { LEAD_STATUSES, type LeadStatus } from "@/lib/crm/lead-status";
-import { formatGridDateTime, formatMinorCurrency } from "@/lib/ui/datetime";
+import { formatGridDate, formatGridDateTime, formatMinorCurrency } from "@/lib/ui/datetime";
 
 type Lead = {
   id: string;
@@ -20,6 +29,7 @@ type Lead = {
   notes: string | null;
   person_name: string | null;
   company_name: string | null;
+  added_by_name: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -160,6 +170,7 @@ const LEAD_COLUMNS: CrmGridColumn<Lead>[] = [
 ];
 
 export default function LeadsPage() {
+  const router = useRouter();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [people, setPeople] = useState<Option[]>([]);
   const [companies, setCompanies] = useState<Option[]>([]);
@@ -170,6 +181,7 @@ export default function LeadsPage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [creating, setCreating] = useState(false);
+  const [currentUserName, setCurrentUserName] = useState("");
 
   const load = useCallback(async () => {
     setError("");
@@ -202,7 +214,62 @@ export default function LeadsPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSession() {
+      const response = await fetch("/api/auth/session");
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as { user?: { email?: string } | null };
+      const email = payload.user?.email ?? "";
+      if (!email || cancelled) {
+        return;
+      }
+      const local = email.split("@")[0] ?? email;
+      const name = local
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+      setCurrentUserName(name || email);
+    }
+    void loadSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const selected = leads.find((lead) => lead.id === selectedId);
+  const isCreating = !selectedId;
+
+  const handleDuplicateSelect = useCallback(
+    (match: DuplicateMatch) => {
+      openDuplicateMatch(match, {
+        openContact: async (id) => {
+          const contact = await findContactInList(id);
+          if (contact) {
+            setStatus(`Similar person exists: ${contact.full_name}. Opening People…`);
+          }
+          router.push("/app/contacts/people");
+        },
+        openCompany: async (id) => {
+          const company = await findCompanyInList(id);
+          if (company) {
+            setStatus(`Similar company exists: ${company.name}. Opening Companies…`);
+          }
+          router.push("/app/contacts/companies");
+        },
+        openLead: async (id) => {
+          const lead = leads.find((item) => item.id === id) ?? (await findLeadInList(id));
+          if (lead) {
+            openLead(lead);
+          }
+        },
+      });
+    },
+    [leads, router],
+  );
 
   function openLead(lead: Lead) {
     setSelectedId(lead.id);
@@ -283,13 +350,14 @@ export default function LeadsPage() {
   const sections: DrawerSection[] = useMemo(
     () => [
       {
-        id: "details",
-        label: "Details",
+        id: "lead-details",
+        label: "Lead Details",
         fields: [
           {
             id: "status",
             icon: "status",
             label: "Status",
+            showLabel: true,
             type: "select",
             value: editor.status,
             placeholder: "Status",
@@ -301,19 +369,11 @@ export default function LeadsPage() {
             id: "value",
             icon: "value",
             label: "Value",
+            showLabel: true,
             value: editor.value,
             placeholder: "Value",
             onChange: (value) => setEditor((current) => ({ ...current, value })),
             onCommit: (value) => void patchLead({ value_minor: dollarsToMinor(value) }),
-          },
-          {
-            id: "source",
-            icon: "source",
-            label: "Source",
-            value: editor.source,
-            placeholder: "Source origin",
-            onChange: (value) => setEditor((current) => ({ ...current, source: value })),
-            onCommit: (value) => void patchLead({ source: value }),
           },
         ],
       },
@@ -325,6 +385,7 @@ export default function LeadsPage() {
             id: "person_id",
             icon: "person",
             label: "Person",
+            showLabel: true,
             type: "select",
             value: editor.person_id,
             placeholder: "Person",
@@ -337,7 +398,10 @@ export default function LeadsPage() {
             icon: "mail",
             label: "Email",
             value: editor.email,
-            placeholder: "Email",
+            placeholder: "Add email",
+            hint: "Work",
+            inputType: "email",
+            duplicateCheck: isCreating ? "email" : undefined,
             onChange: (value) => setEditor((current) => ({ ...current, email: value })),
             onCommit: (value) => void patchLead({ email: value }),
           },
@@ -346,7 +410,10 @@ export default function LeadsPage() {
             icon: "phone",
             label: "Phone",
             value: editor.phone,
-            placeholder: "Phone",
+            placeholder: "Add phone",
+            hint: "Work",
+            inputType: "tel",
+            duplicateCheck: isCreating ? "phone" : undefined,
             onChange: (value) => setEditor((current) => ({ ...current, phone: value })),
             onCommit: (value) => void patchLead({ phone: value }),
           },
@@ -359,7 +426,8 @@ export default function LeadsPage() {
           {
             id: "company_id",
             icon: "company",
-            label: "Company",
+            label: "Organization",
+            showLabel: true,
             type: "select",
             value: editor.company_id,
             placeholder: "Organization",
@@ -369,8 +437,46 @@ export default function LeadsPage() {
           },
         ],
       },
+      {
+        id: "details",
+        label: "Details",
+        fields: [
+          {
+            id: "date_added",
+            icon: "calendar",
+            label: "Date added",
+            showLabel: true,
+            value: selected ? formatGridDate(selected.created_at) : "",
+            placeholder: "Adds when created",
+            readOnly: true,
+            onChange: () => undefined,
+          },
+          {
+            id: "added_by",
+            icon: "person",
+            label: "Added by",
+            showLabel: true,
+            value: selected?.added_by_name || (!selectedId ? currentUserName : ""),
+            placeholder: "Adds when created",
+            readOnly: true,
+            onChange: () => undefined,
+          },
+          {
+            id: "source",
+            icon: "source",
+            label: "Source",
+            showLabel: true,
+            type: "select",
+            value: editor.source,
+            placeholder: "Select source",
+            options: contactSourceOptions(editor.source),
+            onChange: (value) => setEditor((current) => ({ ...current, source: value })),
+            onCommit: (value) => void patchLead({ source: value || null }),
+          },
+        ],
+      },
     ],
-    [companies, editor, people, selectedId],
+    [companies, currentUserName, editor, isCreating, people, selected, selectedId],
   );
 
   return (
@@ -396,12 +502,19 @@ export default function LeadsPage() {
       />
       <CrmRecordDrawer
         open={drawerOpen}
+        variant="person"
         recordKey={selectedId || "new-lead"}
         title={editor.title}
         titlePlaceholder="Lead title"
         onTitleChange={(value) => setEditor((current) => ({ ...current, title: value }))}
         onTitleCommit={(value) => void patchLead({ title: value })}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => {
+          setDrawerOpen(false);
+          setError("");
+        }}
+        duplicateCheckEnabled={isCreating}
+        duplicateExcludeLeadId={selectedId || undefined}
+        onDuplicateSelect={handleDuplicateSelect}
         sections={sections}
         notes={editor.notes}
         onNotesSave={(value) => {
@@ -415,9 +528,9 @@ export default function LeadsPage() {
           selected
             ? [
                 ...(selected.notes
-                  ? [{ id: "note", title: "Note", at: selected.updated_at, detail: selected.notes }]
+                  ? [{ id: "note", title: "Note", at: selected.updated_at, detail: selected.notes, kind: "note" as const }]
                   : []),
-                { id: "created", title: "Lead created", at: selected.created_at },
+                { id: "created", title: "Lead created", at: selected.created_at, kind: "created" as const },
               ]
             : []
         }

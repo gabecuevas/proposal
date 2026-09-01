@@ -44,7 +44,7 @@ export function SheetTable({
 }) {
   return (
     <>
-      <table className="w-full border-collapse text-left text-sm" style={minWidth ? { minWidth } : undefined}>
+      <table className="w-full border-collapse text-left text-[13px]" style={minWidth ? { minWidth } : undefined}>
         {children}
       </table>
       {empty}
@@ -54,7 +54,7 @@ export function SheetTable({
 
 export function sheetTh(className?: string): string {
   return cn(
-    "border-b border-r border-border bg-slate-50 px-3 py-2 text-[13px] font-semibold text-foreground last:border-r-0",
+    "border-b border-r border-border bg-slate-50 px-3 py-2 text-xs font-semibold text-foreground last:border-r-0",
     className,
   );
 }

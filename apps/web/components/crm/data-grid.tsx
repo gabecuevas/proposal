@@ -100,6 +100,11 @@ export function CrmDataGrid<T>({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const pickerRef = useRef<HTMLDivElement>(null);
   const resizeRef = useRef<{ id: string; startX: number; startWidth: number } | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const xBarRef = useRef<HTMLDivElement>(null);
+  const syncingX = useRef(false);
+  const [overflowsX, setOverflowsX] = useState(false);
+  const [xScrollWidth, setXScrollWidth] = useState(0);
 
   const columnSignature = columns.map((column) => column.id).join("|");
 
@@ -253,6 +258,54 @@ export function CrmDataGrid<T>({
   const tableMinWidth =
     CHECK_COL_WIDTH + ACTION_COL_WIDTH + visibleColumns.reduce((sum, column) => sum + widthFor(column), 0);
 
+  const measureXOverflow = useCallback(() => {
+    const el = bodyRef.current;
+    if (!el) {
+      return;
+    }
+    setOverflowsX(el.scrollWidth - el.clientWidth > 1);
+    setXScrollWidth(el.scrollWidth);
+  }, []);
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) {
+      return;
+    }
+    measureXOverflow();
+    const observer = new ResizeObserver(measureXOverflow);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [measureXOverflow, tableMinWidth, visibleColumns.length, sortedRows.length]);
+
+  function syncXFromBody() {
+    if (syncingX.current) {
+      return;
+    }
+    const body = bodyRef.current;
+    const bar = xBarRef.current;
+    if (!body || !bar) {
+      return;
+    }
+    syncingX.current = true;
+    bar.scrollLeft = body.scrollLeft;
+    syncingX.current = false;
+  }
+
+  function syncXFromBar() {
+    if (syncingX.current) {
+      return;
+    }
+    const body = bodyRef.current;
+    const bar = xBarRef.current;
+    if (!body || !bar) {
+      return;
+    }
+    syncingX.current = true;
+    body.scrollLeft = bar.scrollLeft;
+    syncingX.current = false;
+  }
+
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col bg-surface">
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3">
@@ -275,13 +328,20 @@ export function CrmDataGrid<T>({
 
       {error ? <p className="shrink-0 px-4 py-2 text-sm text-red-600">{error}</p> : null}
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+          <div
+            ref={bodyRef}
+            className="absolute inset-x-0 top-0 overflow-auto"
+            style={{ bottom: overflowsX ? -13 : 0 }}
+            onScroll={syncXFromBody}
+          >
         <table
-          className="w-full border-collapse text-left text-sm"
-          style={{ minWidth: `max(100%, ${tableMinWidth}px)` }}
+          className="w-full table-fixed border-collapse text-left text-[13px]"
+          style={{ minWidth: tableMinWidth }}
         >
             <thead>
-              <tr className="bg-slate-50 text-[13px] font-semibold text-foreground">
+              <tr className="bg-slate-50 text-xs font-semibold text-foreground">
                 <th
                   className="sticky left-0 z-20 border-b border-r border-border bg-slate-50 px-2"
                   style={{ width: CHECK_COL_WIDTH, minWidth: CHECK_COL_WIDTH }}
@@ -310,7 +370,7 @@ export function CrmDataGrid<T>({
                           type="button"
                           onClick={() => toggleSort(column)}
                           className={cn(
-                            "flex h-10 w-full items-center gap-1.5 px-3 text-left hover:bg-slate-100/80",
+                            "flex h-8 w-full items-center gap-1.5 px-3 text-left hover:bg-slate-100/80",
                             column.align === "right" && "justify-end",
                           )}
                         >
@@ -320,7 +380,7 @@ export function CrmDataGrid<T>({
                       ) : (
                         <span
                           className={cn(
-                            "flex h-10 items-center px-3",
+                            "flex h-8 items-center px-3",
                             column.align === "right" && "justify-end",
                           )}
                         >
@@ -339,7 +399,7 @@ export function CrmDataGrid<T>({
                     </th>
                   );
                 })}
-                <th className="border-b border-border bg-slate-50" aria-hidden />
+                <th className="min-w-0 border-b border-border bg-slate-50" aria-hidden />
                 <th
                   className="sticky right-0 z-20 border-b border-l border-border bg-slate-50 px-1"
                   style={{ width: ACTION_COL_WIDTH, minWidth: ACTION_COL_WIDTH }}
@@ -432,12 +492,12 @@ export function CrmDataGrid<T>({
                           "truncate border-r border-border px-3 py-1.5 text-muted",
                           column.align === "right" && "text-right tabular-nums",
                         )}
-                        style={{ width: widthFor(column), maxWidth: widthFor(column) }}
+                        style={{ width: widthFor(column), minWidth: widthFor(column), maxWidth: widthFor(column) }}
                       >
                         {column.cell(row)}
                       </td>
                     ))}
-                    <td className="border-border" aria-hidden />
+                    <td className="min-w-0 border-border" aria-hidden />
                     <td
                       className={cn(
                         "sticky right-0 z-10 border-l border-border bg-surface px-1 group-hover:bg-slate-50/80",
@@ -484,6 +544,20 @@ export function CrmDataGrid<T>({
           {sortedRows.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-muted">{emptyLabel}</p>
           ) : null}
+          </div>
+        </div>
+        {overflowsX ? (
+          <div
+            ref={xBarRef}
+            className="crm-grid-scroll h-3 shrink-0 overflow-x-scroll overflow-y-hidden border-t border-border bg-slate-100"
+            role="scrollbar"
+            aria-orientation="horizontal"
+            aria-label="Scroll columns"
+            onScroll={syncXFromBar}
+          >
+            <div style={{ width: xScrollWidth || tableMinWidth, height: 1 }} />
+          </div>
+        ) : null}
       </div>
     </div>
   );

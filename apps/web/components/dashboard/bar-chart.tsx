@@ -77,7 +77,7 @@ export function BarChartPanel({ title, icon, points }: BarChartPanelProps) {
               {points.map((point) => (
                 <div
                   key={point.start}
-                  className="min-w-0 flex-1 bg-sky-400/80"
+                  className="min-w-0 flex-1 bg-primary"
                   style={{ height: `${max > 0 ? (point.count / max) * 100 : 0}%` }}
                   title={`${formatMonthLabel(point.start)}: ${point.count}`}
                 />

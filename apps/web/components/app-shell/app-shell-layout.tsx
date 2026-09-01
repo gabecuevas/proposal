@@ -95,7 +95,7 @@ function AppShellChrome({ children, userEmail, userName, userInitials }: AppShel
   }
 
   return (
-    <div className="app-theme flex min-h-screen w-full flex-col bg-background">
+    <div className="app-theme flex h-screen w-full flex-col overflow-hidden bg-background">
       <AppTopBar
         activeSectionId={section.id}
         userInitials={resolvedInitials}

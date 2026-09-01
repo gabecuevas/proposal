@@ -1,8 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { CrmDataGrid, type CrmGridColumn } from "@/components/crm/data-grid";
 import { CrmRecordDrawer, type DrawerSection } from "@/components/crm/record-drawer";
+import {
+  findCompanyInList,
+  findContactInList,
+  findLeadInList,
+  openDuplicateMatch,
+} from "@/lib/crm/duplicate-navigation";
+import type { DuplicateMatch } from "@/lib/crm/duplicate-search";
 import { formatGridDateTime } from "@/lib/ui/datetime";
 
 type Company = {
@@ -130,6 +138,7 @@ const COMPANY_COLUMNS: CrmGridColumn<Company>[] = [
 ];
 
 export default function CompaniesPage() {
+  const router = useRouter();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState("");
@@ -159,6 +168,35 @@ export default function CompaniesPage() {
   }, [load]);
 
   const selected = companies.find((company) => company.id === selectedId);
+  const isCreating = !selectedId;
+
+  const handleDuplicateSelect = useCallback(
+    (match: DuplicateMatch) => {
+      openDuplicateMatch(match, {
+        openContact: async (id) => {
+          const contact = await findContactInList(id);
+          if (contact) {
+            setStatus(`Similar person exists: ${contact.full_name}. Opening People…`);
+          }
+          router.push("/app/contacts/people");
+        },
+        openCompany: async (id) => {
+          const company = companies.find((item) => item.id === id) ?? (await findCompanyInList(id));
+          if (company) {
+            openCompany(company);
+          }
+        },
+        openLead: async (id) => {
+          const lead = await findLeadInList(id);
+          if (lead) {
+            setStatus(`Similar lead exists: ${lead.title}. Opening Leads…`);
+          }
+          router.push("/app/contacts/leads");
+        },
+      });
+    },
+    [companies, router],
+  );
 
   function openCompany(company: Company) {
     setSelectedId(company.id);
@@ -253,6 +291,8 @@ export default function CompaniesPage() {
             label: "Email",
             value: editor.email,
             placeholder: "Email",
+            inputType: "email",
+            duplicateCheck: isCreating ? "email" : undefined,
             onChange: (value) => setEditor((current) => ({ ...current, email: value })),
             onCommit: (value) => void patchCompany({ email: value }),
           },
@@ -262,6 +302,8 @@ export default function CompaniesPage() {
             label: "Phone",
             value: editor.phone,
             placeholder: "Phone",
+            inputType: "tel",
+            duplicateCheck: isCreating ? "phone" : undefined,
             onChange: (value) => setEditor((current) => ({ ...current, phone: value })),
             onCommit: (value) => void patchCompany({ phone: value }),
           },
@@ -301,7 +343,7 @@ export default function CompaniesPage() {
         ],
       },
     ],
-    [editor, selected, selectedId],
+    [editor, isCreating, selected, selectedId],
   );
 
   return (
@@ -334,6 +376,10 @@ export default function CompaniesPage() {
         onTitleChange={(value) => setEditor((current) => ({ ...current, name: value }))}
         onTitleCommit={(value) => void patchCompany({ name: value })}
         onClose={() => setDrawerOpen(false)}
+        duplicateCheckEnabled={isCreating}
+        duplicateExcludeCompanyId={selectedId || undefined}
+        duplicateTitleCheck={isCreating ? "name" : undefined}
+        onDuplicateSelect={handleDuplicateSelect}
         sections={sections}
         notes={editor.notes}
         onNotesSave={(value) => {

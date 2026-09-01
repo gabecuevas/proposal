@@ -3,6 +3,8 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@repo/ui/utils";
+import type { DuplicateField, DuplicateMatch } from "@/lib/crm/duplicate-search";
+import { useDuplicateSuggestions } from "@/lib/crm/use-duplicate-suggestions";
 import { formatGridDateTime } from "@/lib/ui/datetime";
 
 export type DrawerFieldType = "text" | "select";
@@ -20,6 +22,7 @@ export type DrawerField = {
   options?: Array<{ value: string; label: string }>;
   readOnly?: boolean;
   validate?: (value: string) => string | null;
+  duplicateCheck?: DuplicateField;
   onChange: (value: string) => void;
   onCommit?: (value: string) => void;
 };
@@ -61,6 +64,12 @@ type CrmRecordDrawerProps = {
   createLabel?: string;
   onCreate?: () => void;
   creating?: boolean;
+  duplicateCheckEnabled?: boolean;
+  duplicateExcludeContactId?: string;
+  duplicateExcludeCompanyId?: string;
+  duplicateExcludeLeadId?: string;
+  duplicateTitleCheck?: DuplicateField;
+  onDuplicateSelect?: (match: DuplicateMatch) => void;
 };
 
 export type DrawerIconId =
@@ -181,11 +190,87 @@ function DrawerIcon({ id }: { id: DrawerIconId }) {
   );
 }
 
-function FieldRow({ field }: { field: DrawerField }) {
+function entityLabel(entity: DuplicateMatch["entity"]): string {
+  if (entity === "contact") {
+    return "Person";
+  }
+  if (entity === "company") {
+    return "Company";
+  }
+  return "Lead";
+}
+
+function DuplicateSuggestions({
+  matches,
+  loading,
+  onSelect,
+}: {
+  matches: DuplicateMatch[];
+  loading: boolean;
+  onSelect?: (match: DuplicateMatch) => void;
+}) {
+  if (!loading && matches.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="absolute left-0 right-0 top-full z-30 mt-0.5 overflow-hidden rounded-md border border-border bg-surface shadow-md">
+      {loading ? (
+        <p className="px-3 py-2 text-xs text-muted">Checking for matches…</p>
+      ) : (
+        <>
+          <p className="border-b border-border px-3 py-1.5 text-[11px] font-medium text-muted">Possible matches</p>
+          <ul>
+            {matches.map((match) => (
+              <li key={`${match.entity}-${match.id}`}>
+                <button
+                  type="button"
+                  className="flex w-full flex-col px-3 py-2 text-left hover:bg-slate-50"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => onSelect?.(match)}
+                >
+                  <span className="text-sm font-medium text-foreground">{match.name}</span>
+                  <span className="text-xs text-muted">
+                    {[match.company, entityLabel(match.entity)].filter(Boolean).join(" · ")}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+type FieldRowProps = {
+  field: DrawerField;
+  duplicateCheckEnabled?: boolean;
+  duplicateExcludeContactId?: string;
+  duplicateExcludeCompanyId?: string;
+  duplicateExcludeLeadId?: string;
+  onDuplicateSelect?: (match: DuplicateMatch) => void;
+};
+
+function FieldRow({
+  field,
+  duplicateCheckEnabled,
+  duplicateExcludeContactId,
+  duplicateExcludeCompanyId,
+  duplicateExcludeLeadId,
+  onDuplicateSelect,
+}: FieldRowProps) {
   const [editing, setEditing] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const error = field.validate?.(field.value) ?? null;
   const showError = Boolean(error && (attempted || field.value.trim()));
+  const { matches, loading } = useDuplicateSuggestions(field.duplicateCheck ?? "email", field.value, {
+    enabled: Boolean(duplicateCheckEnabled && field.duplicateCheck && editing),
+    excludeContactId: duplicateExcludeContactId,
+    excludeCompanyId: duplicateExcludeCompanyId,
+    excludeLeadId: duplicateExcludeLeadId,
+  });
+  const showDuplicates = Boolean(field.duplicateCheck && duplicateCheckEnabled && editing && (loading || matches.length > 0));
   const inputClass = cn(
     "h-8 w-full rounded border bg-surface px-2 text-sm outline-none focus:ring-2",
     showError
@@ -251,7 +336,7 @@ function FieldRow({ field }: { field: DrawerField }) {
   }
 
   return (
-    <div className="py-1">
+    <div className="relative py-1">
       <div className="flex items-center gap-2.5">
         <DrawerIcon id={field.icon} />
         <input
@@ -285,6 +370,11 @@ function FieldRow({ field }: { field: DrawerField }) {
           }}
         />
       </div>
+      {showDuplicates ? (
+        <div className="relative pl-[1.625rem]">
+          <DuplicateSuggestions matches={matches} loading={loading} onSelect={onDuplicateSelect} />
+        </div>
+      ) : null}
       {errorMessage}
     </div>
   );
@@ -391,6 +481,12 @@ export function CrmRecordDrawer({
   createLabel,
   onCreate,
   creating,
+  duplicateCheckEnabled,
+  duplicateExcludeContactId,
+  duplicateExcludeCompanyId,
+  duplicateExcludeLeadId,
+  duplicateTitleCheck,
+  onDuplicateSelect,
 }: CrmRecordDrawerProps) {
   const titleId = useId();
   const [tab, setTab] = useState<ActivityTab>("notes");
@@ -456,12 +552,26 @@ export function CrmRecordDrawer({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, onClose]);
 
+  const { matches: titleMatches, loading: titleLoading } = useDuplicateSuggestions(
+    duplicateTitleCheck ?? "name",
+    draftTitle,
+    {
+      enabled: Boolean(duplicateCheckEnabled && duplicateTitleCheck && editingTitle && open),
+      excludeContactId: duplicateExcludeContactId,
+      excludeCompanyId: duplicateExcludeCompanyId,
+      excludeLeadId: duplicateExcludeLeadId,
+    },
+  );
+
   if (!mounted || !visible) {
     return null;
   }
 
   const notesChanged = draftNotes !== savedNotesRef.current;
   const isPerson = variant === "person";
+  const showTitleDuplicates = Boolean(
+    duplicateCheckEnabled && duplicateTitleCheck && editingTitle && (titleLoading || titleMatches.length > 0),
+  );
   const visibleHistory = history.filter((item) => {
     if (historyFilter === "notes") {
       return item.kind === "note" || Boolean(item.detail);
@@ -514,27 +624,36 @@ export function CrmRecordDrawer({
               </span>
             ) : null}
             {editingTitle ? (
-              <input
-                id={titleId}
-                autoFocus
-                className="h-9 min-w-0 flex-1 rounded border border-border px-2 text-lg font-semibold outline-none ring-primary/15 focus:ring-2"
-                value={draftTitle}
-                placeholder={titlePlaceholder}
-                onChange={(event) => {
-                  const next = event.target.value;
-                  setDraftTitle(next);
-                  onTitleChange(next);
-                }}
-                onBlur={() => {
-                  setEditingTitle(false);
-                  onTitleCommit?.(draftTitle);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    (event.target as HTMLInputElement).blur();
-                  }
-                }}
-              />
+              <div className="relative min-w-0 flex-1">
+                <input
+                  id={titleId}
+                  autoFocus
+                  className="h-9 w-full rounded border border-border px-2 text-lg font-semibold outline-none ring-primary/15 focus:ring-2"
+                  value={draftTitle}
+                  placeholder={titlePlaceholder}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setDraftTitle(next);
+                    onTitleChange(next);
+                  }}
+                  onBlur={() => {
+                    setEditingTitle(false);
+                    onTitleCommit?.(draftTitle);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      (event.target as HTMLInputElement).blur();
+                    }
+                  }}
+                />
+                {showTitleDuplicates ? (
+                  <DuplicateSuggestions
+                    matches={titleMatches}
+                    loading={titleLoading}
+                    onSelect={onDuplicateSelect}
+                  />
+                ) : null}
+              </div>
             ) : (
               <button
                 type="button"
@@ -555,7 +674,15 @@ export function CrmRecordDrawer({
               const body = (
                 <div>
                   {section.fields.map((field) => (
-                    <FieldRow key={field.id} field={field} />
+                    <FieldRow
+                      key={field.id}
+                      field={field}
+                      duplicateCheckEnabled={duplicateCheckEnabled}
+                      duplicateExcludeContactId={duplicateExcludeContactId}
+                      duplicateExcludeCompanyId={duplicateExcludeCompanyId}
+                      duplicateExcludeLeadId={duplicateExcludeLeadId}
+                      onDuplicateSelect={onDuplicateSelect}
+                    />
                   ))}
                 </div>
               );

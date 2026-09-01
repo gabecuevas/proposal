@@ -19,6 +19,7 @@ export type LeadRecord = {
   notes: string | null;
   person_name: string | null;
   company_name: string | null;
+  added_by_name: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -35,6 +36,22 @@ type LeadInput = {
   phone?: string;
   notes?: string;
 };
+
+function ownerDisplayName(owner: { name: string; email: string } | null | undefined): string | null {
+  if (!owner) {
+    return null;
+  }
+  if (owner.name.trim()) {
+    return owner.name.trim();
+  }
+  const local = owner.email.split("@")[0] ?? owner.email;
+  const formatted = local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+  return formatted || owner.email;
+}
 
 function parseLead(row: {
   id: string;
@@ -54,6 +71,7 @@ function parseLead(row: {
   updated_at: Date;
   person?: { full_name: string } | null;
   company?: { name: string } | null;
+  owner?: { name: string; email: string } | null;
 }): LeadRecord {
   return {
     id: row.id,
@@ -71,6 +89,7 @@ function parseLead(row: {
     notes: row.notes,
     person_name: row.person?.full_name ?? null,
     company_name: row.company?.name ?? null,
+    added_by_name: ownerDisplayName(row.owner),
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -84,6 +103,7 @@ function optionalText(value: string | undefined | null): string | null {
 const leadInclude = {
   person: { select: { full_name: true } },
   company: { select: { name: true } },
+  owner: { select: { name: true, email: true } },
 } as const;
 
 export async function listLeads(

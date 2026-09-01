@@ -1,9 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { CrmDataGrid, type CrmGridColumn } from "@/components/crm/data-grid";
 import { CrmRecordDrawer, type DrawerSection } from "@/components/crm/record-drawer";
 import { contactSourceOptions } from "@/lib/crm/contact-sources";
+import {
+  findCompanyInList,
+  findContactInList,
+  findLeadInList,
+  openDuplicateMatch,
+} from "@/lib/crm/duplicate-navigation";
+import type { DuplicateMatch } from "@/lib/crm/duplicate-search";
 import {
   firstContactDetailsError,
   validateEmail,
@@ -199,6 +207,7 @@ const PEOPLE_COLUMNS: CrmGridColumn<Person>[] = [
 ];
 
 export default function PeoplePage() {
+  const router = useRouter();
   const [people, setPeople] = useState<Person[]>([]);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [query, setQuery] = useState("");
@@ -357,6 +366,35 @@ export default function PeoplePage() {
   }
 
   const linkedCompany = companies.find((company) => company.id === editor.company_id);
+  const isCreating = !selectedId;
+
+  const handleDuplicateSelect = useCallback(
+    (match: DuplicateMatch) => {
+      openDuplicateMatch(match, {
+        openContact: async (id) => {
+          const person = people.find((item) => item.id === id) ?? (await findContactInList(id));
+          if (person) {
+            openPerson(person);
+          }
+        },
+        openCompany: async (id) => {
+          const company = await findCompanyInList(id);
+          if (company) {
+            setStatus(`Similar company exists: ${company.name}. Opening Companies…`);
+          }
+          router.push("/app/contacts/companies");
+        },
+        openLead: async (id) => {
+          const lead = await findLeadInList(id);
+          if (lead) {
+            setStatus(`Similar lead exists: ${lead.title}. Opening Leads…`);
+          }
+          router.push("/app/contacts/leads");
+        },
+      });
+    },
+    [people, router],
+  );
 
   const sections: DrawerSection[] = useMemo(
     () => [
@@ -394,6 +432,7 @@ export default function PeoplePage() {
             placeholder: "Add email",
             hint: "Work",
             inputType: "email",
+            duplicateCheck: isCreating ? "email" : undefined,
             onChange: (value) => setEditor((current) => ({ ...current, email: value })),
             validate: (value) => validateEmail(value),
             onCommit: (value) => void patchPerson({ email: value }),
@@ -406,6 +445,7 @@ export default function PeoplePage() {
             placeholder: "Add phone",
             hint: "Work",
             inputType: "tel",
+            duplicateCheck: isCreating ? "phone" : undefined,
             onChange: (value) => setEditor((current) => ({ ...current, phone: value })),
             validate: (value) => validatePhone(value),
             onCommit: (value) => void patchPerson({ phone: value }),
@@ -506,7 +546,7 @@ export default function PeoplePage() {
         ],
       },
     ],
-    [currentUserName, editor, linkedCompany, selected, selectedId],
+    [currentUserName, editor, isCreating, linkedCompany, selected, selectedId],
   );
 
   return (
@@ -558,6 +598,10 @@ export default function PeoplePage() {
           setDrawerOpen(false);
           setError("");
         }}
+        duplicateCheckEnabled={isCreating}
+        duplicateExcludeContactId={selectedId || undefined}
+        duplicateTitleCheck={isCreating ? "name" : undefined}
+        onDuplicateSelect={handleDuplicateSelect}
         sections={sections}
         notes={editor.notes}
         onNotesSave={(value) => {

@@ -50,6 +50,33 @@ body {
   font-family: var(--font-app-serif, ui-serif), Georgia, "Times New Roman", serif;
 }
 
+/* Keep a classic bottom/side slider on CRM grids so extra columns stay reachable. */
+.app-theme .crm-grid-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #e2e8f0;
+}
+
+.app-theme .crm-grid-scroll::-webkit-scrollbar {
+  height: 12px;
+  width: 12px;
+}
+
+.app-theme .crm-grid-scroll::-webkit-scrollbar-thumb {
+  background-color: #94a3b8;
+  border-radius: 999px;
+  border: 2px solid #e2e8f0;
+}
+
+.app-theme .crm-grid-scroll::-webkit-scrollbar-track {
+  background-color: #e2e8f0;
+}
+
+.app-theme .crm-grid-scroll::-webkit-scrollbar-corner {
+  background-color: #e2e8f0;
+}
+
 /* ---------------------------------------------------------------------------
    Creator paper. US Letter at the CSS 96dpi reference size, with 0.5in
    print-safe margins (see PRINT_SAFE_MARGIN_PX). Overlay fields anchor to
