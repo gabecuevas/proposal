@@ -330,7 +330,8 @@ export default function CompaniesPage() {
       />
       <CrmRecordDrawer
         open={drawerOpen}
-        recordKey={selectedId || "new-company"}
+        variant="person"
+        recordKey={selectedId ? `${selectedId}-${selected?.updated_at ?? ""}` : "new-company"}
         title={editor.name}
         titlePlaceholder="Company name"
         onTitleChange={(value) => setEditor((current) => ({ ...current, name: value }))}
@@ -345,15 +346,17 @@ export default function CompaniesPage() {
           }
         }}
         onNotesChange={(value) => setEditor((current) => ({ ...current, notes: value }))}
-        history={
-          selected
-            ? [
-                ...(selected.notes
-                  ? [{ id: "note", title: "Note", at: selected.updated_at, detail: selected.notes }]
-                  : []),
-                { id: "created", title: "Company created", at: selected.created_at },
-              ]
-            : []
+        crmRecord={
+          selectedId
+            ? {
+                type: "company",
+                id: selectedId,
+                links: {
+                  companyId: selectedId,
+                  companyName: editor.name,
+                },
+              }
+            : undefined
         }
         error={drawerOpen ? error : undefined}
         status={status}

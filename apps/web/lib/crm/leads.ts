@@ -1,5 +1,7 @@
 import { prisma } from "@repo/db";
 import { LEAD_STATUSES, type LeadStatus } from "./lead-status";
+import { LEAD_FIELD_LABELS } from "./field-labels";
+import { recordFieldChanges, recordRecordCreated } from "./timeline";
 
 export { LEAD_STATUSES, type LeadStatus };
 
@@ -81,6 +83,32 @@ function optionalText(value: string | undefined | null): string | null {
   return trimmed ? trimmed : null;
 }
 
+function leadSnapshot(row: {
+  title: string;
+  status: string;
+  source: string | null;
+  value_minor: number | null;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+  person_id: string | null;
+  company_id: string | null;
+  person?: { full_name: string } | null;
+  company?: { name: string } | null;
+}): Record<string, unknown> {
+  return {
+    title: row.title,
+    status: row.status,
+    source: row.source,
+    value_minor: row.value_minor != null ? String(row.value_minor / 100) : "",
+    email: row.email,
+    phone: row.phone,
+    notes: row.notes,
+    person_id: row.person?.full_name ?? row.person_id ?? "",
+    company_id: row.company?.name ?? row.company_id ?? "",
+  };
+}
+
 const leadInclude = {
   person: { select: { full_name: true } },
   company: { select: { name: true } },
@@ -134,6 +162,12 @@ export async function createLead(
     },
     include: leadInclude,
   });
+  await recordRecordCreated({
+    workspaceId,
+    actorUserId: ownerUserId,
+    record: { leadId: row.id },
+    summary: "Lead created",
+  });
   return parseLead(row);
 }
 
@@ -141,9 +175,11 @@ export async function updateLead(
   leadId: string,
   workspaceId: string,
   input: Partial<LeadInput>,
+  context?: { actorUserId?: string },
 ): Promise<LeadRecord | null> {
   const existing = await prisma.lead.findFirst({
     where: { id: leadId, workspace_id: workspaceId },
+    include: leadInclude,
   });
   if (!existing) {
     return null;
@@ -164,6 +200,18 @@ export async function updateLead(
     },
     include: leadInclude,
   });
+
+  if (context?.actorUserId) {
+    await recordFieldChanges({
+      workspaceId,
+      actorUserId: context.actorUserId,
+      record: { leadId },
+      before: leadSnapshot(existing),
+      after: leadSnapshot(row),
+      labels: LEAD_FIELD_LABELS,
+    });
+  }
+
   return parseLead(row);
 }
 

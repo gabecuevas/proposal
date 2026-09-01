@@ -398,7 +398,8 @@ export default function LeadsPage() {
       />
       <CrmRecordDrawer
         open={drawerOpen}
-        recordKey={selectedId || "new-lead"}
+        variant="person"
+        recordKey={selectedId ? `${selectedId}-${selected?.updated_at ?? ""}` : "new-lead"}
         title={editor.title}
         titlePlaceholder="Lead title"
         onTitleChange={(value) => setEditor((current) => ({ ...current, title: value }))}
@@ -413,15 +414,21 @@ export default function LeadsPage() {
           }
         }}
         onNotesChange={(value) => setEditor((current) => ({ ...current, notes: value }))}
-        history={
-          selected
-            ? [
-                ...(selected.notes
-                  ? [{ id: "note", title: "Note", at: selected.updated_at, detail: selected.notes }]
-                  : []),
-                { id: "created", title: "Lead created", at: selected.created_at },
-              ]
-            : []
+        crmRecord={
+          selectedId
+            ? {
+                type: "lead",
+                id: selectedId,
+                links: {
+                  leadId: selectedId,
+                  leadTitle: editor.title,
+                  contactId: editor.person_id || undefined,
+                  contactName: selected?.person_name || undefined,
+                  companyId: editor.company_id || undefined,
+                  companyName: selected?.company_name || undefined,
+                },
+              }
+            : undefined
         }
         error={drawerOpen ? error : undefined}
         status={status}

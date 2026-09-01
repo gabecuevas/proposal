@@ -9,4 +9,12 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
+export { Prisma };
+export type {
+  CrmActivityAvailability,
+  CrmActivityPriority,
+  CrmActivityType,
+  CrmTimelineEventType,
+} from "@prisma/client";
+
 export type InputJsonValue = PrismaInputJsonValue;

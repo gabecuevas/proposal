@@ -1,5 +1,7 @@
 import { prisma } from "@repo/db";
 import type { InputJsonValue } from "@repo/db";
+import { CONTACT_FIELD_LABELS } from "@/lib/crm/field-labels";
+import { recordFieldChanges, recordRecordCreated } from "@/lib/crm/timeline";
 
 export type ContactRecord = {
   id: string;
@@ -112,6 +114,45 @@ function parseContact(row: ContactRow): ContactRecord {
   };
 }
 
+function contactSnapshot(row: {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  company_id: string | null;
+  company_name: string | null;
+  title: string | null;
+  address_line_1: string | null;
+  address_line_2: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  country: string | null;
+  website: string | null;
+  notes: string | null;
+  source: string | null;
+  company?: { name: string } | null;
+}): Record<string, unknown> {
+  return {
+    first_name: row.first_name,
+    last_name: row.last_name,
+    email: row.email,
+    phone: row.phone,
+    company_id: row.company?.name ?? row.company_name ?? row.company_id ?? "",
+    company_name: row.company?.name ?? row.company_name,
+    title: row.title,
+    address_line_1: row.address_line_1,
+    address_line_2: row.address_line_2,
+    city: row.city,
+    state: row.state,
+    postal_code: row.postal_code,
+    country: row.country,
+    website: row.website,
+    notes: row.notes,
+    source: row.source,
+  };
+}
+
 function toFullName(firstName: string, lastName: string): string {
   return `${firstName} ${lastName}`.trim();
 }
@@ -196,6 +237,12 @@ export async function createContact(input: {
     },
     include: { owner: { select: { name: true, email: true } } },
   });
+  await recordRecordCreated({
+    workspaceId: input.workspaceId,
+    actorUserId: input.ownerUserId,
+    record: { contactId: row.id },
+    summary: "Person created",
+  });
   return parseContact(row as ContactRow);
 }
 
@@ -223,9 +270,11 @@ export async function updateContact(
     company_id?: string | null;
     source?: string | null;
   },
+  context?: { actorUserId?: string },
 ): Promise<ContactRecord | null> {
   const existing = await prisma.contact.findFirst({
     where: { id: contactId, workspace_id: workspaceId },
+    include: { company: { select: { name: true } } },
   });
   if (!existing) {
     return null;
@@ -261,10 +310,28 @@ export async function updateContact(
         input.color_label !== undefined ? input.color_label.trim() || null : existing.color_label,
       company_id:
         input.company_id !== undefined ? input.company_id?.trim() || null : existing.company_id,
-      source: input.source !== undefined ? input.source.trim() || null : existing.source,
+      source:
+        input.source !== undefined
+          ? (typeof input.source === "string" ? input.source.trim() || null : null)
+          : existing.source,
     },
-    include: { owner: { select: { name: true, email: true } } },
+    include: {
+      owner: { select: { name: true, email: true } },
+      company: { select: { name: true } },
+    },
   });
+
+  if (context?.actorUserId) {
+    await recordFieldChanges({
+      workspaceId,
+      actorUserId: context.actorUserId,
+      record: { contactId },
+      before: contactSnapshot(existing),
+      after: contactSnapshot(row),
+      labels: CONTACT_FIELD_LABELS,
+    });
+  }
+
   return parseContact(row as ContactRow);
 }
 

@@ -536,7 +536,7 @@ export default function PeoplePage() {
       <CrmRecordDrawer
         open={drawerOpen}
         variant="person"
-        recordKey={selectedId || "new-person"}
+        recordKey={selectedId ? `${selectedId}-${selected?.updated_at ?? ""}` : "new-person"}
         title={displayName}
         titlePlaceholder="Contact name"
         onTitleChange={(value) => {
@@ -569,15 +569,19 @@ export default function PeoplePage() {
           }
         }}
         onNotesChange={(value) => setEditor((current) => ({ ...current, notes: value }))}
-        history={
-          selected
-            ? [
-                ...(selected.notes
-                  ? [{ id: "note", title: "Note", at: selected.updated_at, detail: selected.notes, kind: "note" as const }]
-                  : []),
-                { id: "created", title: "Person created", at: selected.created_at, kind: "created" as const },
-              ]
-            : []
+        crmRecord={
+          selectedId
+            ? {
+                type: "contact",
+                id: selectedId,
+                links: {
+                  contactId: selectedId,
+                  contactName: displayName,
+                  companyId: editor.company_id || undefined,
+                  companyName: linkedCompany?.name || editor.company_name || undefined,
+                },
+              }
+            : undefined
         }
         error={drawerOpen ? error : undefined}
         status={status}

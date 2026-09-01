@@ -1,4 +1,6 @@
 import { prisma } from "@repo/db";
+import { COMPANY_FIELD_LABELS } from "./field-labels";
+import { recordFieldChanges, recordRecordCreated } from "./timeline";
 
 export type CompanyRecord = {
   id: string;
@@ -93,6 +95,32 @@ function optionalText(value: string | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
+function companySnapshot(row: {
+  name: string;
+  website: string | null;
+  phone: string | null;
+  email: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  country: string | null;
+  industry: string | null;
+  notes: string | null;
+}): Record<string, unknown> {
+  return {
+    name: row.name,
+    website: row.website,
+    phone: row.phone,
+    email: row.email,
+    city: row.city,
+    state: row.state,
+    postal_code: row.postal_code,
+    country: row.country,
+    industry: row.industry,
+    notes: row.notes,
+  };
+}
+
 export async function listCompanies(
   workspaceId: string,
   options?: { limit?: number; query?: string },
@@ -142,6 +170,12 @@ export async function createCompany(
     },
     include: { _count: { select: { people: true } } },
   });
+  await recordRecordCreated({
+    workspaceId,
+    actorUserId: ownerUserId,
+    record: { companyId: row.id },
+    summary: "Company created",
+  });
   return parseCompany(row);
 }
 
@@ -149,6 +183,7 @@ export async function updateCompany(
   companyId: string,
   workspaceId: string,
   input: Partial<CompanyInput>,
+  context?: { actorUserId?: string },
 ): Promise<CompanyRecord | null> {
   const existing = await prisma.company.findFirst({
     where: { id: companyId, workspace_id: workspaceId },
@@ -177,6 +212,18 @@ export async function updateCompany(
     },
     include: { _count: { select: { people: true } } },
   });
+
+  if (context?.actorUserId) {
+    await recordFieldChanges({
+      workspaceId,
+      actorUserId: context.actorUserId,
+      record: { companyId },
+      before: companySnapshot(existing),
+      after: companySnapshot(row),
+      labels: COMPANY_FIELD_LABELS,
+    });
+  }
+
   return parseCompany(row);
 }
 

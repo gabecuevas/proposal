@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@repo/ui/utils";
+import { ActivityPanel, type CrmActivityLinks } from "@/components/crm/activity-panel";
+import type { CrmActivityRecord } from "@/lib/crm/activities";
 import { formatGridDateTime } from "@/lib/ui/datetime";
 
 export type DrawerFieldType = "text" | "select";
@@ -37,6 +39,13 @@ export type DrawerHistoryItem = {
   at: string;
   detail?: string;
   kind?: "note" | "created" | "change";
+  actorName?: string;
+};
+
+export type CrmRecordContext = {
+  type: "contact" | "lead" | "company";
+  id: string;
+  links: CrmActivityLinks;
 };
 
 type ActivityTab = "activity" | "notes" | "call" | "email" | "files" | "documents";
@@ -55,7 +64,8 @@ type CrmRecordDrawerProps = {
   notes: string;
   onNotesSave: (value: string) => void;
   onNotesChange?: (value: string) => void;
-  history: DrawerHistoryItem[];
+  history?: DrawerHistoryItem[];
+  crmRecord?: CrmRecordContext;
   error?: string;
   status?: string;
   createLabel?: string;
@@ -255,6 +265,7 @@ function fieldDisplayValue(field: DrawerField): string {
 const FIELD_LABEL_CLASS = "w-[5.25rem] shrink-0 pt-1.5 text-xs leading-tight text-foreground";
 const FIELD_ICON_CLASS = "flex w-5 shrink-0 justify-center pt-1.5";
 const FIELD_ROW_CLASS = "flex items-start gap-1.5 py-0.5";
+const FIELD_EDIT_CONTAINER_CLASS = "min-w-0 flex-1 rounded-none bg-slate-50 p-1.5";
 
 function FieldRowLabel({ field }: { field: DrawerField }) {
   if (field.showLabel === false) {
@@ -285,7 +296,7 @@ function FieldRow({ field }: { field: DrawerField }) {
   const error = editing && attemptedSave ? (field.validate?.(draftValue) ?? null) : null;
   const showError = Boolean(error);
   const inputClass = cn(
-    "h-8 w-full rounded-md border bg-white px-2 text-sm outline-none focus:ring-2",
+    "h-8 w-full rounded-none border bg-white px-2 text-sm outline-none focus:ring-2",
     showError
       ? "border-red-400 ring-red-200 focus:ring-red-200"
       : "border-border ring-primary/15 focus:ring-primary/15",
@@ -330,8 +341,8 @@ function FieldRow({ field }: { field: DrawerField }) {
     return (
       <div className={FIELD_ROW_CLASS}>
         <FieldRowIcon field={field} />
-        <FieldRowLabel field={field} />
-        <div className="min-w-0 flex-1 rounded-lg bg-slate-100 p-1.5">
+        <div className={FIELD_EDIT_CONTAINER_CLASS}>
+          <span className="sr-only">{field.label}</span>
           {field.type === "select" ? (
             <select
               className={cn(inputClass, "cursor-pointer", !draftValue && "text-muted")}
@@ -519,6 +530,7 @@ export function CrmRecordDrawer({
   onNotesSave,
   onNotesChange,
   history,
+  crmRecord,
   error,
   status,
   createLabel,
@@ -537,6 +549,51 @@ export function CrmRecordDrawer({
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const [entered, setEntered] = useState(false);
+  const [timelineHistory, setTimelineHistory] = useState<DrawerHistoryItem[]>([]);
+  const [upcomingActivities, setUpcomingActivities] = useState<CrmActivityRecord[]>([]);
+
+  const loadCrmData = useCallback(async () => {
+    if (!crmRecord?.id) {
+      setTimelineHistory([]);
+      setUpcomingActivities([]);
+      return;
+    }
+    const timelineParams = new URLSearchParams();
+    const activityParams = new URLSearchParams();
+    if (crmRecord.type === "contact") {
+      timelineParams.set("contactId", crmRecord.id);
+      activityParams.set("contactId", crmRecord.id);
+    } else if (crmRecord.type === "lead") {
+      timelineParams.set("leadId", crmRecord.id);
+      activityParams.set("leadId", crmRecord.id);
+    } else {
+      timelineParams.set("companyId", crmRecord.id);
+      activityParams.set("companyId", crmRecord.id);
+    }
+    const [timelineRes, activitiesRes] = await Promise.all([
+      fetch(`/api/crm/timeline?${timelineParams.toString()}`),
+      fetch(`/api/crm/activities?${activityParams.toString()}`),
+    ]);
+    if (timelineRes.ok) {
+      const payload = (await timelineRes.json()) as { history?: DrawerHistoryItem[] };
+      setTimelineHistory(payload.history ?? []);
+    }
+    if (activitiesRes.ok) {
+      const payload = (await activitiesRes.json()) as { activities?: CrmActivityRecord[] };
+      const now = Date.now();
+      setUpcomingActivities(
+        (payload.activities ?? []).filter(
+          (activity) => !activity.completed_at && activity.due_at && new Date(activity.due_at).getTime() >= now,
+        ),
+      );
+    }
+  }, [crmRecord]);
+
+  useEffect(() => {
+    if (open) {
+      void loadCrmData();
+    }
+  }, [open, loadCrmData, recordKey]);
 
   useEffect(() => {
     setMounted(true);
@@ -595,7 +652,8 @@ export function CrmRecordDrawer({
 
   const notesChanged = draftNotes !== savedNotesRef.current;
   const isPerson = variant === "person";
-  const visibleHistory = history.filter((item) => {
+  const activeHistory = crmRecord?.id ? timelineHistory : (history ?? []);
+  const visibleHistory = activeHistory.filter((item) => {
     if (historyFilter === "notes") {
       return item.kind === "note" || Boolean(item.detail);
     }
@@ -647,11 +705,11 @@ export function CrmRecordDrawer({
               </span>
             ) : null}
             {editingTitle ? (
-              <div className="min-w-0 flex-1 rounded-lg bg-slate-100 p-2">
+              <div className="min-w-0 flex-1 rounded-none bg-slate-50 p-2">
                 <input
                   id={titleId}
                   autoFocus
-                  className="h-9 w-full rounded-md border border-border bg-white px-2 text-lg font-semibold outline-none ring-primary/15 focus:ring-2"
+                  className="h-9 w-full rounded-none border border-border bg-white px-2 text-lg font-semibold outline-none ring-primary/15 focus:ring-2"
                   value={draftTitle}
                   placeholder={titlePlaceholder}
                   onChange={(event) => {
@@ -818,7 +876,11 @@ export function CrmRecordDrawer({
             ) : null}
 
             {tab === "activity" ? (
-              <p className="py-8 text-center text-sm text-muted">No activity yet.</p>
+              <ActivityPanel
+                links={crmRecord?.links ?? {}}
+                recordSaved={Boolean(crmRecord?.id)}
+                onSaved={() => void loadCrmData()}
+              />
             ) : null}
             {tab === "call" ? (
               <p className="py-8 text-center text-sm text-muted">No calls yet.</p>
@@ -844,7 +906,23 @@ export function CrmRecordDrawer({
                   ▾
                 </span>
               </button>
-              {focusOpen ? <p className="mt-2 text-sm text-muted">No upcoming activity.</p> : null}
+              {focusOpen ? (
+                upcomingActivities.length === 0 ? (
+                  <p className="mt-2 text-sm text-muted">No upcoming activity.</p>
+                ) : (
+                  <ul className="mt-2 space-y-2">
+                    {upcomingActivities.map((activity) => (
+                      <li key={activity.id} className="rounded border border-border bg-slate-50 px-3 py-2 text-sm">
+                        <p className="font-medium text-foreground">{activity.subject}</p>
+                        <p className="text-xs text-muted">
+                          {activity.due_at ? formatGridDateTime(activity.due_at) : "Unscheduled"}
+                          {activity.assignee_name ? ` · ${activity.assignee_name}` : ""}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              ) : null}
             </section>
 
             <section className="mt-6">
@@ -897,7 +975,10 @@ export function CrmRecordDrawer({
                           </div>
                         ) : null}
                         <p className={cn("text-foreground", item.detail && "mt-1")}>{item.title}</p>
-                        <p className="text-xs text-muted">{formatGridDateTime(item.at)}</p>
+                        <p className="text-xs text-muted">
+                          {formatGridDateTime(item.at)}
+                          {item.actorName ? ` · ${item.actorName}` : ""}
+                        </p>
                       </li>
                     ))
                   )}

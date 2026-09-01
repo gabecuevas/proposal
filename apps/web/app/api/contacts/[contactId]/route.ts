@@ -49,7 +49,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       message: validationMessage,
     });
   }
-  const contact = await updateContact(contactId, auth.workspaceId, payload);
+  const contact = await updateContact(contactId, auth.workspaceId, payload, { actorUserId: auth.userId });
   if (!contact) {
     return NextResponse.json({ error: "Contact not found" }, { status: 404 });
   }

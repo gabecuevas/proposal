@@ -32,6 +32,8 @@ model Workspace {
   contacts      Contact[]
   companies     Company[]
   leads         Lead[]
+  crmActivities CrmActivity[]
+  crmTimelineEvents CrmTimelineEvent[]
   sentVersions  DocumentSentVersion[]
   owner         User?            @relation("workspace_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
 }
@@ -208,6 +210,9 @@ model User {
   owned_contacts         Contact[]         @relation("contact_owner")
   owned_companies        Company[]         @relation("company_owner")
   owned_leads            Lead[]            @relation("lead_owner")
+  crm_activities_created  CrmActivity[]  @relation("crm_activity_creator")
+  crm_activities_assigned CrmActivity[]   @relation("crm_activity_assignee")
+  crm_timeline_events    CrmTimelineEvent[]
 }
 
 model Contact {
@@ -243,6 +248,8 @@ model Contact {
   company   Company?  @relation(fields: [company_id], references: [id], onDelete: SetNull)
   documents Document[]
   leads     Lead[]
+  crmActivities CrmActivity[]
+  crmTimelineEvents CrmTimelineEvent[]
 
   @@index([workspace_id, updated_at])
   @@index([workspace_id, full_name])
@@ -274,6 +281,8 @@ model Company {
   owner     User?     @relation("company_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
   people    Contact[]
   leads     Lead[]
+  crmActivities CrmActivity[]
+  crmTimelineEvents CrmTimelineEvent[]
 
   @@index([workspace_id, updated_at])
   @@index([workspace_id, name])
@@ -300,9 +309,106 @@ model Lead {
   owner     User?     @relation("lead_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
   person    Contact?  @relation(fields: [person_id], references: [id], onDelete: SetNull)
   company   Company?  @relation(fields: [company_id], references: [id], onDelete: SetNull)
+  crmActivities CrmActivity[]
+  crmTimelineEvents CrmTimelineEvent[]
 
   @@index([workspace_id, updated_at])
   @@index([workspace_id, status])
+}
+
+enum CrmActivityType {
+  CALL
+  MEETING
+  TASK
+  DEADLINE
+  EMAIL
+  LUNCH
+}
+
+enum CrmActivityPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum CrmActivityAvailability {
+  FREE
+  BUSY
+}
+
+enum CrmTimelineEventType {
+  RECORD_CREATED
+  FIELD_CHANGED
+  NOTE_SAVED
+  ACTIVITY_CREATED
+  ACTIVITY_UPDATED
+  ACTIVITY_COMPLETED
+}
+
+model CrmActivity {
+  id                 String                  @id @default(cuid())
+  workspace_id       String
+  created_by_user_id String
+  assignee_user_id   String?
+  contact_id         String?
+  lead_id            String?
+  company_id         String?
+  activity_type      CrmActivityType
+  subject            String
+  description        String?
+  location           String?
+  video_call_url     String?
+  notes              String?
+  priority           CrmActivityPriority?
+  availability       CrmActivityAvailability @default(FREE)
+  due_at             DateTime?
+  end_at             DateTime?
+  completed_at       DateTime?
+  created_at         DateTime                @default(now())
+  updated_at         DateTime                @updatedAt
+
+  workspace  Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  created_by User      @relation("crm_activity_creator", fields: [created_by_user_id], references: [id], onDelete: Cascade)
+  assignee   User?     @relation("crm_activity_assignee", fields: [assignee_user_id], references: [id], onDelete: SetNull)
+  contact    Contact?  @relation(fields: [contact_id], references: [id], onDelete: Cascade)
+  lead       Lead?     @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+  company    Company?  @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  timelineEvents CrmTimelineEvent[]
+
+  @@index([workspace_id, due_at])
+  @@index([workspace_id, assignee_user_id, due_at])
+  @@index([contact_id, due_at])
+  @@index([lead_id, due_at])
+  @@index([company_id, due_at])
+}
+
+model CrmTimelineEvent {
+  id              String               @id @default(cuid())
+  workspace_id    String
+  actor_user_id   String?
+  contact_id      String?
+  lead_id         String?
+  company_id      String?
+  activity_id     String?
+  event_type      CrmTimelineEventType
+  field_key       String?
+  field_label     String?
+  old_value       String?
+  new_value       String?
+  summary         String
+  created_at      DateTime             @default(now())
+
+  workspace Workspace    @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  actor     User?        @relation(fields: [actor_user_id], references: [id], onDelete: SetNull)
+  contact   Contact?     @relation(fields: [contact_id], references: [id], onDelete: Cascade)
+  lead      Lead?        @relation(fields: [lead_id], references: [id], onDelete: Cascade)
+  company   Company?     @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  activity  CrmActivity? @relation(fields: [activity_id], references: [id], onDelete: SetNull)
+
+  @@index([workspace_id, created_at])
+  @@index([contact_id, created_at])
+  @@index([lead_id, created_at])
+  @@index([company_id, created_at])
 }
 
 model WorkspaceMember {
