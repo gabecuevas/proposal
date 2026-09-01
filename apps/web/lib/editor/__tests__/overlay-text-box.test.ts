@@ -55,7 +55,7 @@ function overlayTextBoxes(editor: Editor) {
   editor.state.doc.descendants((node, _pos, parent) => {
     if (node.type.name === "textBox") {
       boxes.push({
-        parent: parent.type.name,
+        parent: parent?.type.name ?? "",
         boxId: String(node.attrs.boxId ?? ""),
       });
     }

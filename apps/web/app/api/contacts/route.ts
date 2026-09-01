@@ -74,9 +74,9 @@ export async function POST(request: NextRequest) {
     const contact = await createContact({
       workspaceId: auth.workspaceId,
       ownerUserId: auth.userId,
-      first_name: body.first_name,
-      last_name: body.last_name,
-      email: body.email,
+      first_name: body.first_name!.trim(),
+      last_name: body.last_name!.trim(),
+      email: body.email!.trim(),
       phone: body.phone,
       company_name: body.company_name,
       title: body.title,

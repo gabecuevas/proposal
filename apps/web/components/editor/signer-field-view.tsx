@@ -257,10 +257,11 @@ function FieldTextInput({
       event.stopPropagation();
       setValue((event.target as HTMLInputElement | HTMLTextAreaElement).value);
     };
-    const onNativeKeyDown = (event: KeyboardEvent) => {
-      event.stopPropagation();
-      if (event.key === "Enter" && !multiline && !event.shiftKey) {
-        event.preventDefault();
+    const onNativeKeyDown = (event: Event) => {
+      const keyEvent = event as KeyboardEvent;
+      keyEvent.stopPropagation();
+      if (keyEvent.key === "Enter" && !multiline && !keyEvent.shiftKey) {
+        keyEvent.preventDefault();
         commit();
         el.blur();
       }
@@ -574,7 +575,7 @@ export function SignerFieldView({ node, updateAttributes, selected, editor, getP
         }
         setHovered(true);
       }}
-      onPointerLeave={(event) => {
+      onPointerLeave={(event: React.PointerEvent) => {
         const next = event.relatedTarget;
         if (next instanceof Node && (rootRef.current?.contains(next) || (next instanceof Element && next.closest("[data-field-settings]")))) {
           return;

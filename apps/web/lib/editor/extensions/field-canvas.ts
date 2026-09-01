@@ -47,7 +47,9 @@ export function isPageBackedDoc(
   return doc.firstChild?.type.name === "fieldCanvas";
 }
 
-export function isPageBackedEditorJson(doc: { content?: Array<{ type?: string }> } | null | undefined): boolean {
+export function isPageBackedEditorJson(
+  doc: { type?: string; content?: Array<{ type?: string }> } | null | undefined,
+): boolean {
   for (const node of doc?.content ?? []) {
     if (isStructuralPageNode(node.type)) {
       continue;

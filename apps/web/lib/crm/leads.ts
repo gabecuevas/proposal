@@ -1,4 +1,5 @@
 import { prisma, type InputJsonValue } from "@repo/db";
+import { leadContactDetailsError } from "./contact-field-validation";
 import { LEAD_STATUSES, type LeadStatus } from "./lead-status";
 import { LEAD_FIELD_LABELS } from "./field-labels";
 import { userDisplayName } from "./display-name";
@@ -43,7 +44,7 @@ export type LeadRecord = {
 };
 
 type LeadInput = {
-  title: string;
+  title?: string;
   status?: LeadStatus;
   source?: string | null;
   value_minor?: number | null;
@@ -153,6 +154,34 @@ function parseLead(row: {
 function optionalText(value: string | undefined | null): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+export class LeadValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LeadValidationError";
+  }
+}
+
+function assertLeadContactDetails(data: {
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  contact_title?: string | null;
+  website?: string | null;
+}) {
+  const message = leadContactDetailsError({
+    first_name: data.first_name ?? "",
+    last_name: data.last_name ?? "",
+    email: data.email ?? "",
+    phone: data.phone ?? "",
+    contact_title: data.contact_title,
+    website: data.website,
+  });
+  if (message) {
+    throw new LeadValidationError(message);
+  }
 }
 
 function leadSnapshot(row: {
@@ -318,6 +347,7 @@ export async function createLead(
   input: LeadInput,
 ): Promise<LeadRecord> {
   const data = buildLeadData(input);
+  assertLeadContactDetails(data);
   const row = await prisma.lead.create({
     data: {
       workspace_id: workspaceId,
@@ -348,9 +378,11 @@ export async function updateLead(
   if (!existing) {
     return null;
   }
+  const data = buildLeadData(input, existing);
+  assertLeadContactDetails(data);
   const row = await prisma.lead.update({
     where: { id: leadId },
-    data: buildLeadData(input, existing),
+    data,
     include: leadInclude,
   });
 

@@ -106,7 +106,7 @@ article .rendered-field-canvas {
   --creator-page-gap: 0px;
   --creator-page-height: ${spec.heightPx}px;
 }
-${printPageBackgroundCss(spec)}
+${printPageBackgroundCss()}
 `.trim();
 }
 

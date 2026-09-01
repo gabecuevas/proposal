@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   firstContactDetailsError,
+  leadContactDetailsError,
   validateEmail,
   validatePersonName,
   validatePhone,
@@ -57,5 +58,27 @@ describe("contact field validation", () => {
     expect(firstContactDetailsError({ phone: "abc" })).toBe("Enter a valid phone number");
     expect(firstContactDetailsError({ phone: "" })).toBeNull();
     expect(firstContactDetailsError({})).toBeNull();
+  });
+
+  it("requires all lead contact fields before save", () => {
+    expect(
+      leadContactDetailsError({
+        first_name: "Joe",
+        last_name: "Dirt",
+        email: "joe@dirt.com",
+        phone: "4158478014",
+      }),
+    ).toBeNull();
+    expect(
+      leadContactDetailsError({
+        first_name: "Joe",
+        last_name: "Dirt",
+        email: "joe@dirt.com",
+        phone: "",
+      }),
+    ).toBe("Phone is required");
+    expect(leadContactDetailsError({ first_name: "", last_name: "", email: "", phone: "" })).toBe(
+      "First name is required",
+    );
   });
 });

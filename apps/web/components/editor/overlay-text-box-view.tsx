@@ -399,7 +399,7 @@ export function TextBoxView({ node, updateAttributes, selected, editor, getPos }
         }
         setHovered(true);
       }}
-      onPointerLeave={(event) => {
+      onPointerLeave={(event: React.PointerEvent) => {
         const next = event.relatedTarget;
         if (
           next instanceof Node &&

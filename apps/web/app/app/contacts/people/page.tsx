@@ -275,7 +275,8 @@ export default function PeoplePage() {
     setDrawerOpen(true);
   }
 
-  async function savePerson(body: Record<string, unknown>) {
+  const savePerson = useCallback(
+    async (body: Record<string, unknown>) => {
     setError("");
     setStatus("");
     if (selectedId) {
@@ -351,7 +352,9 @@ export default function PeoplePage() {
     setSelectedId(payload.contact.id);
     setStatus("Saved.");
     await load();
-  }
+    },
+    [selectedId, editor, companies, load],
+  );
 
   const linkedCompany = companies.find((company) => company.id === editor.company_id);
 
@@ -522,7 +525,7 @@ export default function PeoplePage() {
         ],
       },
     ],
-    [companies, currentUserName, editor, linkedCompany, selected, selectedId],
+    [companies, currentUserName, editor, linkedCompany, selected, selectedId, savePerson],
   );
 
   return (

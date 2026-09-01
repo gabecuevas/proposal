@@ -27,7 +27,7 @@ function clipTitle(value: string): string {
  * Prefer an explicit Save-as / header title when one is stored on the doc.
  * Otherwise use the first non-empty line of content.
  */
-export function documentTitleFromEditorJson(doc: EditorDoc | null | undefined, _fallbackId?: string): string {
+export function documentTitleFromEditorJson(doc: EditorDoc | null | undefined, fallbackId?: string): string {
   const named = titleFromAttrs(doc);
   if (named) {
     return clipTitle(named);
@@ -39,6 +39,9 @@ export function documentTitleFromEditorJson(doc: EditorDoc | null | undefined, _
         return clipTitle(t);
       }
     }
+  }
+  if (fallbackId?.trim()) {
+    return clipTitle(`Document ${fallbackId.trim().slice(0, 8)}`);
   }
   return "Untitled document";
 }

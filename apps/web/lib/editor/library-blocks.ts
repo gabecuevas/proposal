@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/core";
+import type { EditorDoc, EditorNode, JSONValue } from "./types";
 import { duplicateOverlayTextBox, isOverlayTextBoxNode } from "./overlay-text-box";
 
 export const LIBRARY_CATEGORIES = [

@@ -375,7 +375,7 @@ export default function LeadsPage() {
       value_minor: dollarsToMinor(current.value),
       person_id: current.person_id || null,
       company_id: current.company_id || null,
-      company_name: company?.name ?? current.company_name || null,
+      company_name: (company?.name ?? current.company_name) || null,
       first_name: current.first_name,
       last_name: current.last_name,
       email: current.email,
@@ -387,33 +387,19 @@ export default function LeadsPage() {
     };
   }
 
-  function validateLeadForSave(current: Editor, isNew: boolean): string | null {
-    if (!current.title.trim()) {
-      return "Lead title is required";
-    }
-    if (isNew) {
-      return leadContactDetailsError({
-        first_name: current.first_name,
-        last_name: current.last_name,
-        email: current.email,
-        phone: current.phone,
-        contact_title: current.contact_title,
-        website: current.website,
-      });
-    }
-    return (
-      validatePersonName(current.first_name, "First name") ??
-      validatePersonName(current.last_name, "Last name") ??
-      validateEmail(current.email) ??
-      validatePhone(current.phone, { required: true }) ??
-      validateTitle(current.contact_title) ??
-      validateWebsite(current.website)
-    );
+  function validateLeadForSave(current: Editor): string | null {
+    return leadContactDetailsError({
+      first_name: current.first_name,
+      last_name: current.last_name,
+      email: current.email,
+      phone: current.phone,
+      contact_title: current.contact_title,
+      website: current.website,
+    });
   }
 
   async function saveLeadRecord() {
-    const isNew = !selectedId;
-    const validationError = validateLeadForSave(editor, isNew);
+    const validationError = validateLeadForSave(editor);
     if (validationError) {
       setError(validationError);
       return;
@@ -457,10 +443,23 @@ export default function LeadsPage() {
     }
   }
 
-  async function saveLead(body: Record<string, unknown>) {
+  const saveLead = useCallback(
+    async (body: Record<string, unknown>) => {
     setError("");
     setStatus("");
     if (selectedId) {
+      const detailsError = leadContactDetailsError({
+        first_name: typeof body.first_name === "string" ? body.first_name : editor.first_name,
+        last_name: typeof body.last_name === "string" ? body.last_name : editor.last_name,
+        email: typeof body.email === "string" ? body.email : editor.email,
+        phone: typeof body.phone === "string" ? body.phone : editor.phone,
+        contact_title: typeof body.contact_title === "string" ? body.contact_title : editor.contact_title,
+        website: typeof body.website === "string" ? body.website : editor.website,
+      });
+      if (detailsError) {
+        setError(detailsError);
+        return;
+      }
       const response = await fetch(`/api/leads/${selectedId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -505,11 +504,6 @@ export default function LeadsPage() {
       ...(typeof body.notes === "string" ? { notes: body.notes } : {}),
       ...(typeof body.company_name === "string" ? { company_name: body.company_name } : {}),
     };
-
-    if (!merged.title.trim()) {
-      setError("Lead title is required");
-      return;
-    }
 
     const detailsError = leadContactDetailsError({
       first_name: merged.first_name,
@@ -557,7 +551,9 @@ export default function LeadsPage() {
     setSelectedId(payload.lead.id);
     setStatus("Saved.");
     await load();
-  }
+    },
+    [selectedId, editor, companies, load],
+  );
 
   const sections: DrawerSection[] = useMemo(
     () => [
@@ -610,7 +606,7 @@ export default function LeadsPage() {
             hint: "Work",
             inputType: "tel",
             onChange: (value) => setEditor((current) => ({ ...current, phone: value })),
-            validate: (value) => validatePhone(value, { required: !selectedId }),
+            validate: (value) => validatePhone(value, { required: true }),
             onCommit: (value) => void saveLead({ phone: value }),
           },
           {
@@ -758,7 +754,7 @@ export default function LeadsPage() {
         ],
       },
     ],
-    [companies, currentUserName, editor, linkedCompany, selected, selectedId],
+    [companies, currentUserName, editor, linkedCompany, selected, selectedId, saveLead],
   );
 
   const isNewLead = !selectedId;

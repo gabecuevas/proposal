@@ -221,7 +221,8 @@ export default function CompaniesPage() {
     setDrawerOpen(true);
   }
 
-  async function saveCompany(body: Record<string, unknown>) {
+  const saveCompany = useCallback(
+    async (body: Record<string, unknown>) => {
     setError("");
     setStatus("");
     if (selectedId) {
@@ -275,7 +276,9 @@ export default function CompaniesPage() {
     setSelectedId(payload.company.id);
     setStatus("Saved.");
     await load();
-  }
+    },
+    [selectedId, editor, load],
+  );
 
   const sections: DrawerSection[] = useMemo(
     () => [
@@ -393,7 +396,7 @@ export default function CompaniesPage() {
         ],
       },
     ],
-    [currentUserName, editor, selected, selectedId],
+    [currentUserName, editor, selected, selectedId, saveCompany],
   );
 
   return (

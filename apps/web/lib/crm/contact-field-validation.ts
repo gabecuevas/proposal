@@ -97,10 +97,10 @@ export function leadContactDetailsError(input: {
   const title = optionalString(input.contact_title);
   const website = optionalString(input.website);
   return (
-    validatePersonName(firstName, "First name") ??
-    validatePersonName(lastName, "Last name") ??
-    validateEmail(email) ??
-    validatePhone(phone, { required: true }) ??
+    validatePersonName(firstName ?? "", "First name") ??
+    validatePersonName(lastName ?? "", "Last name") ??
+    validateEmail(email ?? "") ??
+    validatePhone(phone ?? "", { required: true }) ??
     (title !== undefined ? validateTitle(title) : null) ??
     (website !== undefined ? validateWebsite(website) : null)
   );

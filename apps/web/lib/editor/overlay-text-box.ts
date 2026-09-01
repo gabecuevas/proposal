@@ -1,4 +1,4 @@
-import type { Editor } from "@tiptap/core";
+import type { Editor, JSONContent } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { NodeSelection, Plugin, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { isPageBackedDoc } from "./extensions/field-canvas";
@@ -387,6 +387,6 @@ export function duplicateOverlayTextBox(editor: Editor, pos: number): boolean {
         yPct: clamp01(layout.yPct + 0.02),
         zIndex: layout.zIndex + 1,
       },
-    })
+    } as JSONContent)
     .run();
 }

@@ -3,7 +3,6 @@ import {
   pageSizeFromDoc,
   pageSizeSpec,
   type PageSizeId,
-  type PageSizeSpec,
 } from "./page-geometry";
 
 export const BACKGROUND_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
@@ -311,7 +310,7 @@ export function renderPageBackgroundsHtml(
   return `<div class="print-page-backgrounds" aria-hidden="true">${layers.join("")}</div>`;
 }
 
-export function printPageBackgroundCss(_spec?: PageSizeSpec): string {
+export function printPageBackgroundCss(): string {
   return `
 .print-root { position: relative; }
 .print-page-backgrounds { position: absolute; inset: 0; pointer-events: none; z-index: 0; }

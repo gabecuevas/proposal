@@ -62,7 +62,7 @@ export function buildPageBackedEditorDoc(pages: TemplatePageImage[]): EditorDoc 
   }
 
   const pageSize = pages[0] ? inferPageSizeFromPdfPoints(pages[0].width, pages[0].height) : "letter";
-  return withPageSize({ type: "doc", content }, pageSize);
+  return withPageSize<EditorDoc>({ type: "doc", content }, pageSize);
 }
 
 export function templateNameFromFileName(fileName: string): string {

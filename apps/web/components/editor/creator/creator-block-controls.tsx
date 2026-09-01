@@ -3,6 +3,7 @@
 import type { Editor } from "@tiptap/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isPageBackedSeamInsert } from "@/lib/editor/overlay-text-box";
+import { hitTestBlocks, type TopLevelBlock } from "@/lib/editor/block-hit-test";
 import { isScaffoldFlowNode } from "@/lib/editor/extensions/flow-gaps";
 import { BlockOptionsMenu } from "./block-options-menu";
 import { ElementMenu } from "./element-menu";

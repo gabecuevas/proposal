@@ -590,7 +590,7 @@ export default function DocumentDetailPage({ params }: Params) {
       window.removeEventListener("pagehide", flushIfDirty);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, [contactId, document, documentId, parsedRecipients, parsedVariables, pricing, serializedDoc]);
+  }, [contactId, document, documentId, name, parsedRecipients, parsedVariables, pricing, serializedDoc]);
 
   function previewHtml() {
     return renderComputedHtml({

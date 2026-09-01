@@ -23,7 +23,6 @@ import {
   toggleUnderline,
   undo,
   unsetLink,
-  type BlockStyleId,
 } from "@/lib/editor/commands/editor-commands";
 import {
   BLOCK_STYLES,

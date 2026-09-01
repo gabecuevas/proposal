@@ -16,7 +16,7 @@ export const DEFAULT_CONTACT_SOURCES = [
 export function contactSourceOptions(
   current?: string | null,
 ): Array<{ value: string; label: string }> {
-  const options = DEFAULT_CONTACT_SOURCES.map((item) => ({
+  const options: Array<{ value: string; label: string }> = DEFAULT_CONTACT_SOURCES.map((item) => ({
     value: item.value,
     label: item.label,
   }));
