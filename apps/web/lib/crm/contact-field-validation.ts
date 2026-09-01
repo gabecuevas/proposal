@@ -30,10 +30,10 @@ export function validateEmail(value: string, options?: { required?: boolean }): 
   return null;
 }
 
-export function validatePhone(value: string): string | null {
+export function validatePhone(value: string, options?: { required?: boolean }): string | null {
   const trimmed = value.trim();
   if (!trimmed) {
-    return null;
+    return options?.required ? "Phone is required" : null;
   }
   if (!/^[+]?[\d\s().-]+$/.test(trimmed)) {
     return "Enter a valid phone number";
@@ -80,6 +80,30 @@ function optionalString(value: string | null | undefined): string | undefined {
     return undefined;
   }
   return value ?? "";
+}
+
+export function leadContactDetailsError(input: {
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  contact_title?: string | null;
+  website?: string | null;
+}): string | null {
+  const firstName = optionalString(input.first_name);
+  const lastName = optionalString(input.last_name);
+  const email = optionalString(input.email);
+  const phone = optionalString(input.phone);
+  const title = optionalString(input.contact_title);
+  const website = optionalString(input.website);
+  return (
+    validatePersonName(firstName, "First name") ??
+    validatePersonName(lastName, "Last name") ??
+    validateEmail(email) ??
+    validatePhone(phone, { required: true }) ??
+    (title !== undefined ? validateTitle(title) : null) ??
+    (website !== undefined ? validateWebsite(website) : null)
+  );
 }
 
 export function firstContactDetailsError(input: {

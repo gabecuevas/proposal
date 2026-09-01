@@ -1,5 +1,6 @@
 import { prisma } from "@repo/db";
 import { COMPANY_FIELD_LABELS } from "./field-labels";
+import { userDisplayName } from "./display-name";
 import { recordFieldChanges, recordRecordCreated } from "./timeline";
 
 export type CompanyRecord = {
@@ -20,6 +21,7 @@ export type CompanyRecord = {
   notes: string | null;
   tags: string[];
   people_count: number;
+  added_by_name: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -65,6 +67,7 @@ function parseCompany(
     created_at: Date;
     updated_at: Date;
     _count?: { people: number };
+    owner?: { name: string; email: string } | null;
   },
 ): CompanyRecord {
   return {
@@ -85,6 +88,7 @@ function parseCompany(
     notes: row.notes,
     tags: asTags(row.tags),
     people_count: row._count?.people ?? 0,
+    added_by_name: userDisplayName(row.owner),
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -121,6 +125,11 @@ function companySnapshot(row: {
   };
 }
 
+const companyInclude = {
+  _count: { select: { people: true } },
+  owner: { select: { name: true, email: true } },
+} as const;
+
 export async function listCompanies(
   workspaceId: string,
   options?: { limit?: number; query?: string },
@@ -138,7 +147,7 @@ export async function listCompanies(
           ]
         : undefined,
     },
-    include: { _count: { select: { people: true } } },
+    include: companyInclude,
     orderBy: [{ updated_at: "desc" }, { id: "desc" }],
     take: options?.limit ?? 50,
   });
@@ -168,7 +177,7 @@ export async function createCompany(
       notes: optionalText(input.notes),
       tags: input.tags ?? [],
     },
-    include: { _count: { select: { people: true } } },
+    include: companyInclude,
   });
   await recordRecordCreated({
     workspaceId,
@@ -210,7 +219,7 @@ export async function updateCompany(
       notes: input.notes !== undefined ? optionalText(input.notes) : existing.notes,
       tags: input.tags ?? (Array.isArray(existing.tags) ? existing.tags : []),
     },
-    include: { _count: { select: { people: true } } },
+    include: companyInclude,
   });
 
   if (context?.actorUserId) {

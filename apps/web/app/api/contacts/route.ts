@@ -1,12 +1,16 @@
 import type { NextRequest } from "next/server";
 import { getNextCursorFromTimestampPage, parseCursorPagination } from "@/lib/api/pagination";
 import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
-import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
+import { assertRole } from "@/lib/auth/request-context";
+import { requireRequestAuth } from "@/lib/auth/require-request-auth";
 import { createContact, listContacts } from "@/lib/contacts/store";
 import { firstContactDetailsError } from "@/lib/crm/contact-field-validation";
 
 export async function GET(request: NextRequest) {
-  const auth = await getRequestAuthContext(request);
+  const auth = await requireRequestAuth(request);
+  if (auth instanceof Response) {
+    return auth;
+  }
   const pagination = parseCursorPagination(request, 50);
   const url = new URL(request.url);
   const q = url.searchParams.get("q") ?? undefined;
@@ -44,7 +48,10 @@ type CreateContactBody = {
 };
 
 export async function POST(request: NextRequest) {
-  const auth = await getRequestAuthContext(request);
+  const auth = await requireRequestAuth(request);
+  if (auth instanceof Response) {
+    return auth;
+  }
   assertRole(auth, "MEMBER");
   const body = (await request.json()) as CreateContactBody;
   const validationMessage = firstContactDetailsError({

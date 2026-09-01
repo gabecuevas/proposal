@@ -17,15 +17,26 @@ export const CONTACT_FIELD_LABELS: Record<string, string> = {
 };
 
 export const LEAD_FIELD_LABELS: Record<string, string> = {
-  title: "Title",
+  title: "Lead title",
   status: "Status",
   source: "Source",
   value_minor: "Value",
+  first_name: "First name",
+  last_name: "Last name",
   email: "Email",
   phone: "Phone",
+  contact_title: "Title",
+  company_id: "Organization",
+  company_name: "Organization",
+  address_line_1: "Address line 1",
+  address_line_2: "Address line 2",
+  city: "City",
+  state: "State",
+  postal_code: "Postal code",
+  country: "Country",
+  website: "Website",
   notes: "Notes",
   person_id: "Person",
-  company_id: "Organization",
 };
 
 export const COMPANY_FIELD_LABELS: Record<string, string> = {

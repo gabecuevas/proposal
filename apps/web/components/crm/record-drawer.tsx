@@ -68,9 +68,11 @@ type CrmRecordDrawerProps = {
   crmRecord?: CrmRecordContext;
   error?: string;
   status?: string;
-  createLabel?: string;
-  onCreate?: () => void;
-  creating?: boolean;
+  footerSave?: {
+    label?: string;
+    onSave: () => void;
+    saving?: boolean;
+  };
 };
 
 export type DrawerIconId =
@@ -235,7 +237,7 @@ function FieldEditActions({
         type="button"
         onMouseDown={(event) => event.preventDefault()}
         onClick={onCancel}
-        className="rounded-md border border-border bg-white px-3 py-1 text-sm font-medium text-foreground hover:bg-slate-50"
+        className="rounded-md border border-border bg-white px-3 py-1 text-[15px] font-medium text-foreground hover:bg-slate-50"
       >
         Cancel
       </button>
@@ -244,7 +246,7 @@ function FieldEditActions({
         onMouseDown={(event) => event.preventDefault()}
         onClick={onSave}
         disabled={saveDisabled}
-        className="rounded-md bg-primary px-3 py-1 text-sm font-medium text-primary-foreground disabled:opacity-40"
+        className="rounded-md bg-primary px-3 py-1 text-[15px] font-medium text-primary-foreground disabled:opacity-40"
       >
         Save
       </button>
@@ -262,10 +264,11 @@ function fieldDisplayValue(field: DrawerField): string {
   return field.value;
 }
 
-const FIELD_LABEL_CLASS = "w-[5.25rem] shrink-0 pt-1.5 text-xs leading-tight text-foreground";
+const FIELD_LABEL_CLASS = "w-[5.25rem] shrink-0 pt-1.5 text-[13px] leading-tight text-foreground";
 const FIELD_ICON_CLASS = "flex w-5 shrink-0 justify-center pt-1.5";
 const FIELD_ROW_CLASS = "flex items-start gap-1.5 py-0.5";
 const FIELD_EDIT_CONTAINER_CLASS = "min-w-0 flex-1 rounded-none bg-slate-50 p-1.5";
+const FIELD_TEXT_CLASS = "text-[15px]";
 
 function FieldRowLabel({ field }: { field: DrawerField }) {
   if (field.showLabel === false) {
@@ -296,7 +299,8 @@ function FieldRow({ field }: { field: DrawerField }) {
   const error = editing && attemptedSave ? (field.validate?.(draftValue) ?? null) : null;
   const showError = Boolean(error);
   const inputClass = cn(
-    "h-8 w-full rounded-none border bg-white px-2 text-sm outline-none focus:ring-2",
+    "h-8 w-full rounded-none border bg-white px-2 outline-none focus:ring-2",
+    FIELD_TEXT_CLASS,
     showError
       ? "border-red-400 ring-red-200 focus:ring-red-200"
       : "border-border ring-primary/15 focus:ring-primary/15",
@@ -411,8 +415,8 @@ function FieldRow({ field }: { field: DrawerField }) {
           role={canEdit ? "button" : undefined}
           tabIndex={canEdit ? 0 : undefined}
         >
-          <span className={cn("min-w-0 truncate text-sm", displayValue ? "text-foreground" : "text-muted")}>
-            {displayValue || "—"}
+          <span className={cn("min-w-0 truncate", FIELD_TEXT_CLASS, displayValue ? "text-foreground" : "text-muted")}>
+            {displayValue || field.placeholder}
             {field.hint && field.value ? <span className="ml-1 text-muted">({field.hint})</span> : null}
           </span>
           {canEdit ? (
@@ -507,7 +511,7 @@ function CollapsibleSection({
         onClick={() => setOpen((value) => !value)}
         className="flex w-full items-center justify-between py-1.5 text-left"
       >
-        <h3 className="text-[13px] font-semibold text-foreground">{label}</h3>
+        <h3 className="text-[14px] font-semibold text-foreground">{label}</h3>
         <span className={cn("text-muted transition-transform", open ? "rotate-180" : "")}>▾</span>
       </button>
       {open ? children : null}
@@ -533,9 +537,7 @@ export function CrmRecordDrawer({
   crmRecord,
   error,
   status,
-  createLabel,
-  onCreate,
-  creating,
+  footerSave,
 }: CrmRecordDrawerProps) {
   const titleId = useId();
   const [tab, setTab] = useState<ActivityTab>("notes");
@@ -700,7 +702,7 @@ export function CrmRecordDrawer({
         <div className="flex w-[26rem] shrink-0 flex-col border-r border-border">
           <div className="flex items-center gap-2 border-b border-border px-3.5 py-3">
             {isPerson ? (
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-[15px] font-semibold text-primary-foreground">
                 {initialsFromTitle(title || titlePlaceholder)}
               </span>
             ) : null}
@@ -709,7 +711,7 @@ export function CrmRecordDrawer({
                 <input
                   id={titleId}
                   autoFocus
-                  className="h-9 w-full rounded-none border border-border bg-white px-2 text-lg font-semibold outline-none ring-primary/15 focus:ring-2"
+                  className="h-9 w-full rounded-none border border-border bg-white px-2 text-[19px] font-semibold outline-none ring-primary/15 focus:ring-2"
                   value={draftTitle}
                   placeholder={titlePlaceholder}
                   onChange={(event) => {
@@ -757,7 +759,7 @@ export function CrmRecordDrawer({
                 <div className="flex items-center justify-between gap-2">
                   <span
                     id={titleId}
-                    className={cn("truncate text-lg font-semibold", title ? "text-foreground" : "text-muted")}
+                    className={cn("truncate text-[19px] font-semibold", title ? "text-foreground" : "text-muted")}
                   >
                     {title || titlePlaceholder}
                   </span>
@@ -799,7 +801,7 @@ export function CrmRecordDrawer({
               }
               return (
                 <section key={section.id} className="mb-5">
-                  <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                  <h3 className="mb-1 text-[12px] font-semibold uppercase tracking-wide text-muted">
                     {section.label}
                   </h3>
                   {body}
@@ -807,6 +809,18 @@ export function CrmRecordDrawer({
               );
             })}
           </div>
+          {footerSave ? (
+            <div className="shrink-0 border-t border-border px-3.5 py-3">
+              <button
+                type="button"
+                disabled={footerSave.saving}
+                onClick={footerSave.onSave}
+                className="w-full rounded-md bg-primary px-3 py-2 text-[15px] font-medium text-primary-foreground disabled:opacity-60"
+              >
+                {footerSave.label ?? "Save"}
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">
@@ -819,16 +833,6 @@ export function CrmRecordDrawer({
               ))}
             </div>
             <div className="flex items-center gap-2 py-2 pr-1">
-              {onCreate ? (
-                <button
-                  type="button"
-                  disabled={creating}
-                  onClick={onCreate}
-                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
-                >
-                  {createLabel ?? "Create"}
-                </button>
-              ) : null}
               <CloseButton onClick={onClose} />
             </div>
           </div>

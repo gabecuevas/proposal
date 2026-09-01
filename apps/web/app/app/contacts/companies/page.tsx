@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CrmDataGrid, type CrmGridColumn } from "@/components/crm/data-grid";
 import { CrmRecordDrawer, type DrawerSection } from "@/components/crm/record-drawer";
-import { formatGridDateTime } from "@/lib/ui/datetime";
+import {
+  validateEmail,
+  validatePhone,
+  validateWebsite,
+} from "@/lib/crm/contact-field-validation";
+import { fetchJson } from "@/lib/crm/fetch-with-auth";
+import { formatGridDate, formatGridDateTime } from "@/lib/ui/datetime";
 
 type Company = {
   id: string;
@@ -17,6 +23,7 @@ type Company = {
   country: string | null;
   notes: string | null;
   people_count: number;
+  added_by_name: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -55,7 +62,7 @@ const COMPANY_COLUMNS: CrmGridColumn<Company>[] = [
     label: "Industry",
     width: 160,
     sortValue: (company) => company.industry,
-    cell: (company) => company.industry ?? "—",
+    cell: (company) => company.industry || null,
   },
   {
     id: "people",
@@ -70,7 +77,7 @@ const COMPANY_COLUMNS: CrmGridColumn<Company>[] = [
     label: "Website",
     width: 200,
     sortValue: (company) => company.website,
-    cell: (company) => company.website ?? "—",
+    cell: (company) => company.website || null,
   },
   {
     id: "email",
@@ -78,7 +85,7 @@ const COMPANY_COLUMNS: CrmGridColumn<Company>[] = [
     defaultVisible: false,
     width: 200,
     sortValue: (company) => company.email,
-    cell: (company) => company.email ?? "—",
+    cell: (company) => company.email || null,
   },
   {
     id: "phone",
@@ -86,7 +93,7 @@ const COMPANY_COLUMNS: CrmGridColumn<Company>[] = [
     defaultVisible: false,
     width: 140,
     sortValue: (company) => company.phone,
-    cell: (company) => company.phone ?? "—",
+    cell: (company) => company.phone || null,
   },
   {
     id: "city",
@@ -94,7 +101,7 @@ const COMPANY_COLUMNS: CrmGridColumn<Company>[] = [
     defaultVisible: false,
     width: 140,
     sortValue: (company) => company.city,
-    cell: (company) => company.city ?? "—",
+    cell: (company) => company.city || null,
   },
   {
     id: "state",
@@ -102,7 +109,7 @@ const COMPANY_COLUMNS: CrmGridColumn<Company>[] = [
     defaultVisible: false,
     width: 100,
     sortValue: (company) => company.state,
-    cell: (company) => company.state ?? "—",
+    cell: (company) => company.state || null,
   },
   {
     id: "country",
@@ -110,7 +117,7 @@ const COMPANY_COLUMNS: CrmGridColumn<Company>[] = [
     defaultVisible: false,
     width: 120,
     sortValue: (company) => company.country,
-    cell: (company) => company.country ?? "—",
+    cell: (company) => company.country || null,
   },
   {
     id: "created",
@@ -137,26 +144,56 @@ export default function CompaniesPage() {
   const [editor, setEditor] = useState<Editor>(emptyEditor);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [currentUserName, setCurrentUserName] = useState("");
 
   const load = useCallback(async () => {
-    setError("");
     const params = new URLSearchParams({ limit: "200" });
     if (query.trim()) {
       params.set("q", query.trim());
     }
-    const response = await fetch(`/api/companies?${params.toString()}`);
-    if (!response.ok) {
-      setError("Failed to load companies");
+    const payload = await fetchJson<{ companies: Company[] }>(`/api/companies?${params.toString()}`);
+    if (!payload) {
       return;
     }
-    const payload = (await response.json()) as { companies: Company[] };
     setCompanies(payload.companies);
   }, [query]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSession() {
+      const response = await fetch("/api/auth/session");
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as { user?: { name?: string; email?: string } | null };
+      const name = payload.user?.name?.trim();
+      if (name) {
+        if (!cancelled) {
+          setCurrentUserName(name);
+        }
+        return;
+      }
+      const email = payload.user?.email ?? "";
+      if (!email || cancelled) {
+        return;
+      }
+      const local = email.split("@")[0] ?? email;
+      const derived = local
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+      setCurrentUserName(derived || email);
+    }
+    void loadSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const selected = companies.find((company) => company.id === selectedId);
 
@@ -184,78 +221,80 @@ export default function CompaniesPage() {
     setDrawerOpen(true);
   }
 
-  async function patchCompany(body: Record<string, unknown>) {
-    if (!selectedId) {
+  async function saveCompany(body: Record<string, unknown>) {
+    setError("");
+    setStatus("");
+    if (selectedId) {
+      const response = await fetch(`/api/companies/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        setError("Failed to save company");
+        return;
+      }
+      setStatus("Saved.");
+      await load();
       return;
     }
-    setError("");
-    const response = await fetch(`/api/companies/${selectedId}`, {
-      method: "PATCH",
+
+    const merged = {
+      ...editor,
+      ...(typeof body.name === "string" ? { name: body.name } : {}),
+      ...(typeof body.website === "string" ? { website: body.website } : {}),
+      ...(typeof body.phone === "string" ? { phone: body.phone } : {}),
+      ...(typeof body.email === "string" ? { email: body.email } : {}),
+      ...(typeof body.industry === "string" ? { industry: body.industry } : {}),
+      ...(typeof body.city === "string" ? { city: body.city } : {}),
+      ...(typeof body.notes === "string" ? { notes: body.notes } : {}),
+    };
+
+    if (!merged.name.trim()) {
+      return;
+    }
+
+    const response = await fetch("/api/companies", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        name: merged.name,
+        website: merged.website || undefined,
+        phone: merged.phone || undefined,
+        email: merged.email || undefined,
+        industry: merged.industry || undefined,
+        city: merged.city || undefined,
+        notes: merged.notes || undefined,
+      }),
     });
     if (!response.ok) {
       setError("Failed to save company");
       return;
     }
-    await load();
-  }
-
-  async function createCompany() {
-    setError("");
-    if (!editor.name.trim()) {
-      setError("Company name is required");
-      return;
-    }
-    setCreating(true);
-    const response = await fetch("/api/companies", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: editor.name,
-        website: editor.website || undefined,
-        phone: editor.phone || undefined,
-        email: editor.email || undefined,
-        industry: editor.industry || undefined,
-        city: editor.city || undefined,
-        notes: editor.notes || undefined,
-      }),
-    });
-    setCreating(false);
-    if (!response.ok) {
-      setError("Failed to create company");
-      return;
-    }
     const payload = (await response.json()) as { company: Company };
-    setStatus("Company created.");
     setSelectedId(payload.company.id);
+    setStatus("Saved.");
     await load();
   }
 
   const sections: DrawerSection[] = useMemo(
     () => [
       {
-        id: "details",
-        label: "Details",
+        id: "contact-details",
+        label: "Contact Details",
         fields: [
-          {
-            id: "industry",
-            icon: "industry",
-            label: "Industry",
-            value: editor.industry,
-            placeholder: "Industry",
-            onChange: (value) => setEditor((current) => ({ ...current, industry: value })),
-            onCommit: (value) => void patchCompany({ industry: value }),
-          },
           {
             id: "email",
             icon: "mail",
             label: "Email",
             showLabel: false,
             value: editor.email,
-            placeholder: "Email",
+            placeholder: "Add email",
+            hint: "Work",
+            inputType: "email",
             onChange: (value) => setEditor((current) => ({ ...current, email: value })),
-            onCommit: (value) => void patchCompany({ email: value }),
+            validate: (value) => validateEmail(value),
+            onCommit: (value) => void saveCompany({ email: value }),
           },
           {
             id: "phone",
@@ -263,18 +302,12 @@ export default function CompaniesPage() {
             label: "Phone",
             showLabel: false,
             value: editor.phone,
-            placeholder: "Phone",
+            placeholder: "Add phone",
+            hint: "Work",
+            inputType: "tel",
             onChange: (value) => setEditor((current) => ({ ...current, phone: value })),
-            onCommit: (value) => void patchCompany({ phone: value }),
-          },
-          {
-            id: "city",
-            icon: "pin",
-            label: "Address",
-            value: editor.city,
-            placeholder: "Address",
-            onChange: (value) => setEditor((current) => ({ ...current, city: value })),
-            onCommit: (value) => void patchCompany({ city: value }),
+            validate: (value) => validatePhone(value),
+            onCommit: (value) => void saveCompany({ phone: value }),
           },
         ],
       },
@@ -283,18 +316,75 @@ export default function CompaniesPage() {
         label: "Organization",
         fields: [
           {
-            id: "website",
+            id: "org_name",
+            icon: "company",
+            label: "Organization",
+            value: editor.name,
+            placeholder: "Organization",
+            readOnly: true,
+            onChange: () => undefined,
+          },
+          {
+            id: "org_address",
+            icon: "pin",
+            label: "Address",
+            value: editor.city,
+            placeholder: "Address",
+            onChange: (value) => setEditor((current) => ({ ...current, city: value })),
+            onCommit: (value) => void saveCompany({ city: value }),
+          },
+          {
+            id: "org_website",
             icon: "web",
             label: "Website",
             value: editor.website,
             placeholder: "Website",
             onChange: (value) => setEditor((current) => ({ ...current, website: value })),
-            onCommit: (value) => void patchCompany({ website: value }),
+            inputType: "url",
+            validate: (value) => validateWebsite(value),
+            onCommit: (value) => void saveCompany({ website: value }),
           },
           {
-            id: "people",
+            id: "org_industry",
+            icon: "industry",
+            label: "Industry",
+            showLabel: true,
+            value: editor.industry,
+            placeholder: "Industry",
+            onChange: (value) => setEditor((current) => ({ ...current, industry: value })),
+            onCommit: (value) => void saveCompany({ industry: value }),
+          },
+        ],
+      },
+      {
+        id: "details",
+        label: "Details",
+        fields: [
+          {
+            id: "date_added",
+            icon: "calendar",
+            label: "Date added",
+            showLabel: true,
+            value: selected ? formatGridDate(selected.created_at) : "",
+            placeholder: "Adds when created",
+            readOnly: true,
+            onChange: () => undefined,
+          },
+          {
+            id: "added_by",
+            icon: "person",
+            label: "Added by",
+            showLabel: true,
+            value: selected?.added_by_name || (!selectedId ? currentUserName : ""),
+            placeholder: "Adds when created",
+            readOnly: true,
+            onChange: () => undefined,
+          },
+          {
+            id: "people_count",
             icon: "people",
             label: "People",
+            showLabel: true,
             value: selected ? String(selected.people_count) : "",
             placeholder: "People",
             readOnly: true,
@@ -303,14 +393,14 @@ export default function CompaniesPage() {
         ],
       },
     ],
-    [editor, selected, selectedId],
+    [currentUserName, editor, selected, selectedId],
   );
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <h1 className="sr-only">Companies</h1>
       <CrmDataGrid
-        storageKey="crm-grid-companies"
+        storageKey="crm-grid-companies-v2"
         columns={COMPANY_COLUMNS}
         rows={companies}
         getRowId={(company) => company.id}
@@ -335,15 +425,16 @@ export default function CompaniesPage() {
         title={editor.name}
         titlePlaceholder="Company name"
         onTitleChange={(value) => setEditor((current) => ({ ...current, name: value }))}
-        onTitleCommit={(value) => void patchCompany({ name: value })}
-        onClose={() => setDrawerOpen(false)}
+        onTitleCommit={(value) => void saveCompany({ name: value })}
+        onClose={() => {
+          setDrawerOpen(false);
+          setError("");
+        }}
         sections={sections}
         notes={editor.notes}
         onNotesSave={(value) => {
           setEditor((current) => ({ ...current, notes: value }));
-          if (selectedId) {
-            void patchCompany({ notes: value });
-          }
+          void saveCompany({ notes: value });
         }}
         onNotesChange={(value) => setEditor((current) => ({ ...current, notes: value }))}
         crmRecord={
@@ -360,9 +451,6 @@ export default function CompaniesPage() {
         }
         error={drawerOpen ? error : undefined}
         status={status}
-        createLabel="Create company"
-        onCreate={selectedId ? undefined : () => void createCompany()}
-        creating={creating}
       />
     </div>
   );

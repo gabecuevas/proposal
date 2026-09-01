@@ -289,21 +289,37 @@ model Company {
 }
 
 model Lead {
-  id            String     @id @default(cuid())
-  workspace_id  String
-  owner_user_id String?
-  title         String
-  status        LeadStatus @default(NEW)
-  source        String?
-  value_minor   Int?
-  currency      String     @default("USD")
-  person_id     String?
-  company_id    String?
-  email         String?
-  phone         String?
-  notes         String?
-  created_at    DateTime   @default(now())
-  updated_at    DateTime   @updatedAt
+  id                 String     @id @default(cuid())
+  workspace_id       String
+  owner_user_id      String?
+  title              String
+  status             LeadStatus @default(NEW)
+  source             String?
+  value_minor        Int?
+  currency           String     @default("USD")
+  person_id          String?
+  company_id         String?
+  first_name         String?
+  last_name          String?
+  full_name          String?
+  email              String?
+  phone              String?
+  company_name       String?
+  contact_title      String?
+  address_line_1     String?
+  address_line_2     String?
+  city               String?
+  state              String?
+  postal_code        String?
+  country            String?
+  website            String?
+  notes              String?
+  custom_fields_json Json?
+  tags               Json       @default("[]")
+  color_label        String?
+  last_activity_at   DateTime?
+  created_at         DateTime   @default(now())
+  updated_at         DateTime   @updatedAt
 
   workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
   owner     User?     @relation("lead_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)

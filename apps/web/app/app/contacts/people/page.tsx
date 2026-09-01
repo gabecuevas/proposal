@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CrmDataGrid, type CrmGridColumn } from "@/components/crm/data-grid";
 import { CrmRecordDrawer, type DrawerSection } from "@/components/crm/record-drawer";
 import { contactSourceOptions } from "@/lib/crm/contact-sources";
+import { fetchJson } from "@/lib/crm/fetch-with-auth";
+import { splitContactName } from "@/lib/crm/split-contact-name";
 import {
   firstContactDetailsError,
   validateEmail,
@@ -72,28 +74,13 @@ const emptyEditor = (): Editor => ({
   source: "",
 });
 
-function splitContactName(value: string): { first_name: string; last_name: string } {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return { first_name: "", last_name: "" };
-  }
-  const space = trimmed.indexOf(" ");
-  if (space === -1) {
-    return { first_name: trimmed, last_name: "" };
-  }
-  return {
-    first_name: trimmed.slice(0, space),
-    last_name: trimmed.slice(space + 1).trimStart(),
-  };
-}
-
 function ContactLink({ children }: { children: string }) {
   return <span className="font-medium text-primary">{children}</span>;
 }
 
 function LabeledValue({ value, hint }: { value: string | null | undefined; hint: string }) {
   if (!value) {
-    return <span>—</span>;
+    return <span />;
   }
   return (
     <span>
@@ -116,7 +103,7 @@ const PEOPLE_COLUMNS: CrmGridColumn<Person>[] = [
     label: "Organization",
     width: 180,
     sortValue: (person) => person.company_name,
-    cell: (person) => (person.company_name ? <ContactLink>{person.company_name}</ContactLink> : "—"),
+    cell: (person) => (person.company_name ? <ContactLink>{person.company_name}</ContactLink> : null),
   },
   {
     id: "email",
@@ -138,7 +125,7 @@ const PEOPLE_COLUMNS: CrmGridColumn<Person>[] = [
     defaultVisible: false,
     width: 160,
     sortValue: (person) => person.title,
-    cell: (person) => person.title ?? "—",
+    cell: (person) => person.title || null,
   },
   {
     id: "city",
@@ -146,7 +133,7 @@ const PEOPLE_COLUMNS: CrmGridColumn<Person>[] = [
     defaultVisible: false,
     width: 140,
     sortValue: (person) => person.city,
-    cell: (person) => person.city ?? "—",
+    cell: (person) => person.city || null,
   },
   {
     id: "state",
@@ -154,7 +141,7 @@ const PEOPLE_COLUMNS: CrmGridColumn<Person>[] = [
     defaultVisible: false,
     width: 100,
     sortValue: (person) => person.state,
-    cell: (person) => person.state ?? "—",
+    cell: (person) => person.state || null,
   },
   {
     id: "country",
@@ -162,7 +149,7 @@ const PEOPLE_COLUMNS: CrmGridColumn<Person>[] = [
     defaultVisible: false,
     width: 120,
     sortValue: (person) => person.country,
-    cell: (person) => person.country ?? "—",
+    cell: (person) => person.country || null,
   },
   {
     id: "website",
@@ -170,7 +157,7 @@ const PEOPLE_COLUMNS: CrmGridColumn<Person>[] = [
     defaultVisible: false,
     width: 180,
     sortValue: (person) => person.website,
-    cell: (person) => person.website ?? "—",
+    cell: (person) => person.website || null,
   },
   {
     id: "tags",
@@ -178,7 +165,7 @@ const PEOPLE_COLUMNS: CrmGridColumn<Person>[] = [
     defaultVisible: false,
     width: 160,
     sortValue: (person) => person.tags?.join(", "),
-    cell: (person) => (person.tags?.length ? person.tags.join(", ") : "—"),
+    cell: (person) => (person.tags?.length ? person.tags.join(", ") : null),
   },
   {
     id: "created",
@@ -207,27 +194,22 @@ export default function PeoplePage() {
   const [editor, setEditor] = useState<Editor>(emptyEditor);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
-  const [creating, setCreating] = useState(false);
   const [currentUserName, setCurrentUserName] = useState("");
 
   const load = useCallback(async () => {
-    setError("");
     const params = new URLSearchParams({ limit: "200" });
     if (query.trim()) {
       params.set("q", query.trim());
     }
-    const [peopleRes, companiesRes] = await Promise.all([
-      fetch(`/api/contacts?${params.toString()}`),
-      fetch("/api/companies?limit=200"),
+    const [peoplePayload, companiesPayload] = await Promise.all([
+      fetchJson<{ contacts: Person[] }>(`/api/contacts?${params.toString()}`),
+      fetchJson<{ companies: CompanyOption[] }>("/api/companies?limit=200"),
     ]);
-    if (!peopleRes.ok) {
-      setError("Failed to load people");
+    if (!peoplePayload) {
       return;
     }
-    const peoplePayload = (await peopleRes.json()) as { contacts: Person[] };
     setPeople(peoplePayload.contacts);
-    if (companiesRes.ok) {
-      const companiesPayload = (await companiesRes.json()) as { companies: CompanyOption[] };
+    if (companiesPayload) {
       setCompanies(companiesPayload.companies);
     }
   }, [query]);
@@ -293,66 +275,81 @@ export default function PeoplePage() {
     setDrawerOpen(true);
   }
 
-  async function patchPerson(body: Record<string, unknown>) {
-    if (!selectedId) {
+  async function savePerson(body: Record<string, unknown>) {
+    setError("");
+    setStatus("");
+    if (selectedId) {
+      const response = await fetch(`/api/contacts/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+        setError(payload?.error?.message ?? "Failed to save person");
+        return;
+      }
+      setStatus("Saved.");
+      await load();
       return;
     }
-    setError("");
-    const response = await fetch(`/api/contacts/${selectedId}`, {
-      method: "PATCH",
+
+    const merged = {
+      ...editor,
+      ...(typeof body.first_name === "string" ? { first_name: body.first_name } : {}),
+      ...(typeof body.last_name === "string" ? { last_name: body.last_name } : {}),
+      ...(typeof body.email === "string" ? { email: body.email } : {}),
+      ...(typeof body.phone === "string" ? { phone: body.phone } : {}),
+      ...(typeof body.title === "string" ? { title: body.title } : {}),
+      ...(typeof body.city === "string" ? { city: body.city } : {}),
+      ...(typeof body.website === "string" ? { website: body.website } : {}),
+      ...(typeof body.notes === "string" ? { notes: body.notes } : {}),
+      ...(body.source !== undefined ? { source: typeof body.source === "string" ? body.source : "" } : {}),
+      ...(body.company_id !== undefined
+        ? { company_id: typeof body.company_id === "string" ? body.company_id : "" }
+        : {}),
+    };
+
+    const detailsError = firstContactDetailsError({
+      first_name: merged.first_name,
+      last_name: merged.last_name,
+      email: merged.email,
+      phone: merged.phone,
+      title: merged.title,
+      website: merged.website,
+    });
+    if (detailsError) {
+      return;
+    }
+
+    const response = await fetch("/api/contacts", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        first_name: merged.first_name,
+        last_name: merged.last_name,
+        email: merged.email,
+        phone: merged.phone || undefined,
+        title: merged.title || undefined,
+        city: merged.city || undefined,
+        website: merged.website || undefined,
+        notes: merged.notes || undefined,
+        source: merged.source || undefined,
+        company_id: merged.company_id || null,
+        company_name:
+          companies.find((company) => company.id === merged.company_id)?.name ||
+          merged.company_name ||
+          undefined,
+      }),
     });
     if (!response.ok) {
       const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
       setError(payload?.error?.message ?? "Failed to save person");
       return;
     }
-    await load();
-  }
-
-  async function createPerson() {
-    setError("");
-    const detailsError = firstContactDetailsError({
-      first_name: editor.first_name,
-      last_name: editor.last_name,
-      email: editor.email,
-      phone: editor.phone,
-      title: editor.title,
-      website: editor.website,
-    });
-    if (detailsError) {
-      setError(detailsError);
-      return;
-    }
-    setCreating(true);
-    const response = await fetch("/api/contacts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        first_name: editor.first_name,
-        last_name: editor.last_name,
-        email: editor.email,
-        phone: editor.phone || undefined,
-        title: editor.title || undefined,
-        city: editor.city || undefined,
-        website: editor.website || undefined,
-        notes: editor.notes || undefined,
-        source: editor.source || undefined,
-        company_id: editor.company_id || null,
-        company_name:
-          companies.find((company) => company.id === editor.company_id)?.name || editor.company_name || undefined,
-      }),
-    });
-    setCreating(false);
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
-      setError(payload?.error?.message ?? "Failed to create person");
-      return;
-    }
     const payload = (await response.json()) as { contact: Person };
-    setStatus("Person created.");
     setSelectedId(payload.contact.id);
+    setStatus("Saved.");
     await load();
   }
 
@@ -373,7 +370,7 @@ export default function PeoplePage() {
             placeholder: "First name",
             onChange: (value) => setEditor((current) => ({ ...current, first_name: value })),
             validate: (value) => validatePersonName(value, "First name"),
-            onCommit: (value) => void patchPerson({ first_name: value }),
+            onCommit: (value) => void savePerson({ first_name: value }),
           },
           {
             id: "last_name",
@@ -384,7 +381,7 @@ export default function PeoplePage() {
             placeholder: "Last name",
             onChange: (value) => setEditor((current) => ({ ...current, last_name: value })),
             validate: (value) => validatePersonName(value, "Last name"),
-            onCommit: (value) => void patchPerson({ last_name: value }),
+            onCommit: (value) => void savePerson({ last_name: value }),
           },
           {
             id: "email",
@@ -397,7 +394,7 @@ export default function PeoplePage() {
             inputType: "email",
             onChange: (value) => setEditor((current) => ({ ...current, email: value })),
             validate: (value) => validateEmail(value),
-            onCommit: (value) => void patchPerson({ email: value }),
+            onCommit: (value) => void savePerson({ email: value }),
           },
           {
             id: "phone",
@@ -410,7 +407,7 @@ export default function PeoplePage() {
             inputType: "tel",
             onChange: (value) => setEditor((current) => ({ ...current, phone: value })),
             validate: (value) => validatePhone(value),
-            onCommit: (value) => void patchPerson({ phone: value }),
+            onCommit: (value) => void savePerson({ phone: value }),
           },
           {
             id: "title",
@@ -421,7 +418,7 @@ export default function PeoplePage() {
             placeholder: "Title",
             onChange: (value) => setEditor((current) => ({ ...current, title: value })),
             validate: (value) => validateTitle(value),
-            onCommit: (value) => void patchPerson({ title: value }),
+            onCommit: (value) => void savePerson({ title: value }),
           },
         ],
       },
@@ -430,13 +427,30 @@ export default function PeoplePage() {
         label: "Organization",
         fields: [
           {
-            id: "org_name",
+            id: "company_id",
             icon: "company",
             label: "Organization",
-            value: linkedCompany?.name ?? editor.company_name,
+            showLabel: false,
+            type: "select",
+            value: editor.company_id,
             placeholder: "Organization",
-            readOnly: true,
-            onChange: () => undefined,
+            options: [
+              { value: "", label: "None" },
+              ...companies.map((company) => ({ value: company.id, label: company.name })),
+            ],
+            onChange: (value) =>
+              setEditor((current) => ({
+                ...current,
+                company_id: value,
+                company_name: companies.find((company) => company.id === value)?.name ?? "",
+              })),
+            onCommit: (value) => {
+              const company = companies.find((item) => item.id === value);
+              void savePerson({
+                company_id: value || null,
+                company_name: company?.name ?? null,
+              });
+            },
           },
           {
             id: "org_address",
@@ -445,7 +459,7 @@ export default function PeoplePage() {
             value: linkedCompany?.city ?? editor.city,
             placeholder: "Address",
             onChange: (value) => setEditor((current) => ({ ...current, city: value })),
-            onCommit: (value) => void patchPerson({ city: value }),
+            onCommit: (value) => void savePerson({ city: value }),
           },
           {
             id: "org_website",
@@ -456,7 +470,7 @@ export default function PeoplePage() {
             onChange: (value) => setEditor((current) => ({ ...current, website: value })),
             inputType: "url",
             validate: (value) => validateWebsite(value),
-            onCommit: (value) => void patchPerson({ website: value }),
+            onCommit: (value) => void savePerson({ website: value }),
           },
           {
             id: "org_industry",
@@ -503,12 +517,12 @@ export default function PeoplePage() {
             placeholder: "Select source",
             options: contactSourceOptions(editor.source),
             onChange: (value) => setEditor((current) => ({ ...current, source: value })),
-            onCommit: (value) => void patchPerson({ source: value || null }),
+            onCommit: (value) => void savePerson({ source: value || null }),
           },
         ],
       },
     ],
-    [currentUserName, editor, linkedCompany, selected, selectedId],
+    [companies, currentUserName, editor, linkedCompany, selected, selectedId],
   );
 
   return (
@@ -554,7 +568,7 @@ export default function PeoplePage() {
             setError(nameError);
             return;
           }
-          void patchPerson(names);
+          void savePerson(names);
         }}
         onClose={() => {
           setDrawerOpen(false);
@@ -564,9 +578,7 @@ export default function PeoplePage() {
         notes={editor.notes}
         onNotesSave={(value) => {
           setEditor((current) => ({ ...current, notes: value }));
-          if (selectedId) {
-            void patchPerson({ notes: value });
-          }
+          void savePerson({ notes: value });
         }}
         onNotesChange={(value) => setEditor((current) => ({ ...current, notes: value }))}
         crmRecord={
@@ -585,9 +597,6 @@ export default function PeoplePage() {
         }
         error={drawerOpen ? error : undefined}
         status={status}
-        createLabel="Create person"
-        onCreate={selectedId ? undefined : () => void createPerson()}
-        creating={creating}
       />
     </div>
   );
