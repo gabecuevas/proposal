@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 
 import { createPortal } from "react-dom";
 import { cn } from "@repo/ui/utils";
 import { ActivityPanel, type CrmActivityLinks } from "@/components/crm/activity-panel";
-import type { CrmActivityRecord } from "@/lib/crm/activities";
+import type { CrmActivityRecord } from "@/lib/crm/activity-shared";
 import { formatGridDateTime } from "@/lib/ui/datetime";
 
 export type DrawerFieldType = "text" | "select";

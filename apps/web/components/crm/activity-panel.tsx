@@ -8,7 +8,7 @@ import {
   CRM_ACTIVITY_TYPES,
   activityTypeLabel,
   type CrmActivityRecord,
-} from "@/lib/crm/activities";
+} from "@/lib/crm/activity-shared";
 import { ActivityDayCalendar } from "./activity-day-calendar";
 
 export type CrmActivityLinks = {

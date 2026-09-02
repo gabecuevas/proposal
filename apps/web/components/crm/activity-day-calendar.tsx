@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@repo/ui/utils";
-import type { CrmActivityRecord } from "@/lib/crm/activities";
-import { activityTypeLabel } from "@/lib/crm/activities";
+import { activityTypeLabel, type CrmActivityRecord } from "@/lib/crm/activity-shared";
 
 const HOUR_HEIGHT = 44;
 
