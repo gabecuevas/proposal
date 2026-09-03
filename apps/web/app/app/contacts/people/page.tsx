@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { CrmDataGrid, type CrmGridColumn } from "@/components/crm/data-grid";
 import { CrmRecordDrawer, type DrawerSection } from "@/components/crm/record-drawer";
-import { contactSourceOptions } from "@/lib/crm/contact-sources";
+import { contactSourceOptions, contactSourceLabel } from "@/lib/crm/contact-sources";
 import { fetchJson } from "@/lib/crm/fetch-with-auth";
 import { splitContactName } from "@/lib/crm/split-contact-name";
 import {
@@ -15,6 +16,15 @@ import {
   validateWebsite,
 } from "@/lib/crm/contact-field-validation";
 import { formatGridDate, formatGridDateTime } from "@/lib/ui/datetime";
+import {
+  formatAddressDisplay,
+  type AddressValues,
+} from "@/lib/crm/address";
+import { normalizeWebsite } from "@/lib/crm/website";
+import {
+  resolveCompanyAssociation,
+  type CompanySearchResult,
+} from "@/lib/crm/resolve-company-association";
 
 type Person = {
   id: string;
@@ -26,8 +36,10 @@ type Person = {
   company_name: string | null;
   company_id: string | null;
   title: string | null;
+  address_line_1: string | null;
   city: string | null;
   state: string | null;
+  postal_code: string | null;
   country: string | null;
   website: string | null;
   notes: string | null;
@@ -54,11 +66,23 @@ type Editor = {
   title: string;
   company_id: string;
   company_name: string;
+  address_line_1: string;
   city: string;
+  state: string;
+  postal_code: string;
   website: string;
   notes: string;
   source: string;
 };
+
+function editorAddress(editor: Editor): AddressValues {
+  return {
+    address_line_1: editor.address_line_1,
+    city: editor.city,
+    state: editor.state,
+    postal_code: editor.postal_code,
+  };
+}
 
 const emptyEditor = (): Editor => ({
   first_name: "",
@@ -68,7 +92,10 @@ const emptyEditor = (): Editor => ({
   title: "",
   company_id: "",
   company_name: "",
+  address_line_1: "",
   city: "",
+  state: "",
+  postal_code: "",
   website: "",
   notes: "",
   source: "",
@@ -99,13 +126,6 @@ const PEOPLE_COLUMNS: CrmGridColumn<Person>[] = [
     cell: (person) => <ContactLink>{person.full_name}</ContactLink>,
   },
   {
-    id: "company",
-    label: "Organization",
-    width: 180,
-    sortValue: (person) => person.company_name,
-    cell: (person) => (person.company_name ? <ContactLink>{person.company_name}</ContactLink> : null),
-  },
-  {
     id: "email",
     label: "Email",
     width: 240,
@@ -113,11 +133,39 @@ const PEOPLE_COLUMNS: CrmGridColumn<Person>[] = [
     cell: (person) => <LabeledValue value={person.email} hint="Work" />,
   },
   {
+    id: "company",
+    label: "Company",
+    width: 180,
+    sortValue: (person) => person.company_name,
+    cell: (person) => (person.company_name ? <ContactLink>{person.company_name}</ContactLink> : null),
+  },
+  {
     id: "phone",
     label: "Phone",
     width: 180,
     sortValue: (person) => person.phone,
     cell: (person) => <LabeledValue value={person.phone} hint="Work" />,
+  },
+  {
+    id: "owner",
+    label: "Owner",
+    width: 160,
+    sortValue: (person) => person.added_by_name,
+    cell: (person) => person.added_by_name || null,
+  },
+  {
+    id: "created",
+    label: "Date Created",
+    width: 140,
+    sortValue: (person) => person.created_at,
+    cell: (person) => formatGridDate(person.created_at),
+  },
+  {
+    id: "source",
+    label: "Source",
+    width: 140,
+    sortValue: (person) => person.source,
+    cell: (person) => contactSourceLabel(person.source) || null,
   },
   {
     id: "title",
@@ -168,14 +216,6 @@ const PEOPLE_COLUMNS: CrmGridColumn<Person>[] = [
     cell: (person) => (person.tags?.length ? person.tags.join(", ") : null),
   },
   {
-    id: "created",
-    label: "Created",
-    defaultVisible: false,
-    width: 180,
-    sortValue: (person) => person.created_at,
-    cell: (person) => formatGridDateTime(person.created_at),
-  },
-  {
     id: "updated",
     label: "Updated",
     defaultVisible: false,
@@ -186,6 +226,8 @@ const PEOPLE_COLUMNS: CrmGridColumn<Person>[] = [
 ];
 
 export default function PeoplePage() {
+  const searchParams = useSearchParams();
+  const openedFromQueryRef = useRef<string | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [query, setQuery] = useState("");
@@ -194,6 +236,7 @@ export default function PeoplePage() {
   const [editor, setEditor] = useState<Editor>(emptyEditor);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [saving, setSaving] = useState(false);
   const [currentUserName, setCurrentUserName] = useState("");
 
   const load = useCallback(async () => {
@@ -257,7 +300,10 @@ export default function PeoplePage() {
       title: person.title ?? "",
       company_id: person.company_id ?? "",
       company_name: person.company_name ?? "",
+      address_line_1: person.address_line_1 ?? "",
       city: person.city ?? "",
+      state: person.state ?? "",
+      postal_code: person.postal_code ?? "",
       website: person.website ?? "",
       notes: person.notes ?? "",
       source: person.source ?? "",
@@ -266,6 +312,19 @@ export default function PeoplePage() {
     setError("");
     setDrawerOpen(true);
   }
+
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId || openedFromQueryRef.current === openId || people.length === 0) {
+      return;
+    }
+    const person = people.find((item) => item.id === openId);
+    if (!person) {
+      return;
+    }
+    openedFromQueryRef.current = openId;
+    openPerson(person);
+  }, [people, searchParams]);
 
   function openNew() {
     setSelectedId("");
@@ -302,8 +361,11 @@ export default function PeoplePage() {
       ...(typeof body.email === "string" ? { email: body.email } : {}),
       ...(typeof body.phone === "string" ? { phone: body.phone } : {}),
       ...(typeof body.title === "string" ? { title: body.title } : {}),
+      ...(typeof body.address_line_1 === "string" ? { address_line_1: body.address_line_1 } : {}),
       ...(typeof body.city === "string" ? { city: body.city } : {}),
-      ...(typeof body.website === "string" ? { website: body.website } : {}),
+      ...(typeof body.state === "string" ? { state: body.state } : {}),
+      ...(typeof body.postal_code === "string" ? { postal_code: body.postal_code } : {}),
+      ...(typeof body.website === "string" ? { website: normalizeWebsite(body.website) } : {}),
       ...(typeof body.notes === "string" ? { notes: body.notes } : {}),
       ...(body.source !== undefined ? { source: typeof body.source === "string" ? body.source : "" } : {}),
       ...(body.company_id !== undefined
@@ -332,7 +394,10 @@ export default function PeoplePage() {
         email: merged.email,
         phone: merged.phone || undefined,
         title: merged.title || undefined,
+        address_line_1: merged.address_line_1 || undefined,
         city: merged.city || undefined,
+        state: merged.state || undefined,
+        postal_code: merged.postal_code || undefined,
         website: merged.website || undefined,
         notes: merged.notes || undefined,
         source: merged.source || undefined,
@@ -356,7 +421,136 @@ export default function PeoplePage() {
     [selectedId, editor, companies, load],
   );
 
+  function personPayloadFromEditor(current: Editor): Record<string, unknown> {
+    return {
+      first_name: current.first_name,
+      last_name: current.last_name,
+      email: current.email,
+      phone: current.phone || undefined,
+      title: current.title || undefined,
+      address_line_1: current.address_line_1 || undefined,
+      city: current.city || undefined,
+      state: current.state || undefined,
+      postal_code: current.postal_code || undefined,
+      website: current.website ? normalizeWebsite(current.website) : undefined,
+      notes: current.notes || undefined,
+      source: current.source || undefined,
+      company_id: current.company_id || null,
+      company_name:
+        companies.find((company) => company.id === current.company_id)?.name ||
+        current.company_name ||
+        undefined,
+    };
+  }
+
+  async function savePersonRecord() {
+    const validationError = firstContactDetailsError({
+      first_name: editor.first_name,
+      last_name: editor.last_name,
+      email: editor.email,
+      phone: editor.phone,
+      title: editor.title,
+      website: editor.website,
+    });
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setStatus("");
+    const payload = personPayloadFromEditor(editor);
+    try {
+      if (selectedId) {
+        const response = await fetch(`/api/contacts/${selectedId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+          setError(body?.error?.message ?? "Failed to save person");
+          return;
+        }
+        await load();
+        setDrawerOpen(false);
+        setError("");
+        setStatus("");
+        return;
+      }
+      const response = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+        setError(body?.error?.message ?? "Failed to save person");
+        return;
+      }
+      await load();
+      setDrawerOpen(false);
+      setError("");
+      setStatus("");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const linkedCompany = companies.find((company) => company.id === editor.company_id);
+
+  const ensureCompanyOption = useCallback((company: CompanySearchResult) => {
+    setCompanies((current) =>
+      current.some((item) => item.id === company.id) ? current : [...current, company],
+    );
+  }, []);
+
+  const commitCompanyAssociation = useCallback(
+    async (name: string, companyId: string) => {
+      const resolved = await resolveCompanyAssociation(name, companyId);
+      if (resolved.company) {
+        ensureCompanyOption(resolved.company);
+      }
+      setEditor((current) => ({
+        ...current,
+        company_id: resolved.company_id ?? "",
+        company_name: resolved.company_name ?? "",
+      }));
+      void savePerson({
+        company_id: resolved.company_id,
+        company_name: resolved.company_name,
+      });
+    },
+    [ensureCompanyOption, savePerson],
+  );
+
+  const commitAddress = useCallback(
+    (address: AddressValues) => {
+      setEditor((current) => ({
+        ...current,
+        address_line_1: address.address_line_1,
+        city: address.city,
+        state: address.state,
+        postal_code: address.postal_code,
+      }));
+      void savePerson({
+        address_line_1: address.address_line_1 || null,
+        city: address.city || null,
+        state: address.state || null,
+        postal_code: address.postal_code || null,
+      });
+    },
+    [savePerson],
+  );
+
+  const commitWebsite = useCallback(
+    (value: string) => {
+      const website = normalizeWebsite(value);
+      setEditor((current) => ({ ...current, website }));
+      void savePerson({ website: website || null });
+    },
+    [savePerson],
+  );
 
   const sections: DrawerSection[] = useMemo(
     () => [
@@ -426,54 +620,62 @@ export default function PeoplePage() {
         ],
       },
       {
-        id: "organization",
-        label: "Organization",
+        id: "company",
+        label: "Company",
         fields: [
           {
-            id: "company_id",
+            id: "company",
             icon: "company",
-            label: "Organization",
+            label: "Company",
             showLabel: false,
-            type: "select",
-            value: editor.company_id,
-            placeholder: "Organization",
-            options: [
-              { value: "", label: "None" },
-              ...companies.map((company) => ({ value: company.id, label: company.name })),
-            ],
-            onChange: (value) =>
-              setEditor((current) => ({
-                ...current,
-                company_id: value,
-                company_name: companies.find((company) => company.id === value)?.name ?? "",
-              })),
-            onCommit: (value) => {
-              const company = companies.find((item) => item.id === value);
-              void savePerson({
-                company_id: value || null,
-                company_name: company?.name ?? null,
-              });
+            type: "company-search",
+            value: editor.company_name || linkedCompany?.name || "",
+            companyId: editor.company_id,
+            placeholder: "Company",
+            onChange: (value) => setEditor((current) => ({ ...current, company_name: value })),
+            onCompanySelect: (company) => {
+              if (company) {
+                ensureCompanyOption(company);
+                setEditor((current) => ({
+                  ...current,
+                  company_id: company.id,
+                  company_name: company.name,
+                }));
+                return;
+              }
+              setEditor((current) => ({ ...current, company_id: "" }));
             },
+            onCommit: (value) => void commitCompanyAssociation(value, editor.company_id),
           },
           {
             id: "org_address",
             icon: "pin",
             label: "Address",
-            value: linkedCompany?.city ?? editor.city,
+            type: "address",
+            value: formatAddressDisplay(editorAddress(editor)),
             placeholder: "Address",
-            onChange: (value) => setEditor((current) => ({ ...current, city: value })),
-            onCommit: (value) => void savePerson({ city: value }),
+            address: editorAddress(editor),
+            onChange: () => undefined,
+            onAddressChange: (address) =>
+              setEditor((current) => ({
+                ...current,
+                address_line_1: address.address_line_1,
+                city: address.city,
+                state: address.state,
+                postal_code: address.postal_code,
+              })),
+            onAddressCommit: (address) => void commitAddress(address),
           },
           {
             id: "org_website",
             icon: "web",
             label: "Website",
-            value: linkedCompany?.website ?? editor.website,
-            placeholder: "Website",
+            type: "website",
+            value: editor.website,
+            placeholder: "www.example.com",
             onChange: (value) => setEditor((current) => ({ ...current, website: value })),
-            inputType: "url",
             validate: (value) => validateWebsite(value),
-            onCommit: (value) => void savePerson({ website: value }),
+            onCommit: (value) => void commitWebsite(value),
           },
           {
             id: "org_industry",
@@ -525,14 +727,14 @@ export default function PeoplePage() {
         ],
       },
     ],
-    [companies, currentUserName, editor, linkedCompany, selected, selectedId, savePerson],
+    [commitAddress, commitCompanyAssociation, commitWebsite, companies, currentUserName, editor, ensureCompanyOption, linkedCompany, selected, selectedId, savePerson],
   );
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <h1 className="sr-only">People</h1>
       <CrmDataGrid
-        storageKey="crm-grid-people-v2"
+        storageKey="crm-grid-people-v3"
         columns={PEOPLE_COLUMNS}
         rows={people}
         getRowId={(person) => person.id}
@@ -600,6 +802,11 @@ export default function PeoplePage() {
         }
         error={drawerOpen ? error : undefined}
         status={status}
+        footerSave={{
+          label: selectedId ? "Save" : "Save person",
+          saving,
+          onSave: () => void savePersonRecord(),
+        }}
       />
     </div>
   );

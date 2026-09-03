@@ -1,42 +1,19 @@
 import { prisma, type CrmActivityAvailability, type CrmActivityPriority, type CrmActivityType } from "@repo/db";
+import {
+  type CrmActivityRecord,
+} from "./activity-shared";
 import { userDisplayName } from "./display-name";
 import { writeTimelineEvent } from "./timeline";
 
-export type CrmActivityRecord = {
-  id: string;
-  workspace_id: string;
-  created_by_user_id: string;
-  assignee_user_id: string | null;
-  contact_id: string | null;
-  lead_id: string | null;
-  company_id: string | null;
-  activity_type: CrmActivityType;
-  subject: string;
-  description: string | null;
-  location: string | null;
-  video_call_url: string | null;
-  notes: string | null;
-  priority: CrmActivityPriority | null;
-  availability: CrmActivityAvailability;
-  due_at: string | null;
-  end_at: string | null;
-  completed_at: string | null;
-  created_at: string;
-  updated_at: string;
-  assignee_name: string | null;
-  created_by_name: string | null;
-};
-
-export const CRM_ACTIVITY_TYPES: CrmActivityType[] = [
-  "CALL",
-  "MEETING",
-  "TASK",
-  "DEADLINE",
-  "EMAIL",
-  "LUNCH",
-];
-
-export const CRM_ACTIVITY_PRIORITIES: CrmActivityPriority[] = ["LOW", "MEDIUM", "HIGH"];
+export {
+  CRM_ACTIVITY_PRIORITIES,
+  CRM_ACTIVITY_TYPES,
+  activityTypeLabel,
+  type CrmActivityRecord,
+  type CrmActivityAvailability,
+  type CrmActivityPriority,
+  type CrmActivityType,
+} from "./activity-shared";
 
 function parseActivity(row: {
   id: string;
@@ -61,6 +38,14 @@ function parseActivity(row: {
   updated_at: Date;
   created_by?: { name: string; email: string } | null;
   assignee?: { name: string; email: string } | null;
+  contact?: {
+    full_name: string;
+    email: string;
+    phone: string | null;
+    company_name: string | null;
+  } | null;
+  lead?: { title: string; full_name: string | null; email: string | null; phone: string | null; company_name: string | null } | null;
+  company?: { name: string } | null;
 }): CrmActivityRecord {
   return {
     id: row.id,
@@ -85,12 +70,20 @@ function parseActivity(row: {
     updated_at: row.updated_at.toISOString(),
     created_by_name: userDisplayName(row.created_by),
     assignee_name: userDisplayName(row.assignee),
+    contact_name: row.contact?.full_name ?? row.lead?.full_name ?? null,
+    contact_email: row.contact?.email ?? row.lead?.email ?? null,
+    contact_phone: row.contact?.phone ?? row.lead?.phone ?? null,
+    lead_title: row.lead?.title ?? null,
+    company_name: row.company?.name ?? row.contact?.company_name ?? row.lead?.company_name ?? null,
   };
 }
 
 const activityInclude = {
   created_by: { select: { name: true, email: true } },
   assignee: { select: { name: true, email: true } },
+  contact: { select: { full_name: true, email: true, phone: true, company_name: true } },
+  lead: { select: { title: true, full_name: true, email: true, phone: true, company_name: true } },
+  company: { select: { name: true } },
 } as const;
 
 export type CreateActivityInput = {
@@ -210,10 +203,43 @@ export async function updateActivity(
     companyId: row.company_id,
     activityId: row.id,
     eventType: markDone && !existing.completed_at ? "ACTIVITY_COMPLETED" : "ACTIVITY_UPDATED",
-    summary: markDone && !existing.completed_at ? `${row.subject} completed` : `${row.subject} updated`,
+    summary:
+      markDone && !existing.completed_at
+        ? `Completed: ${row.subject}`
+        : `Updated: ${row.subject}`,
   });
 
   return parseActivity(row);
+}
+
+export async function deleteActivity(
+  activityId: string,
+  workspaceId: string,
+  actorUserId: string,
+): Promise<boolean> {
+  const existing = await prisma.crmActivity.findFirst({
+    where: { id: activityId, workspace_id: workspaceId },
+  });
+  if (!existing) {
+    return false;
+  }
+
+  await writeTimelineEvent({
+    workspaceId,
+    actorUserId,
+    contactId: existing.contact_id,
+    leadId: existing.lead_id,
+    companyId: existing.company_id,
+    activityId: existing.id,
+    eventType: "ACTIVITY_DELETED",
+    summary: `Deleted: ${existing.subject}`,
+  });
+
+  await prisma.crmActivity.delete({
+    where: { id: existing.id },
+  });
+
+  return true;
 }
 
 export async function listActivitiesForRecord(
@@ -238,19 +264,25 @@ export async function listActivitiesForDay(
   dayStart: Date,
   dayEnd: Date,
   assigneeUserId?: string,
+  options?: { openOnly?: boolean },
 ): Promise<CrmActivityRecord[]> {
   const rows = await prisma.crmActivity.findMany({
     where: {
       workspace_id: workspaceId,
       assignee_user_id: assigneeUserId || undefined,
-      due_at: { gte: dayStart, lt: dayEnd },
+      completed_at: options?.openOnly ? null : undefined,
+      OR: [
+        { due_at: { gte: dayStart, lt: dayEnd } },
+        {
+          AND: [
+            { due_at: { lt: dayStart } },
+            { end_at: { gt: dayStart } },
+          ],
+        },
+      ],
     },
     orderBy: [{ due_at: "asc" }],
     include: activityInclude,
   });
   return rows.map(parseActivity);
-}
-
-export function activityTypeLabel(type: CrmActivityType): string {
-  return type.charAt(0) + type.slice(1).toLowerCase();
 }

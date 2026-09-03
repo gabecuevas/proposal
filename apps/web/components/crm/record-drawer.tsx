@@ -3,11 +3,22 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@repo/ui/utils";
+import type { CrmActivityRecord } from "@/lib/crm/activity-shared";
 import { ActivityPanel, type CrmActivityLinks } from "@/components/crm/activity-panel";
-import type { CrmActivityRecord } from "@/lib/crm/activities";
-import { formatGridDateTime } from "@/lib/ui/datetime";
+import { CrmFocusHistory } from "@/components/crm/crm-focus-history";
+import { CrmNotesEditor } from "@/components/crm/crm-notes-editor";
+import { AddressFieldsInput } from "@/components/crm/address-fields-input";
+import { CompanySearchInput } from "@/components/crm/company-search-input";
+import type { CompanySearchResult } from "@/lib/crm/resolve-company-association";
+import {
+  emptyAddress,
+  formatAddressDisplay,
+  type AddressValues,
+} from "@/lib/crm/address";
+import { isNoteOverLimit, normalizeNoteHtml } from "@/lib/crm/notes-html";
+import { normalizeWebsite, websiteHref } from "@/lib/crm/website";
 
-export type DrawerFieldType = "text" | "select";
+export type DrawerFieldType = "text" | "select" | "company-search" | "address" | "website";
 
 export type DrawerField = {
   id: string;
@@ -20,6 +31,11 @@ export type DrawerField = {
   type?: DrawerFieldType;
   inputType?: "text" | "email" | "tel" | "url";
   options?: Array<{ value: string; label: string }>;
+  companyId?: string;
+  onCompanySelect?: (company: CompanySearchResult | null) => void;
+  address?: AddressValues;
+  onAddressChange?: (value: AddressValues) => void;
+  onAddressCommit?: (value: AddressValues) => void;
   readOnly?: boolean;
   validate?: (value: string) => string | null;
   onChange: (value: string) => void;
@@ -38,7 +54,7 @@ export type DrawerHistoryItem = {
   title: string;
   at: string;
   detail?: string;
-  kind?: "note" | "created" | "change";
+  kind?: "note" | "created" | "change" | "activity";
   actorName?: string;
 };
 
@@ -49,7 +65,6 @@ export type CrmRecordContext = {
 };
 
 type ActivityTab = "activity" | "notes" | "call" | "email" | "files" | "documents";
-type HistoryFilter = "all" | "notes" | "changelog";
 
 type CrmRecordDrawerProps = {
   open: boolean;
@@ -72,6 +87,12 @@ type CrmRecordDrawerProps = {
     label?: string;
     onSave: () => void;
     saving?: boolean;
+    menuActions?: Array<{
+      id: string;
+      label: string;
+      onSelect: () => void;
+      disabled?: boolean;
+    }>;
   };
 };
 
@@ -255,13 +276,38 @@ function FieldEditActions({
 }
 
 function fieldDisplayValue(field: DrawerField): string {
+  if (field.type === "address") {
+    return formatAddressDisplay(field.address);
+  }
   if (field.type === "select") {
     if (!field.value) {
       return "";
     }
     return field.options?.find((option) => option.value === field.value)?.label ?? field.value;
   }
+  if (field.type === "website") {
+    return field.value ? normalizeWebsite(field.value) : "";
+  }
   return field.value;
+}
+
+function WebsiteLink({ value }: { value: string }) {
+  const display = normalizeWebsite(value);
+  const href = websiteHref(display);
+  if (!display) {
+    return null;
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="font-medium text-primary hover:underline"
+      onClick={(event) => event.stopPropagation()}
+    >
+      {display}
+    </a>
+  );
 }
 
 const FIELD_LABEL_CLASS = "w-[5.25rem] shrink-0 pt-1.5 text-[13px] leading-tight text-foreground";
@@ -288,15 +334,50 @@ function FieldRowIcon({ field }: { field: DrawerField }) {
 function FieldRow({ field }: { field: DrawerField }) {
   const [editing, setEditing] = useState(false);
   const [draftValue, setDraftValue] = useState(field.value);
+  const [draftAddress, setDraftAddress] = useState<AddressValues>(field.address ?? emptyAddress());
   const [attemptedSave, setAttemptedSave] = useState(false);
+  const initialValueRef = useRef(field.value);
+  const initialAddressRef = useRef<AddressValues>(field.address ?? emptyAddress());
+  const initialCompanyRef = useRef<CompanySearchResult | null>(null);
+  const isCompanySearch = field.type === "company-search";
+  const isAddress = field.type === "address";
+  const isWebsite = field.type === "website";
 
   useEffect(() => {
     if (!editing) {
       setDraftValue(field.value);
+      setDraftAddress(field.address ?? emptyAddress());
     }
-  }, [field.value, editing]);
+  }, [field.address, field.value, editing]);
 
-  const error = editing && attemptedSave ? (field.validate?.(draftValue) ?? null) : null;
+  function updateDraftValue(next: string) {
+    setDraftValue(next);
+    field.onChange(next);
+    if (isCompanySearch && field.companyId) {
+      const linkedName = initialCompanyRef.current?.name ?? field.value;
+      if (next.trim().toLowerCase() !== linkedName.trim().toLowerCase()) {
+        field.onCompanySelect?.(null);
+      }
+    }
+  }
+
+  function selectCompany(company: CompanySearchResult) {
+    setDraftValue(company.name);
+    field.onChange(company.name);
+    field.onCompanySelect?.(company);
+  }
+
+  function updateDraftAddress(next: AddressValues) {
+    setDraftAddress(next);
+    field.onAddressChange?.(next);
+  }
+
+  const error =
+    editing && attemptedSave
+      ? isAddress
+        ? null
+        : (field.validate?.(isWebsite ? normalizeWebsite(draftValue) : draftValue) ?? null)
+      : null;
   const showError = Boolean(error);
   const inputClass = cn(
     "h-8 w-full rounded-none border bg-white px-2 outline-none focus:ring-2",
@@ -312,25 +393,45 @@ function FieldRow({ field }: { field: DrawerField }) {
     if (!canEdit) {
       return;
     }
+    initialValueRef.current = field.value;
+    initialAddressRef.current = field.address ?? emptyAddress();
+    initialCompanyRef.current =
+      field.companyId && field.value
+        ? { id: field.companyId, name: field.value }
+        : null;
     setDraftValue(field.value);
+    setDraftAddress(field.address ?? emptyAddress());
     setAttemptedSave(false);
     setEditing(true);
   }
 
   function cancelEditing() {
-    setDraftValue(field.value);
+    field.onChange(initialValueRef.current);
+    field.onAddressChange?.(initialAddressRef.current);
+    field.onCompanySelect?.(initialCompanyRef.current);
+    setDraftValue(initialValueRef.current);
+    setDraftAddress(initialAddressRef.current);
     setAttemptedSave(false);
     setEditing(false);
   }
 
   function saveEditing() {
     setAttemptedSave(true);
-    const nextError = field.validate?.(draftValue) ?? null;
+    if (isAddress) {
+      field.onAddressChange?.(draftAddress);
+      field.onAddressCommit?.(draftAddress);
+      setAttemptedSave(false);
+      setEditing(false);
+      return;
+    }
+    const nextValue = isWebsite ? normalizeWebsite(draftValue) : draftValue;
+    const nextError = field.validate?.(nextValue) ?? null;
     if (nextError) {
       return;
     }
-    field.onChange(draftValue);
-    field.onCommit?.(draftValue);
+    setDraftValue(nextValue);
+    field.onChange(nextValue);
+    field.onCommit?.(nextValue);
     setAttemptedSave(false);
     setEditing(false);
   }
@@ -353,7 +454,7 @@ function FieldRow({ field }: { field: DrawerField }) {
               value={draftValue}
               aria-label={field.label}
               aria-invalid={showError}
-              onChange={(event) => setDraftValue(event.target.value)}
+              onChange={(event) => updateDraftValue(event.target.value)}
             >
               <option value="">{field.placeholder}</option>
               {field.options?.map((option) => (
@@ -362,18 +463,46 @@ function FieldRow({ field }: { field: DrawerField }) {
                 </option>
               ))}
             </select>
+          ) : field.type === "company-search" ? (
+            <CompanySearchInput
+              value={draftValue}
+              placeholder={field.placeholder}
+              className={inputClass}
+              onValueChange={updateDraftValue}
+              onCompanySelect={selectCompany}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  saveEditing();
+                }
+                if (event.key === "Escape") {
+                  cancelEditing();
+                }
+              }}
+            />
+          ) : field.type === "address" ? (
+            <AddressFieldsInput value={draftAddress} onChange={updateDraftAddress} />
           ) : (
             <input
               autoFocus
-              type={field.inputType === "url" ? "text" : (field.inputType ?? "text")}
-              autoComplete={field.inputType === "email" ? "email" : field.inputType === "tel" ? "tel" : "off"}
-              inputMode={field.inputType === "email" ? "email" : field.inputType === "tel" ? "tel" : undefined}
+              type="text"
+              autoComplete={
+                field.inputType === "email"
+                  ? "email"
+                  : field.inputType === "tel"
+                    ? "tel"
+                    : isWebsite
+                      ? "url"
+                      : "off"
+              }
+              inputMode={
+                field.inputType === "email" ? "email" : field.inputType === "tel" ? "tel" : undefined
+              }
               className={inputClass}
               value={draftValue}
               placeholder={field.placeholder}
               aria-invalid={showError}
               aria-label={field.label}
-              onChange={(event) => setDraftValue(event.target.value)}
+              onChange={(event) => updateDraftValue(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   saveEditing();
@@ -415,8 +544,19 @@ function FieldRow({ field }: { field: DrawerField }) {
           role={canEdit ? "button" : undefined}
           tabIndex={canEdit ? 0 : undefined}
         >
-          <span className={cn("min-w-0 truncate", FIELD_TEXT_CLASS, displayValue ? "text-foreground" : "text-muted")}>
-            {displayValue || field.placeholder}
+          <span
+            className={cn(
+              "min-w-0",
+              isAddress ? "whitespace-pre-wrap" : "truncate",
+              FIELD_TEXT_CLASS,
+              displayValue ? "text-foreground" : "text-muted",
+            )}
+          >
+            {isWebsite && field.value ? (
+              <WebsiteLink value={field.value} />
+            ) : (
+              displayValue || field.placeholder
+            )}
             {field.hint && field.value ? <span className="ml-1 text-muted">({field.hint})</span> : null}
           </span>
           {canEdit ? (
@@ -541,23 +681,24 @@ export function CrmRecordDrawer({
 }: CrmRecordDrawerProps) {
   const titleId = useId();
   const [tab, setTab] = useState<ActivityTab>("notes");
-  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
   const [draftNotes, setDraftNotes] = useState(notes);
   const savedNotesRef = useRef(notes);
-  const [focusOpen, setFocusOpen] = useState(true);
-  const [historyOpen, setHistoryOpen] = useState(true);
+  const titleDirtyRef = useRef(false);
+  const [footerMenuOpen, setFooterMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const [entered, setEntered] = useState(false);
   const [timelineHistory, setTimelineHistory] = useState<DrawerHistoryItem[]>([]);
-  const [upcomingActivities, setUpcomingActivities] = useState<CrmActivityRecord[]>([]);
+  const [openActivities, setOpenActivities] = useState<CrmActivityRecord[]>([]);
+  const [notesEditorKey, setNotesEditorKey] = useState(0);
+  const [editingActivity, setEditingActivity] = useState<CrmActivityRecord | null>(null);
 
   const loadCrmData = useCallback(async () => {
     if (!crmRecord?.id) {
       setTimelineHistory([]);
-      setUpcomingActivities([]);
+      setOpenActivities([]);
       return;
     }
     const timelineParams = new URLSearchParams();
@@ -582,12 +723,7 @@ export function CrmRecordDrawer({
     }
     if (activitiesRes.ok) {
       const payload = (await activitiesRes.json()) as { activities?: CrmActivityRecord[] };
-      const now = Date.now();
-      setUpcomingActivities(
-        (payload.activities ?? []).filter(
-          (activity) => !activity.completed_at && activity.due_at && new Date(activity.due_at).getTime() >= now,
-        ),
-      );
+      setOpenActivities((payload.activities ?? []).filter((activity) => !activity.completed_at));
     }
   }, [crmRecord]);
 
@@ -622,15 +758,17 @@ export function CrmRecordDrawer({
     savedNotesRef.current = notes;
     setDraftNotes(notes);
     setTab("notes");
-    setHistoryFilter("all");
     setDraftTitle(title);
     setEditingTitle(!title);
+    titleDirtyRef.current = false;
+    setFooterMenuOpen(false);
+    setEditingActivity(null);
     // Reset editor chrome when switching records, not on each keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- recordKey/open are the record identity
   }, [recordKey, open]);
 
   useEffect(() => {
-    if (!editingTitle) {
+    if (!editingTitle || !titleDirtyRef.current) {
       setDraftTitle(title);
     }
   }, [title, editingTitle]);
@@ -652,18 +790,10 @@ export function CrmRecordDrawer({
     return null;
   }
 
-  const notesChanged = draftNotes !== savedNotesRef.current;
+  const notesChanged =
+    normalizeNoteHtml(draftNotes) !== normalizeNoteHtml(savedNotesRef.current);
   const isPerson = variant === "person";
   const activeHistory = crmRecord?.id ? timelineHistory : (history ?? []);
-  const visibleHistory = activeHistory.filter((item) => {
-    if (historyFilter === "notes") {
-      return item.kind === "note" || Boolean(item.detail);
-    }
-    if (historyFilter === "changelog") {
-      return item.kind === "created" || item.kind === "change";
-    }
-    return true;
-  });
   const tabs: Array<{ id: ActivityTab; label: string }> = isPerson
     ? [
         { id: "activity", label: "Activity" },
@@ -695,11 +825,11 @@ export function CrmRecordDrawer({
         role="dialog"
         aria-labelledby={titleId}
         className={cn(
-          "relative flex h-full w-full max-w-[76rem] bg-surface shadow-[-12px_0_32px_rgba(15,23,42,0.12)] transition-transform duration-200 ease-out",
+          "relative flex h-full w-full max-w-[88rem] bg-surface shadow-[-12px_0_32px_rgba(15,23,42,0.12)] transition-transform duration-200 ease-out",
           entered ? "translate-x-0" : "translate-x-full",
         )}
       >
-        <div className="flex w-[26rem] shrink-0 flex-col border-r border-border">
+        <div className="flex w-[21rem] shrink-0 flex-col border-r border-border">
           <div className="flex items-center gap-2 border-b border-border px-3.5 py-3">
             {isPerson ? (
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-[15px] font-semibold text-primary-foreground">
@@ -716,15 +846,18 @@ export function CrmRecordDrawer({
                   placeholder={titlePlaceholder}
                   onChange={(event) => {
                     const next = event.target.value;
+                    titleDirtyRef.current = true;
                     setDraftTitle(next);
                     onTitleChange(next);
                   }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       onTitleCommit?.(draftTitle);
+                      titleDirtyRef.current = false;
                       setEditingTitle(false);
                     }
                     if (event.key === "Escape") {
+                      titleDirtyRef.current = false;
                       setDraftTitle(title);
                       onTitleChange(title);
                       setEditingTitle(false);
@@ -733,12 +866,14 @@ export function CrmRecordDrawer({
                 />
                 <FieldEditActions
                   onCancel={() => {
+                    titleDirtyRef.current = false;
                     setDraftTitle(title);
                     onTitleChange(title);
                     setEditingTitle(false);
                   }}
                   onSave={() => {
                     onTitleCommit?.(draftTitle);
+                    titleDirtyRef.current = false;
                     setEditingTitle(false);
                   }}
                 />
@@ -810,15 +945,52 @@ export function CrmRecordDrawer({
             })}
           </div>
           {footerSave ? (
-            <div className="shrink-0 border-t border-border px-3.5 py-3">
-              <button
-                type="button"
-                disabled={footerSave.saving}
-                onClick={footerSave.onSave}
-                className="w-full rounded-md bg-primary px-3 py-2 text-[15px] font-medium text-primary-foreground disabled:opacity-60"
-              >
-                {footerSave.label ?? "Save"}
-              </button>
+            <div className="relative shrink-0 border-t border-border px-3.5 py-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={footerSave.saving}
+                  onClick={footerSave.onSave}
+                  className="min-w-0 flex-1 rounded-md bg-primary px-3 py-2 text-[15px] font-medium text-primary-foreground disabled:opacity-60"
+                >
+                  {footerSave.label ?? "Save"}
+                </button>
+                {footerSave.menuActions && footerSave.menuActions.length > 0 ? (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      aria-label="More actions"
+                      disabled={footerSave.saving}
+                      onClick={() => setFooterMenuOpen((value) => !value)}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-white text-foreground hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                        <circle cx="8" cy="3" r="1.5" />
+                        <circle cx="8" cy="8" r="1.5" />
+                        <circle cx="8" cy="13" r="1.5" />
+                      </svg>
+                    </button>
+                    {footerMenuOpen ? (
+                      <div className="absolute bottom-full right-0 z-20 mb-1 min-w-[11rem] rounded-md border border-border bg-white py-1 shadow-lg">
+                        {footerSave.menuActions.map((action) => (
+                          <button
+                            key={action.id}
+                            type="button"
+                            disabled={action.disabled || footerSave.saving}
+                            onClick={() => {
+                              setFooterMenuOpen(false);
+                              action.onSelect();
+                            }}
+                            className="block w-full px-3 py-2 text-left text-sm text-foreground hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            {action.label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             </div>
           ) : null}
         </div>
@@ -827,7 +999,16 @@ export function CrmRecordDrawer({
           <div className="flex items-center justify-between border-b border-border px-3">
             <div className="flex min-w-0 overflow-x-auto">
               {tabs.map((item) => (
-                <TabButton key={item.id} active={tab === item.id} onClick={() => setTab(item.id)}>
+                <TabButton
+                  key={item.id}
+                  active={tab === item.id}
+                  onClick={() => {
+                    if (item.id !== "activity") {
+                      setEditingActivity(null);
+                    }
+                    setTab(item.id);
+                  }}
+                >
                   {item.label}
                 </TabButton>
               ))}
@@ -842,48 +1023,53 @@ export function CrmRecordDrawer({
             {status ? <p className="mb-3 text-sm text-emerald-700">{status}</p> : null}
 
             {tab === "notes" ? (
-              <div className="rounded-md border border-border bg-slate-100">
-                <textarea
-                  className="min-h-[120px] w-full resize-y bg-transparent px-3 py-2 text-sm outline-none"
-                  value={draftNotes}
-                  onChange={(event) => {
-                    setDraftNotes(event.target.value);
-                    onNotesChange?.(event.target.value);
-                  }}
-                  placeholder="Write a note…"
-                />
-                <div className="flex justify-end gap-2 border-t border-border px-3 py-2">
-                  <button
-                    type="button"
-                    disabled={!notesChanged}
-                    onClick={() => {
-                      setDraftNotes(savedNotesRef.current);
-                      onNotesChange?.(savedNotesRef.current);
-                    }}
-                    className="rounded-md px-3 py-1.5 text-sm text-muted hover:bg-white disabled:opacity-40"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!notesChanged}
-                    onClick={() => {
-                      savedNotesRef.current = draftNotes;
-                      onNotesSave(draftNotes);
-                    }}
-                    className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-40"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
+              <CrmNotesEditor
+                contentKey={`${recordKey}-${notesEditorKey}`}
+                value={draftNotes}
+                onChange={(html) => {
+                  setDraftNotes(html);
+                  onNotesChange?.(html);
+                }}
+                onReady={(html) => {
+                  savedNotesRef.current = html;
+                  setDraftNotes(html);
+                }}
+                showActions
+                dirty={notesChanged}
+                onCancel={() => {
+                  setDraftNotes(savedNotesRef.current);
+                  onNotesChange?.(savedNotesRef.current);
+                  setNotesEditorKey((key) => key + 1);
+                }}
+                onSave={() => {
+                  const next = normalizeNoteHtml(draftNotes);
+                  if (isNoteOverLimit(next)) {
+                    return;
+                  }
+                  savedNotesRef.current = next;
+                  setDraftNotes(next);
+                  onNotesSave(next);
+                }}
+                placeholder="Write a note…"
+              />
             ) : null}
 
             {tab === "activity" ? (
               <ActivityPanel
+                key={editingActivity?.id ?? "new-activity"}
                 links={crmRecord?.links ?? {}}
                 recordSaved={Boolean(crmRecord?.id)}
-                onSaved={() => void loadCrmData()}
+                editingActivity={editingActivity}
+                onCancelEdit={() => setEditingActivity(null)}
+                onSaved={(result) => {
+                  void loadCrmData();
+                  setEditingActivity(null);
+                  if (result.mode === "create") {
+                    onClose();
+                  } else {
+                    setTab("notes");
+                  }
+                }}
               />
             ) : null}
             {tab === "call" ? (
@@ -899,97 +1085,18 @@ export function CrmRecordDrawer({
               <p className="py-8 text-center text-sm text-muted">No documents yet.</p>
             ) : null}
 
-            <section className="mt-6">
-              <button
-                type="button"
-                onClick={() => setFocusOpen((value) => !value)}
-                className="flex w-full items-center justify-between text-left"
-              >
-                <h3 className="text-sm font-semibold">Focus</h3>
-                <span className={cn("text-muted transition-transform", focusOpen ? "rotate-180" : "")}>
-                  ▾
-                </span>
-              </button>
-              {focusOpen ? (
-                upcomingActivities.length === 0 ? (
-                  <p className="mt-2 text-sm text-muted">No upcoming activity.</p>
-                ) : (
-                  <ul className="mt-2 space-y-2">
-                    {upcomingActivities.map((activity) => (
-                      <li key={activity.id} className="rounded border border-border bg-slate-50 px-3 py-2 text-sm">
-                        <p className="font-medium text-foreground">{activity.subject}</p>
-                        <p className="text-xs text-muted">
-                          {activity.due_at ? formatGridDateTime(activity.due_at) : "Unscheduled"}
-                          {activity.assignee_name ? ` · ${activity.assignee_name}` : ""}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                )
-              ) : null}
-            </section>
-
-            <section className="mt-6">
-              <button
-                type="button"
-                onClick={() => setHistoryOpen((value) => !value)}
-                className="flex w-full items-center justify-between text-left"
-              >
-                <h3 className="text-sm font-semibold">History</h3>
-                <span className={cn("text-muted transition-transform", historyOpen ? "rotate-180" : "")}>
-                  ▾
-                </span>
-              </button>
-              {historyOpen ? (
-                <div className="mt-3">
-                  {isPerson ? (
-                    <div className="mb-3 flex flex-wrap gap-1">
-                      {(
-                        [
-                          ["all", "All"],
-                          ["notes", "Notes"],
-                          ["changelog", "Changelog"],
-                        ] as const
-                      ).map(([id, label]) => (
-                        <button
-                          key={id}
-                          type="button"
-                          onClick={() => setHistoryFilter(id)}
-                          className={cn(
-                            "rounded-full px-2.5 py-1 text-xs",
-                            historyFilter === id
-                              ? "bg-primary/10 font-medium text-primary"
-                              : "text-muted hover:bg-slate-100",
-                          )}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                <ol className="space-y-3 border-l border-border pl-4">
-                  {visibleHistory.length === 0 ? (
-                    <li className="text-sm text-muted">No history yet.</li>
-                  ) : (
-                    visibleHistory.map((item) => (
-                      <li key={item.id} className="text-sm">
-                        {item.detail ? (
-                          <div className="rounded-md border border-border bg-slate-100 px-3 py-2 text-foreground">
-                            {item.detail}
-                          </div>
-                        ) : null}
-                        <p className={cn("text-foreground", item.detail && "mt-1")}>{item.title}</p>
-                        <p className="text-xs text-muted">
-                          {formatGridDateTime(item.at)}
-                          {item.actorName ? ` · ${item.actorName}` : ""}
-                        </p>
-                      </li>
-                    ))
-                  )}
-                </ol>
-                </div>
-              ) : null}
-            </section>
+            <CrmFocusHistory
+              links={crmRecord?.links ?? {}}
+              activities={openActivities}
+              history={activeHistory}
+              onActivityChanged={() => {
+                void loadCrmData();
+              }}
+              onEditActivity={(activity) => {
+                setEditingActivity(activity);
+                setTab("activity");
+              }}
+            />
           </div>
         </div>
       </aside>

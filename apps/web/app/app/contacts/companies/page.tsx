@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { CrmDataGrid, type CrmGridColumn } from "@/components/crm/data-grid";
 import { CrmRecordDrawer, type DrawerSection } from "@/components/crm/record-drawer";
 import {
@@ -10,6 +11,8 @@ import {
 } from "@/lib/crm/contact-field-validation";
 import { fetchJson } from "@/lib/crm/fetch-with-auth";
 import { formatGridDate, formatGridDateTime } from "@/lib/ui/datetime";
+import { formatAddressDisplay, type AddressValues } from "@/lib/crm/address";
+import { normalizeWebsite } from "@/lib/crm/website";
 
 type Company = {
   id: string;
@@ -18,8 +21,10 @@ type Company = {
   phone: string | null;
   email: string | null;
   industry: string | null;
+  address_line_1: string | null;
   city: string | null;
   state: string | null;
+  postal_code: string | null;
   country: string | null;
   notes: string | null;
   people_count: number;
@@ -34,9 +39,21 @@ type Editor = {
   phone: string;
   email: string;
   industry: string;
+  address_line_1: string;
   city: string;
+  state: string;
+  postal_code: string;
   notes: string;
 };
+
+function editorAddress(editor: Editor): AddressValues {
+  return {
+    address_line_1: editor.address_line_1,
+    city: editor.city,
+    state: editor.state,
+    postal_code: editor.postal_code,
+  };
+}
 
 const emptyEditor = (): Editor => ({
   name: "",
@@ -44,7 +61,10 @@ const emptyEditor = (): Editor => ({
   phone: "",
   email: "",
   industry: "",
+  address_line_1: "",
   city: "",
+  state: "",
+  postal_code: "",
   notes: "",
 });
 
@@ -137,6 +157,8 @@ const COMPANY_COLUMNS: CrmGridColumn<Company>[] = [
 ];
 
 export default function CompaniesPage() {
+  const searchParams = useSearchParams();
+  const openedFromQueryRef = useRef<string | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState("");
@@ -144,6 +166,7 @@ export default function CompaniesPage() {
   const [editor, setEditor] = useState<Editor>(emptyEditor);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [saving, setSaving] = useState(false);
   const [currentUserName, setCurrentUserName] = useState("");
 
   const load = useCallback(async () => {
@@ -205,13 +228,29 @@ export default function CompaniesPage() {
       phone: company.phone ?? "",
       email: company.email ?? "",
       industry: company.industry ?? "",
+      address_line_1: company.address_line_1 ?? "",
       city: company.city ?? "",
+      state: company.state ?? "",
+      postal_code: company.postal_code ?? "",
       notes: company.notes ?? "",
     });
     setStatus("");
     setError("");
     setDrawerOpen(true);
   }
+
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId || openedFromQueryRef.current === openId || companies.length === 0) {
+      return;
+    }
+    const company = companies.find((item) => item.id === openId);
+    if (!company) {
+      return;
+    }
+    openedFromQueryRef.current = openId;
+    openCompany(company);
+  }, [companies, searchParams]);
 
   function openNew() {
     setSelectedId("");
@@ -243,11 +282,14 @@ export default function CompaniesPage() {
     const merged = {
       ...editor,
       ...(typeof body.name === "string" ? { name: body.name } : {}),
-      ...(typeof body.website === "string" ? { website: body.website } : {}),
+      ...(typeof body.website === "string" ? { website: normalizeWebsite(body.website) } : {}),
       ...(typeof body.phone === "string" ? { phone: body.phone } : {}),
       ...(typeof body.email === "string" ? { email: body.email } : {}),
       ...(typeof body.industry === "string" ? { industry: body.industry } : {}),
+      ...(typeof body.address_line_1 === "string" ? { address_line_1: body.address_line_1 } : {}),
       ...(typeof body.city === "string" ? { city: body.city } : {}),
+      ...(typeof body.state === "string" ? { state: body.state } : {}),
+      ...(typeof body.postal_code === "string" ? { postal_code: body.postal_code } : {}),
       ...(typeof body.notes === "string" ? { notes: body.notes } : {}),
     };
 
@@ -264,7 +306,10 @@ export default function CompaniesPage() {
         phone: merged.phone || undefined,
         email: merged.email || undefined,
         industry: merged.industry || undefined,
+        address_line_1: merged.address_line_1 || undefined,
         city: merged.city || undefined,
+        state: merged.state || undefined,
+        postal_code: merged.postal_code || undefined,
         notes: merged.notes || undefined,
       }),
     });
@@ -278,6 +323,93 @@ export default function CompaniesPage() {
     await load();
     },
     [selectedId, editor, load],
+  );
+
+  function companyPayloadFromEditor(current: Editor): Record<string, unknown> {
+    return {
+      name: current.name,
+      website: current.website ? normalizeWebsite(current.website) : undefined,
+      phone: current.phone || undefined,
+      email: current.email || undefined,
+      industry: current.industry || undefined,
+      address_line_1: current.address_line_1 || undefined,
+      city: current.city || undefined,
+      state: current.state || undefined,
+      postal_code: current.postal_code || undefined,
+      notes: current.notes || undefined,
+    };
+  }
+
+  async function saveCompanyRecord() {
+    if (!editor.name.trim()) {
+      setError("Company name is required");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setStatus("");
+    const payload = companyPayloadFromEditor(editor);
+    try {
+      if (selectedId) {
+        const response = await fetch(`/api/companies/${selectedId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          setError("Failed to save company");
+          return;
+        }
+        await load();
+        setDrawerOpen(false);
+        setError("");
+        setStatus("");
+        return;
+      }
+      const response = await fetch("/api/companies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        setError("Failed to save company");
+        return;
+      }
+      await load();
+      setDrawerOpen(false);
+      setError("");
+      setStatus("");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const commitAddress = useCallback(
+    (address: AddressValues) => {
+      setEditor((current) => ({
+        ...current,
+        address_line_1: address.address_line_1,
+        city: address.city,
+        state: address.state,
+        postal_code: address.postal_code,
+      }));
+      void saveCompany({
+        address_line_1: address.address_line_1 || null,
+        city: address.city || null,
+        state: address.state || null,
+        postal_code: address.postal_code || null,
+      });
+    },
+    [saveCompany],
+  );
+
+  const commitWebsite = useCallback(
+    (value: string) => {
+      const website = normalizeWebsite(value);
+      setEditor((current) => ({ ...current, website }));
+      void saveCompany({ website: website || null });
+    },
+    [saveCompany],
   );
 
   const sections: DrawerSection[] = useMemo(
@@ -315,37 +447,47 @@ export default function CompaniesPage() {
         ],
       },
       {
-        id: "organization",
-        label: "Organization",
+        id: "company",
+        label: "Company",
         fields: [
           {
             id: "org_name",
             icon: "company",
-            label: "Organization",
+            label: "Company",
             value: editor.name,
-            placeholder: "Organization",
-            readOnly: true,
-            onChange: () => undefined,
+            placeholder: "Company",
+            onChange: (value) => setEditor((current) => ({ ...current, name: value })),
+            onCommit: (value) => void saveCompany({ name: value }),
           },
           {
             id: "org_address",
             icon: "pin",
             label: "Address",
-            value: editor.city,
+            type: "address",
+            value: formatAddressDisplay(editorAddress(editor)),
             placeholder: "Address",
-            onChange: (value) => setEditor((current) => ({ ...current, city: value })),
-            onCommit: (value) => void saveCompany({ city: value }),
+            address: editorAddress(editor),
+            onChange: () => undefined,
+            onAddressChange: (address) =>
+              setEditor((current) => ({
+                ...current,
+                address_line_1: address.address_line_1,
+                city: address.city,
+                state: address.state,
+                postal_code: address.postal_code,
+              })),
+            onAddressCommit: (address) => void commitAddress(address),
           },
           {
             id: "org_website",
             icon: "web",
             label: "Website",
+            type: "website",
             value: editor.website,
-            placeholder: "Website",
+            placeholder: "www.example.com",
             onChange: (value) => setEditor((current) => ({ ...current, website: value })),
-            inputType: "url",
             validate: (value) => validateWebsite(value),
-            onCommit: (value) => void saveCompany({ website: value }),
+            onCommit: (value) => void commitWebsite(value),
           },
           {
             id: "org_industry",
@@ -396,7 +538,7 @@ export default function CompaniesPage() {
         ],
       },
     ],
-    [currentUserName, editor, selected, selectedId, saveCompany],
+    [commitAddress, commitWebsite, currentUserName, editor, selected, selectedId, saveCompany],
   );
 
   return (
@@ -454,6 +596,11 @@ export default function CompaniesPage() {
         }
         error={drawerOpen ? error : undefined}
         status={status}
+        footerSave={{
+          label: selectedId ? "Save" : "Save company",
+          saving,
+          onSave: () => void saveCompanyRecord(),
+        }}
       />
     </div>
   );

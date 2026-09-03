@@ -7,7 +7,7 @@ import {
   listActivitiesForRecord,
   type CreateActivityInput,
 } from "@/lib/crm/activities";
-import type { CrmActivityAvailability, CrmActivityPriority, CrmActivityType } from "@repo/db";
+import type { CrmActivityAvailability, CrmActivityPriority, CrmActivityType } from "@repo/db/types";
 
 function parseActivityType(value: unknown): CrmActivityType | null {
   const types: CrmActivityType[] = ["CALL", "MEETING", "TASK", "DEADLINE", "EMAIL", "LUNCH"];
@@ -54,13 +54,29 @@ export async function GET(request: NextRequest) {
   const companyId = url.searchParams.get("companyId") ?? undefined;
   const date = url.searchParams.get("date") ?? undefined;
   const assigneeUserId = url.searchParams.get("assigneeUserId") ?? undefined;
+  const fromParam = url.searchParams.get("from");
+  const toParam = url.searchParams.get("to");
+  const openOnly = url.searchParams.get("openOnly") === "1";
 
-  if (date) {
-    const bounds = dayBounds(date);
+  if (date || (fromParam && toParam)) {
+    const from = fromParam ? new Date(fromParam) : null;
+    const to = toParam ? new Date(toParam) : null;
+    const bounds =
+      from && to && !Number.isNaN(from.getTime()) && !Number.isNaN(to.getTime())
+        ? { start: from, end: to }
+        : date
+          ? dayBounds(date)
+          : null;
     if (!bounds) {
       return errorResponse(request, { status: 400, code: "invalid_date", message: "Invalid date" });
     }
-    const activities = await listActivitiesForDay(auth.workspaceId, bounds.start, bounds.end, assigneeUserId);
+    const activities = await listActivitiesForDay(
+      auth.workspaceId,
+      bounds.start,
+      bounds.end,
+      assigneeUserId,
+      { openOnly },
+    );
     return jsonWithRequestId(request, { activities });
   }
 

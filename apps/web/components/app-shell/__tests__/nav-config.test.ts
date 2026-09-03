@@ -39,6 +39,11 @@ describe("top nav and contacts", () => {
 
   it("lists CRM views in the Contacts sidebar", () => {
     const contacts = appSections.find((section) => section.id === "contacts")!;
-    expect(contacts.items.map((item) => item.label)).toEqual(["Leads", "People", "Companies"]);
+    expect(contacts.items.map((item) => item.label)).toEqual([
+      "Leads",
+      "People",
+      "Companies",
+      "Calendar",
+    ]);
   });
 });

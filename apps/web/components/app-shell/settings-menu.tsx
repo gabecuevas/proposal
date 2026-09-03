@@ -20,6 +20,7 @@ const menuGroups = [
   ],
   [
     { label: "All users", href: "/app/settings/users" },
+    { label: "Calendar Sync", href: "/app/settings/integrations/calendar" },
     { label: "Billing", href: "/app/settings/billing" },
   ],
 ];

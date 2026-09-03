@@ -359,6 +359,7 @@ enum CrmTimelineEventType {
   ACTIVITY_CREATED
   ACTIVITY_UPDATED
   ACTIVITY_COMPLETED
+  ACTIVITY_DELETED
 }
 
 model CrmActivity {

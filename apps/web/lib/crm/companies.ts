@@ -104,6 +104,8 @@ function companySnapshot(row: {
   website: string | null;
   phone: string | null;
   email: string | null;
+  address_line_1: string | null;
+  address_line_2: string | null;
   city: string | null;
   state: string | null;
   postal_code: string | null;
@@ -116,6 +118,8 @@ function companySnapshot(row: {
     website: row.website,
     phone: row.phone,
     email: row.email,
+    address_line_1: row.address_line_1,
+    address_line_2: row.address_line_2,
     city: row.city,
     state: row.state,
     postal_code: row.postal_code,

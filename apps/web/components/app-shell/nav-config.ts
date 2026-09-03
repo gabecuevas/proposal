@@ -12,7 +12,7 @@ export type CountKey =
   | "people"
   | "companies";
 
-export type SidebarIconId = DocumentCountKey | "leads" | "people" | "companies";
+export type SidebarIconId = DocumentCountKey | "leads" | "people" | "companies" | "calendar";
 
 export type AppNavItem = {
   label: string;
@@ -97,6 +97,7 @@ export const appSections: AppSection[] = [
       { label: "Leads", href: "/app/contacts/leads", countKey: "leads", icon: "leads" },
       { label: "People", href: "/app/contacts/people", countKey: "people", icon: "people" },
       { label: "Companies", href: "/app/contacts/companies", countKey: "companies", icon: "companies" },
+      { label: "Calendar", href: "/app/contacts/calendar", icon: "calendar" },
     ],
   },
   {
@@ -110,6 +111,7 @@ export const appSections: AppSection[] = [
       { label: "Workspace", href: "/app/settings" },
       { label: "Integrations", href: "/app/settings/integrations" },
       { label: "All users", href: "/app/settings/users" },
+      { label: "Calendar Sync", href: "/app/settings/integrations/calendar" },
       { label: "Billing", href: "/app/settings/billing" },
       { label: "Analytics", href: "/app/analytics" },
       { label: "Compliance", href: "/app/settings#compliance" },

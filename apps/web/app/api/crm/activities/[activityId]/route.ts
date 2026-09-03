@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
-import { updateActivity } from "@/lib/crm/activities";
-import type { CrmActivityAvailability, CrmActivityPriority, CrmActivityType } from "@repo/db";
+import { deleteActivity, updateActivity } from "@/lib/crm/activities";
+import type { CrmActivityAvailability, CrmActivityPriority, CrmActivityType } from "@repo/db/types";
 
 type Params = { params: Promise<{ activityId: string }> };
 
@@ -39,4 +39,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Activity not found" }, { status: 404 });
   }
   return NextResponse.json({ activity });
+}
+
+export async function DELETE(request: NextRequest, { params }: Params) {
+  const auth = await getRequestAuthContext(request);
+  assertRole(auth, "MEMBER");
+  const { activityId } = await params;
+  const deleted = await deleteActivity(activityId, auth.workspaceId, auth.userId);
+  if (!deleted) {
+    return NextResponse.json({ error: "Activity not found" }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true });
 }

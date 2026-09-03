@@ -1,9 +1,10 @@
 import { prisma, type InputJsonValue } from "@repo/db";
+import { createContact, updateContact, type ContactRecord } from "@/lib/contacts/store";
 import { leadContactDetailsError } from "./contact-field-validation";
 import { LEAD_STATUSES, type LeadStatus } from "./lead-status";
 import { LEAD_FIELD_LABELS } from "./field-labels";
 import { userDisplayName } from "./display-name";
-import { recordFieldChanges, recordRecordCreated } from "./timeline";
+import { recordFieldChanges, recordRecordCreated, writeTimelineEvent } from "./timeline";
 
 export { LEAD_STATUSES, type LeadStatus };
 
@@ -398,6 +399,113 @@ export async function updateLead(
   }
 
   return parseLead(row);
+}
+
+export async function convertLeadToContact(
+  leadId: string,
+  workspaceId: string,
+  actorUserId: string,
+): Promise<{ lead: LeadRecord; contact: ContactRecord; activitiesMoved: number } | null> {
+  const existing = await prisma.lead.findFirst({
+    where: { id: leadId, workspace_id: workspaceId },
+    include: leadInclude,
+  });
+  if (!existing) {
+    return null;
+  }
+
+  if (existing.status === "CONVERTED" && existing.person_id) {
+    throw new LeadValidationError("This lead was already converted to a contact.");
+  }
+
+  const detailsError = leadContactDetailsError({
+    first_name: existing.first_name,
+    last_name: existing.last_name,
+    email: existing.email,
+    phone: existing.phone,
+    contact_title: existing.contact_title,
+    website: existing.website,
+  });
+  if (detailsError) {
+    throw new LeadValidationError(detailsError);
+  }
+
+  const contactPayload = {
+    first_name: existing.first_name!.trim(),
+    last_name: existing.last_name!.trim(),
+    email: existing.email!.trim(),
+    phone: existing.phone ?? undefined,
+    company_name: existing.company?.name ?? existing.company_name ?? undefined,
+    title: existing.contact_title ?? undefined,
+    address_line_1: existing.address_line_1 ?? undefined,
+    address_line_2: existing.address_line_2 ?? undefined,
+    city: existing.city ?? undefined,
+    state: existing.state ?? undefined,
+    postal_code: existing.postal_code ?? undefined,
+    country: existing.country ?? undefined,
+    website: existing.website ?? undefined,
+    notes: existing.notes ?? undefined,
+    company_id: existing.company_id ?? null,
+    source: existing.source ?? undefined,
+    tags: Array.isArray(existing.tags) ? (existing.tags as string[]) : undefined,
+  };
+
+  let contact: ContactRecord;
+  if (existing.person_id) {
+    const updated = await updateContact(existing.person_id, workspaceId, contactPayload, {
+      actorUserId,
+    });
+    if (!updated) {
+      throw new LeadValidationError("Linked person could not be found.");
+    }
+    contact = updated;
+  } else {
+    contact = await createContact({
+      workspaceId,
+      ownerUserId: actorUserId,
+      ...contactPayload,
+      company_id: existing.company_id ?? undefined,
+    });
+  }
+
+  const moved = await prisma.crmActivity.updateMany({
+    where: {
+      workspace_id: workspaceId,
+      lead_id: leadId,
+      completed_at: null,
+    },
+    data: {
+      contact_id: contact.id,
+    },
+  });
+
+  const row = await prisma.lead.update({
+    where: { id: leadId },
+    data: {
+      status: "CONVERTED",
+      person_id: contact.id,
+    },
+    include: leadInclude,
+  });
+
+  const contactLabel = contact.full_name || `${contact.first_name} ${contact.last_name}`.trim();
+  await writeTimelineEvent({
+    workspaceId,
+    actorUserId,
+    leadId,
+    contactId: contact.id,
+    eventType: "RECORD_CREATED",
+    summary: "Lead → Contact",
+    fieldKey: "converted_to_contact",
+    fieldLabel: "Conversion",
+    newValue: contactLabel,
+  });
+
+  return {
+    lead: parseLead(row),
+    contact,
+    activitiesMoved: moved.count,
+  };
 }
 
 export async function countLeads(workspaceId: string): Promise<number> {

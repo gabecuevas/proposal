@@ -25,6 +25,7 @@ export default function LoginPage() {
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({ email, password }),
     });
 
@@ -47,6 +48,7 @@ export default function LoginPage() {
     const response = await fetch("/api/auth/dev-bootstrap", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
     });
 
     if (!response.ok) {

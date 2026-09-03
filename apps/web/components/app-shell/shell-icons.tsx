@@ -338,6 +338,15 @@ export function IconCompanies({ className }: { className?: string }) {
   );
 }
 
+export function IconCalendar({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <rect x="3.5" y="5" width="17" height="15" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M8 3.5v3M16 3.5v3M3.5 9.5h17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </StatusIcon>
+  );
+}
+
 export function IconSignOut({ className }: { className?: string }) {
   return (
     <StatusIcon className={className}>
@@ -357,6 +366,7 @@ export const sidebarIcons = {
   leads: IconLeads,
   people: IconPeople,
   companies: IconCompanies,
+  calendar: IconCalendar,
 } as const;
 
 export function IconLibrary({ className }: { className?: string }) {

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { CrmDataGrid, type CrmGridColumn } from "@/components/crm/data-grid";
 import { CrmRecordDrawer, type DrawerSection } from "@/components/crm/record-drawer";
 import {
@@ -11,11 +12,20 @@ import {
   validateTitle,
   validateWebsite,
 } from "@/lib/crm/contact-field-validation";
-import { contactSourceOptions } from "@/lib/crm/contact-sources";
+import { contactSourceOptions, contactSourceLabel } from "@/lib/crm/contact-sources";
 import { LEAD_STATUSES, type LeadStatus } from "@/lib/crm/lead-status";
 import { fetchJson } from "@/lib/crm/fetch-with-auth";
 import { splitContactName } from "@/lib/crm/split-contact-name";
 import { formatGridDate, formatGridDateTime, formatMinorCurrency } from "@/lib/ui/datetime";
+import {
+  resolveCompanyAssociation,
+  type CompanySearchResult,
+} from "@/lib/crm/resolve-company-association";
+import {
+  formatAddressDisplay,
+  type AddressValues,
+} from "@/lib/crm/address";
+import { normalizeWebsite } from "@/lib/crm/website";
 
 type Lead = {
   id: string;
@@ -33,8 +43,10 @@ type Lead = {
   phone: string | null;
   company_name: string | null;
   contact_title: string | null;
+  address_line_1: string | null;
   city: string | null;
   state: string | null;
+  postal_code: string | null;
   country: string | null;
   website: string | null;
   notes: string | null;
@@ -66,10 +78,22 @@ type Editor = {
   email: string;
   phone: string;
   contact_title: string;
+  address_line_1: string;
   city: string;
+  state: string;
+  postal_code: string;
   website: string;
   notes: string;
 };
+
+function editorAddress(editor: Editor): AddressValues {
+  return {
+    address_line_1: editor.address_line_1,
+    city: editor.city,
+    state: editor.state,
+    postal_code: editor.postal_code,
+  };
+}
 
 const emptyEditor = (): Editor => ({
   title: "",
@@ -84,7 +108,10 @@ const emptyEditor = (): Editor => ({
   email: "",
   phone: "",
   contact_title: "",
+  address_line_1: "",
   city: "",
+  state: "",
+  postal_code: "",
   website: "",
   notes: "",
 });
@@ -135,36 +162,15 @@ function dollarsToMinor(value: string): number | null {
 
 const LEAD_COLUMNS: CrmGridColumn<Lead>[] = [
   {
-    id: "title",
-    label: "Lead",
-    required: true,
-    width: 200,
-    sortValue: (lead) => lead.title,
-    cell: (lead) => <ContactLink>{lead.title}</ContactLink>,
-  },
-  {
     id: "name",
     label: "Name",
-    width: 180,
+    required: true,
+    width: 200,
     sortValue: (lead) => lead.full_name ?? lead.person_name,
     cell: (lead) => {
       const name = lead.full_name ?? lead.person_name;
       return name ? <ContactLink>{name}</ContactLink> : null;
     },
-  },
-  {
-    id: "company",
-    label: "Organization",
-    width: 180,
-    sortValue: (lead) => lead.company_name,
-    cell: (lead) => (lead.company_name ? <ContactLink>{lead.company_name}</ContactLink> : null),
-  },
-  {
-    id: "status",
-    label: "Status",
-    width: 130,
-    sortValue: (lead) => lead.status,
-    cell: (lead) => <span className={statusClass(lead.status)}>{formatStatus(lead.status)}</span>,
   },
   {
     id: "email",
@@ -174,11 +180,47 @@ const LEAD_COLUMNS: CrmGridColumn<Lead>[] = [
     cell: (lead) => <LabeledValue value={lead.email} hint="Work" />,
   },
   {
+    id: "company",
+    label: "Company",
+    width: 180,
+    sortValue: (lead) => lead.company_name,
+    cell: (lead) => (lead.company_name ? <ContactLink>{lead.company_name}</ContactLink> : null),
+  },
+  {
     id: "phone",
     label: "Phone",
     width: 180,
     sortValue: (lead) => lead.phone,
     cell: (lead) => <LabeledValue value={lead.phone} hint="Work" />,
+  },
+  {
+    id: "owner",
+    label: "Owner",
+    width: 160,
+    sortValue: (lead) => lead.added_by_name,
+    cell: (lead) => lead.added_by_name || null,
+  },
+  {
+    id: "created",
+    label: "Date Created",
+    width: 140,
+    sortValue: (lead) => lead.created_at,
+    cell: (lead) => formatGridDate(lead.created_at),
+  },
+  {
+    id: "source",
+    label: "Source",
+    width: 140,
+    sortValue: (lead) => lead.source,
+    cell: (lead) => contactSourceLabel(lead.source) || null,
+  },
+  {
+    id: "status",
+    label: "Status",
+    defaultVisible: false,
+    width: 130,
+    sortValue: (lead) => lead.status,
+    cell: (lead) => <span className={statusClass(lead.status)}>{formatStatus(lead.status)}</span>,
   },
   {
     id: "contact_title",
@@ -221,14 +263,6 @@ const LEAD_COLUMNS: CrmGridColumn<Lead>[] = [
     cell: (lead) => lead.website || null,
   },
   {
-    id: "source",
-    label: "Source",
-    defaultVisible: false,
-    width: 140,
-    sortValue: (lead) => lead.source,
-    cell: (lead) => lead.source || null,
-  },
-  {
     id: "value",
     label: "Value",
     defaultVisible: false,
@@ -246,14 +280,6 @@ const LEAD_COLUMNS: CrmGridColumn<Lead>[] = [
     cell: (lead) => (lead.tags?.length ? lead.tags.join(", ") : null),
   },
   {
-    id: "created",
-    label: "Created",
-    defaultVisible: false,
-    width: 180,
-    sortValue: (lead) => lead.created_at,
-    cell: (lead) => formatGridDateTime(lead.created_at),
-  },
-  {
     id: "updated",
     label: "Updated",
     defaultVisible: false,
@@ -264,6 +290,8 @@ const LEAD_COLUMNS: CrmGridColumn<Lead>[] = [
 ];
 
 export default function LeadsPage() {
+  const searchParams = useSearchParams();
+  const openedFromQueryRef = useRef<string | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [query, setQuery] = useState("");
@@ -349,7 +377,10 @@ export default function LeadsPage() {
       email: lead.email ?? "",
       phone: lead.phone ?? "",
       contact_title: lead.contact_title ?? "",
+      address_line_1: lead.address_line_1 ?? "",
       city: lead.city ?? "",
+      state: lead.state ?? "",
+      postal_code: lead.postal_code ?? "",
       website: lead.website ?? "",
       notes: lead.notes ?? "",
     });
@@ -357,6 +388,19 @@ export default function LeadsPage() {
     setError("");
     setDrawerOpen(true);
   }
+
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId || openedFromQueryRef.current === openId || leads.length === 0) {
+      return;
+    }
+    const lead = leads.find((item) => item.id === openId);
+    if (!lead) {
+      return;
+    }
+    openedFromQueryRef.current = openId;
+    openLead(lead);
+  }, [leads, searchParams]);
 
   function openNew() {
     setSelectedId("");
@@ -381,8 +425,11 @@ export default function LeadsPage() {
       email: current.email,
       phone: current.phone,
       contact_title: current.contact_title || undefined,
+      address_line_1: current.address_line_1 || undefined,
       city: current.city || undefined,
-      website: current.website || undefined,
+      state: current.state || undefined,
+      postal_code: current.postal_code || undefined,
+      website: current.website ? normalizeWebsite(current.website) : undefined,
       notes: current.notes || undefined,
     };
   }
@@ -422,6 +469,9 @@ export default function LeadsPage() {
         }
         setStatus("Saved.");
         await load();
+        setDrawerOpen(false);
+        setError("");
+        setStatus("");
         return;
       }
       const response = await fetch("/api/leads", {
@@ -436,8 +486,57 @@ export default function LeadsPage() {
       }
       const body = (await response.json()) as { lead: Lead };
       setSelectedId(body.lead.id);
-      setStatus("Saved.");
       await load();
+      setDrawerOpen(false);
+      setError("");
+      setStatus("");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function convertLeadToContact() {
+    if (!selectedId) {
+      setError("Save the lead before converting to a contact.");
+      return;
+    }
+    if (editor.status === "CONVERTED") {
+      setError("This lead was already converted to a contact.");
+      return;
+    }
+    const validationError = validateLeadForSave(editor);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setStatus("");
+    try {
+      // Persist latest edits before conversion so People gets current field values.
+      const patchResponse = await fetch(`/api/leads/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(leadPayloadFromEditor(editor)),
+      });
+      if (!patchResponse.ok) {
+        const body = (await patchResponse.json().catch(() => null)) as { error?: { message?: string } } | null;
+        setError(body?.error?.message ?? "Failed to save lead before conversion");
+        return;
+      }
+
+      const response = await fetch(`/api/leads/${selectedId}/convert`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+        setError(body?.error?.message ?? "Failed to convert lead");
+        return;
+      }
+      await load();
+      setDrawerOpen(false);
+      setError("");
+      setStatus("");
     } finally {
       setSaving(false);
     }
@@ -499,8 +598,11 @@ export default function LeadsPage() {
       ...(typeof body.email === "string" ? { email: body.email } : {}),
       ...(typeof body.phone === "string" ? { phone: body.phone } : {}),
       ...(typeof body.contact_title === "string" ? { contact_title: body.contact_title } : {}),
+      ...(typeof body.address_line_1 === "string" ? { address_line_1: body.address_line_1 } : {}),
       ...(typeof body.city === "string" ? { city: body.city } : {}),
-      ...(typeof body.website === "string" ? { website: body.website } : {}),
+      ...(typeof body.state === "string" ? { state: body.state } : {}),
+      ...(typeof body.postal_code === "string" ? { postal_code: body.postal_code } : {}),
+      ...(typeof body.website === "string" ? { website: normalizeWebsite(body.website) } : {}),
       ...(typeof body.notes === "string" ? { notes: body.notes } : {}),
       ...(typeof body.company_name === "string" ? { company_name: body.company_name } : {}),
     };
@@ -537,7 +639,10 @@ export default function LeadsPage() {
         email: merged.email || undefined,
         phone: merged.phone || undefined,
         contact_title: merged.contact_title || undefined,
+        address_line_1: merged.address_line_1 || undefined,
         city: merged.city || undefined,
+        state: merged.state || undefined,
+        postal_code: merged.postal_code || undefined,
         website: merged.website || undefined,
         notes: merged.notes || undefined,
       }),
@@ -553,6 +658,59 @@ export default function LeadsPage() {
     await load();
     },
     [selectedId, editor, companies, load],
+  );
+
+  const ensureCompanyOption = useCallback((company: CompanySearchResult) => {
+    setCompanies((current) =>
+      current.some((item) => item.id === company.id) ? current : [...current, company],
+    );
+  }, []);
+
+  const commitCompanyAssociation = useCallback(
+    async (name: string, companyId: string) => {
+      const resolved = await resolveCompanyAssociation(name, companyId);
+      if (resolved.company) {
+        ensureCompanyOption(resolved.company);
+      }
+      setEditor((current) => ({
+        ...current,
+        company_id: resolved.company_id ?? "",
+        company_name: resolved.company_name ?? "",
+      }));
+      void saveLead({
+        company_id: resolved.company_id,
+        company_name: resolved.company_name,
+      });
+    },
+    [ensureCompanyOption, saveLead],
+  );
+
+  const commitAddress = useCallback(
+    (address: AddressValues) => {
+      setEditor((current) => ({
+        ...current,
+        address_line_1: address.address_line_1,
+        city: address.city,
+        state: address.state,
+        postal_code: address.postal_code,
+      }));
+      void saveLead({
+        address_line_1: address.address_line_1 || null,
+        city: address.city || null,
+        state: address.state || null,
+        postal_code: address.postal_code || null,
+      });
+    },
+    [saveLead],
+  );
+
+  const commitWebsite = useCallback(
+    (value: string) => {
+      const website = normalizeWebsite(value);
+      setEditor((current) => ({ ...current, website }));
+      void saveLead({ website: website || null });
+    },
+    [saveLead],
   );
 
   const sections: DrawerSection[] = useMemo(
@@ -623,54 +781,62 @@ export default function LeadsPage() {
         ],
       },
       {
-        id: "organization",
-        label: "Organization",
+        id: "company",
+        label: "Company",
         fields: [
           {
-            id: "company_id",
+            id: "company",
             icon: "company",
-            label: "Organization",
+            label: "Company",
             showLabel: false,
-            type: "select",
-            value: editor.company_id,
-            placeholder: "Organization",
-            options: [
-              { value: "", label: "None" },
-              ...companies.map((company) => ({ value: company.id, label: company.name })),
-            ],
-            onChange: (value) =>
-              setEditor((current) => ({
-                ...current,
-                company_id: value,
-                company_name: companies.find((company) => company.id === value)?.name ?? current.company_name,
-              })),
-            onCommit: (value) => {
-              const company = companies.find((item) => item.id === value);
-              void saveLead({
-                company_id: value || null,
-                company_name: company?.name ?? null,
-              });
+            type: "company-search",
+            value: editor.company_name || linkedCompany?.name || "",
+            companyId: editor.company_id,
+            placeholder: "Company",
+            onChange: (value) => setEditor((current) => ({ ...current, company_name: value })),
+            onCompanySelect: (company) => {
+              if (company) {
+                ensureCompanyOption(company);
+                setEditor((current) => ({
+                  ...current,
+                  company_id: company.id,
+                  company_name: company.name,
+                }));
+                return;
+              }
+              setEditor((current) => ({ ...current, company_id: "" }));
             },
+            onCommit: (value) => void commitCompanyAssociation(value, editor.company_id),
           },
           {
             id: "org_address",
             icon: "pin",
             label: "Address",
-            value: linkedCompany?.city ?? editor.city,
+            type: "address",
+            value: formatAddressDisplay(editorAddress(editor)),
             placeholder: "Address",
-            onChange: (value) => setEditor((current) => ({ ...current, city: value })),
-            onCommit: (value) => void saveLead({ city: value }),
+            address: editorAddress(editor),
+            onChange: () => undefined,
+            onAddressChange: (address) =>
+              setEditor((current) => ({
+                ...current,
+                address_line_1: address.address_line_1,
+                city: address.city,
+                state: address.state,
+                postal_code: address.postal_code,
+              })),
+            onAddressCommit: (address) => void commitAddress(address),
           },
           {
             id: "org_website",
             icon: "web",
             label: "Website",
-            value: linkedCompany?.website ?? editor.website,
-            placeholder: "Website",
+            type: "website",
+            value: editor.website,
+            placeholder: "www.example.com",
             onChange: (value) => setEditor((current) => ({ ...current, website: value })),
-            inputType: "url",
             validate: (value) => validateWebsite(value),
-            onCommit: (value) => void saveLead({ website: value }),
+            onCommit: (value) => void commitWebsite(value),
           },
           {
             id: "org_industry",
@@ -754,7 +920,7 @@ export default function LeadsPage() {
         ],
       },
     ],
-    [companies, currentUserName, editor, linkedCompany, selected, selectedId, saveLead],
+    [commitAddress, commitCompanyAssociation, commitWebsite, companies, currentUserName, editor, ensureCompanyOption, linkedCompany, selected, selectedId, saveLead],
   );
 
   const isNewLead = !selectedId;
@@ -763,7 +929,7 @@ export default function LeadsPage() {
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <h1 className="sr-only">Leads</h1>
       <CrmDataGrid
-        storageKey="crm-grid-leads-v2"
+        storageKey="crm-grid-leads-v3"
         columns={LEAD_COLUMNS}
         rows={leads}
         getRowId={(lead) => lead.id}
@@ -836,6 +1002,16 @@ export default function LeadsPage() {
           label: isNewLead ? "Save lead" : "Save",
           saving,
           onSave: () => void saveLeadRecord(),
+          menuActions: selectedId
+            ? [
+                {
+                  id: "convert-to-contact",
+                  label: "Convert to Contact",
+                  disabled: editor.status === "CONVERTED" || saving,
+                  onSelect: () => void convertLeadToContact(),
+                },
+              ]
+            : undefined,
         }}
       />
     </div>

@@ -15,6 +15,12 @@ const integrations = [
     status: "Available",
   },
   {
+    name: "Calendar Sync",
+    description: "Sync CRM activities with Google Calendar for every workspace user.",
+    href: "/app/settings/integrations/calendar",
+    status: "Available",
+  },
+  {
     name: "Stripe",
     description: "Collect payments from signed documents.",
     href: "/app/settings/billing",
