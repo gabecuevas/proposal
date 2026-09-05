@@ -74,7 +74,7 @@ export function AppTopBar({
           href="/app"
           className="font-app-serif shrink-0 text-lg font-semibold tracking-tight text-foreground"
         >
-          DoxySign
+          SendDox
         </Link>
       </div>
 

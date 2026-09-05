@@ -25,6 +25,9 @@ type Props = {
   currentPage: number;
   pageSize: PageSizeId;
   onAddPage?: () => void;
+  onPreviewPdf?: () => void;
+  onDownloadPdf?: () => void;
+  pdfBusy?: boolean;
   children: ReactNode;
 };
 
@@ -35,6 +38,9 @@ export function CreatorPageWorkspace({
   currentPage,
   pageSize,
   onAddPage,
+  onPreviewPdf,
+  onDownloadPdf,
+  pdfBusy = false,
   children,
 }: Props) {
   const [propertiesOpen, setPropertiesOpen] = useState(false);
@@ -68,6 +74,9 @@ export function CreatorPageWorkspace({
             currentPage={currentPage}
             pageSizeLabel={spec.shortLabel}
             onAddPage={onAddPage}
+            onPreviewPdf={onPreviewPdf}
+            onDownloadPdf={onDownloadPdf}
+            pdfBusy={pdfBusy}
           />
           {children}
         </div>

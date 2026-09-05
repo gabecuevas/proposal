@@ -90,9 +90,33 @@ export function insertLibraryDoc(editor: Editor, doc: EditorDoc, insertPos?: num
   if (content.length === 0) {
     return false;
   }
+  const normalized = content.map(normalizeLibraryNode);
   const { $from } = editor.state.selection;
   const pos = insertPos ?? ($from.depth > 0 ? $from.after(1) : editor.state.doc.content.size);
-  return editor.chain().focus().insertContentAt(pos, content).run();
+  return editor.chain().focus().insertContentAt(pos, normalized).run();
+}
+
+/** Library Text Blocks should land as full-width flow nodes, not stale overlays. */
+function normalizeLibraryNode(node: EditorNode): EditorNode {
+  if (node.type !== "textBox") {
+    return {
+      ...node,
+      content: node.content?.map(normalizeLibraryNode),
+    };
+  }
+  const attrs = { ...(node.attrs ?? {}) };
+  delete attrs.boxId;
+  delete attrs.xPct;
+  delete attrs.yPct;
+  delete attrs.wPct;
+  delete attrs.hPct;
+  delete attrs.page;
+  delete attrs.zIndex;
+  return {
+    ...node,
+    attrs,
+    content: node.content?.map(normalizeLibraryNode) ?? [{ type: "paragraph" }],
+  };
 }
 
 export function duplicateNodeAt(editor: Editor, pos: number): boolean {

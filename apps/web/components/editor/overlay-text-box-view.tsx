@@ -15,6 +15,8 @@ import {
 import { createPortal } from "react-dom";
 import { applyCornerResize, snapCornerResize, snapRect, type AlignGuide, type FieldRect, type ResizeCorner } from "@/lib/editor/field-snap";
 import {
+  isOverlayTextBoxEmpty,
+  OVERLAY_TEXT_BOX_PLACEHOLDER,
   overlayParentAt,
   parseOverlayLayout,
 } from "@/lib/editor/overlay-text-box";
@@ -157,6 +159,7 @@ export function TextBoxView({ node, updateAttributes, selected, editor, getPos }
   const isEditing = Boolean(nodeSelected || caretInside || menuOpen);
   const chromeVisible = isEditing || hovered;
   const showBorder = chromeVisible;
+  const showPlaceholder = overlay && isEditing && isOverlayTextBoxEmpty(node);
 
   useEffect(() => {
     return () => {
@@ -176,6 +179,38 @@ export function TextBoxView({ node, updateAttributes, selected, editor, getPos }
       renderer.classList.remove("is-field-chrome-up");
     };
   }, [showBorder]);
+
+  // Adjustable boxes keep a fixed height attr — grow when pasted/typed content overflows.
+  useEffect(() => {
+    if (!overlay) {
+      return;
+    }
+    const frame = rootRef.current?.querySelector(".overlay-text-box-content");
+    if (!(frame instanceof HTMLElement)) {
+      return;
+    }
+    const grow = () => {
+      const container = resolveContainer(rootRef.current!);
+      if (!container || container.pageHeightPx <= 0) {
+        return;
+      }
+      const needed = frame.scrollHeight + 4;
+      const current = layout.hPct * container.pageHeightPx;
+      if (needed <= current + 2) {
+        return;
+      }
+      const nextH = Math.min(1 - layout.yPct, Math.max(MIN_H_PCT, needed / container.pageHeightPx));
+      if (Math.abs(nextH - layout.hPct) > 0.002) {
+        updateAttributes({ hPct: nextH });
+      }
+    };
+    grow();
+    const observer = new ResizeObserver(() => {
+      window.requestAnimationFrame(grow);
+    });
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [overlay, layout.hPct, layout.yPct, node.content, updateAttributes]);
 
   useEffect(() => {
     if (!menuOpen) {
@@ -436,8 +471,8 @@ export function TextBoxView({ node, updateAttributes, selected, editor, getPos }
             <button
               ref={gearRef}
               type="button"
-              aria-label="Text box options"
-              title="Text box options"
+              aria-label="Adjustable Text Box options"
+              title="Adjustable Text Box options"
               aria-expanded={menuOpen}
               contentEditable={false}
               className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--overlay-text-box,#1e3a5f)] text-white shadow-sm hover:opacity-95"
@@ -478,10 +513,15 @@ export function TextBoxView({ node, updateAttributes, selected, editor, getPos }
         ) : null}
 
         <div
-          className={`overlay-text-box-frame h-full w-full overflow-auto rounded-[2px] ${
+          className={`overlay-text-box-frame relative h-full w-full overflow-auto rounded-[2px] ${
             showBorder ? "overlay-text-box-frame-active" : "overlay-text-box-frame-idle"
           }`}
         >
+          {showPlaceholder ? (
+            <span className="overlay-text-box-placeholder" aria-hidden="true">
+              {OVERLAY_TEXT_BOX_PLACEHOLDER}
+            </span>
+          ) : null}
           <NodeViewContent className="overlay-text-box-content" />
         </div>
 

@@ -1,6 +1,6 @@
 # Deployment Runbook
 
-This runbook documents staging and production deploy steps for the Proposal monorepo.
+This runbook documents staging and production deploy steps for the SendDox monorepo.
 
 ## Deployment Topology
 

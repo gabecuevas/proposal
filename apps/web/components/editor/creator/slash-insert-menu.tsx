@@ -2,6 +2,7 @@
 
 import type { Editor } from "@tiptap/core";
 import { useEffect, useState } from "react";
+import { useCreatorChrome } from "./creator-chrome-context";
 import { ElementMenu } from "./element-menu";
 
 type SlashState = { query: string; from: number; to: number; top: number; left: number };
@@ -38,6 +39,7 @@ function readSlash(editor: Editor, paper: HTMLElement): SlashState | null {
 
 /** Opens when the current paragraph is `/` plus an optional filter. */
 export function SlashInsertMenu({ editor, paperRef }: Props) {
+  const chrome = useCreatorChrome();
   const [slash, setSlash] = useState<SlashState | null>(null);
 
   useEffect(() => {
@@ -79,6 +81,10 @@ export function SlashInsertMenu({ editor, paperRef }: Props) {
       <ElementMenu
         editor={editor}
         query={slash.query}
+        onOpenLibrary={() => {
+          setSlash(null);
+          chrome.openLibrary();
+        }}
         onBeforeInsert={() => {
           editor.chain().focus().deleteRange({ from: slash.from, to: slash.to }).run();
         }}

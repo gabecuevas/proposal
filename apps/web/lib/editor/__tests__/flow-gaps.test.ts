@@ -94,4 +94,10 @@ describe("flow gaps", () => {
     expect(JSON.stringify(defaultEditorDoc)).not.toContain("Proposal Title");
     expect(JSON.stringify(defaultEditorDoc)).not.toContain("Start writing your proposal");
   });
+
+  it("allows clicks on the sole blank paragraph so the caret can land", () => {
+    editor = createEditor(defaultEditorDoc);
+    const handled = editor.view.someProp("handleClick", (fn) => fn(editor.view, 1, new MouseEvent("click")));
+    expect(handled).toBeFalsy();
+  });
 });

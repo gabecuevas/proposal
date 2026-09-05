@@ -5,12 +5,21 @@ export type FlowLine = {
   contentBottom: number;
   /** Document position at the start of the line. */
   pos: number;
+  /** Position before the containing text block (paragraph), when known. */
+  blockPos?: number;
+  /** Content Y of the top of that text block. */
+  blockTop?: number;
+  /** Content Y of the bottom of that text block. */
+  blockBottom?: number;
 };
 
 /**
  * Packs measured lines into pages of `contentHeight`. Returns document positions
  * where a page break must be inserted *before* the overflowing line so the
  * same block (for example a text box) can continue on the next sheet.
+ *
+ * Prefer breaking before a whole paragraph when it still fits on the next
+ * page — mid-paragraph widgets split underlines/rules through the grey gutter.
  */
 export function flowBreakPositions(lines: FlowLine[], contentHeight: number): number[] {
   if (contentHeight <= 0 || lines.length === 0) {
@@ -38,10 +47,28 @@ export function flowBreakPositions(lines: FlowLine[], contentHeight: number): nu
       continue;
     }
 
-    if (line.pos > 1 && breaks.at(-1) !== line.pos) {
-      breaks.push(line.pos);
+    let breakPos = line.pos;
+    let nextPageStart = line.contentTop;
+    const blockPos = line.blockPos;
+    const blockTop = line.blockTop;
+    const blockBottom = line.blockBottom;
+    if (
+      blockPos != null &&
+      blockTop != null &&
+      blockBottom != null &&
+      blockPos > 1 &&
+      blockBottom - blockTop <= contentHeight + 0.5 &&
+      blockTop - pageStart > 0.5
+    ) {
+      // Whole paragraph fits on the next sheet — keep underlines/signatures intact.
+      breakPos = blockPos;
+      nextPageStart = blockTop;
     }
-    pageStart = line.contentTop;
+
+    if (breakPos > 1 && breaks.at(-1) !== breakPos) {
+      breaks.push(breakPos);
+    }
+    pageStart = nextPageStart;
   }
 
   return breaks;

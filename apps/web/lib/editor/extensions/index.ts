@@ -15,7 +15,6 @@ import StarterKit from "@tiptap/starter-kit";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 import { FieldCanvasView } from "@/components/editor/field-canvas-view";
 import { FieldOverlayView } from "@/components/editor/field-overlay-view";
-import { TextBoxView } from "@/components/editor/overlay-text-box-view";
 import { ResizableImageView } from "@/components/editor/resizable-image-view";
 import { SignerFieldView } from "@/components/editor/signer-field-view";
 import { TableOfContentsView } from "@/components/editor/table-of-contents-view";
@@ -34,7 +33,6 @@ import { QuoteTable } from "./quote-table";
 import { ResizableImage } from "./resizable-image";
 import { SignerField } from "./signer-field";
 import { TableOfContents } from "./table-of-contents";
-import { OVERLAY_TEXT_BOX_PLACEHOLDER, overlayParentAt } from "../overlay-text-box";
 import { TextBox } from "./text-box";
 import { VariableToken } from "./variable-token";
 import { QuoteTableView } from "@/components/editor/quote-table-view";
@@ -71,13 +69,7 @@ const QuoteTableWithView = QuoteTable.extend({
   },
 });
 
-const TextBoxWithView = TextBox.extend({
-  addNodeView() {
-    return ReactNodeViewRenderer(TextBoxView, {
-      className: "text-box-renderer",
-    });
-  },
-});
+const TextBoxWithView = TextBox;
 
 const TableOfContentsWithView = TableOfContents.extend({
   addNodeView() {
@@ -104,12 +96,18 @@ export const editorExtensions = [
   TextAlign.configure({ types: ["heading", "paragraph"] }),
   Link.configure({ openOnClick: false, autolink: true, HTMLAttributes: { rel: "noopener" } }),
   Placeholder.configure({
-    placeholder: ({ node, editor }) => {
+    placeholder: ({ node, editor, pos }) => {
       if (node.type.name === "heading") {
         return "Document title";
       }
-      if (editor.isActive("textBox") && overlayParentAt(editor, editor.state.selection.from)) {
-        return OVERLAY_TEXT_BOX_PLACEHOLDER;
+      if (typeof pos === "number") {
+        const $pos = editor.state.doc.resolve(pos);
+        for (let depth = $pos.depth; depth > 0; depth -= 1) {
+          const parent = $pos.node(depth);
+          if (parent.type.name === "textBox" && String(parent.attrs.boxId ?? "")) {
+            return "";
+          }
+        }
       }
       return "";
     },

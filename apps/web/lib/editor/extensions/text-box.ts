@@ -1,5 +1,9 @@
 import { mergeAttributes, Node } from "@tiptap/core";
-import { NodeSelection } from "@tiptap/pm/state";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { NodeSelection, Plugin, TextSelection } from "@tiptap/pm/state";
+import type { EditorView, NodeView } from "@tiptap/pm/view";
+import { ReactNodeViewRenderer } from "@tiptap/react";
+import { TextBoxView } from "@/components/editor/overlay-text-box-view";
 import { overlayTextBoxSelectionPlugin } from "../overlay-text-box";
 
 declare module "@tiptap/core" {
@@ -10,11 +14,47 @@ declare module "@tiptap/core" {
   }
 }
 
+function enterTextBoxIfNodeSelected(view: EditorView): boolean {
+  const { selection } = view.state;
+  if (!(selection instanceof NodeSelection) || selection.node.type.name !== "textBox") {
+    return false;
+  }
+  const inside = Math.min(selection.from + 1, selection.to - 1);
+  view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(inside))));
+  return true;
+}
+
 /**
- * A bordered content block so "add a text box" is a real element, not just
- * another paragraph in the flow. Drag handles move the whole box. Enter creates
- * a new paragraph *inside* this box so a long write-up stays one element even
- * when it flows onto the next page.
+ * Flow Text Blocks must use a plain contentDOM so PageFlow can inject
+ * `creator-flow-break` widgets between paragraphs. React NodeViews swallow
+ * those widgets and text paints through the page gutter.
+ */
+function createFlowTextBoxNodeView(node: ProseMirrorNode): NodeView {
+  const dom = document.createElement("div");
+  dom.className = "creator-text-box";
+  dom.setAttribute("data-node-type", "textBox");
+  if (node.attrs.blockName) {
+    dom.setAttribute("data-block-name", String(node.attrs.blockName));
+  }
+  return {
+    dom,
+    contentDOM: dom,
+    update(updated) {
+      if (updated.type.name !== "textBox") {
+        return false;
+      }
+      // Overlay boxes need the React chrome — remount as Adjustable Text Box.
+      if (String(updated.attrs.boxId ?? "")) {
+        return false;
+      }
+      return true;
+    },
+  };
+}
+
+/**
+ * Full-width Text Block (flow) or Adjustable Text Box (overlay via boxId).
+ * Isolating so multi-paragraph write-ups stay one library-savable element.
  */
 export const TextBox = Node.create({
   name: "textBox",
@@ -57,6 +97,18 @@ export const TextBox = Node.create({
     ];
   },
 
+  addNodeView() {
+    const overlayView = ReactNodeViewRenderer(TextBoxView, {
+      className: "text-box-renderer",
+    });
+    return (props) => {
+      if (String(props.node.attrs.boxId ?? "")) {
+        return overlayView(props);
+      }
+      return createFlowTextBoxNodeView(props.node);
+    };
+  },
+
   addKeyboardShortcuts() {
     return {
       Enter: () => {
@@ -89,6 +141,31 @@ export const TextBox = Node.create({
   },
 
   addProseMirrorPlugins() {
-    return [overlayTextBoxSelectionPlugin()];
+    return [
+      overlayTextBoxSelectionPlugin(),
+      new Plugin({
+        props: {
+          handlePaste(view, _event, slice) {
+            const { selection } = view.state;
+            if (!(selection instanceof NodeSelection) || selection.node.type.name !== "textBox") {
+              return false;
+            }
+            const inside = Math.min(selection.from + 1, selection.to - 1);
+            let tr = view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(inside)));
+            tr = tr.replaceSelection(slice);
+            view.dispatch(tr.scrollIntoView());
+            return true;
+          },
+          handleTextInput(view, _from, _to, text) {
+            if (!enterTextBoxIfNodeSelected(view)) {
+              return false;
+            }
+            const { from } = view.state.selection;
+            view.dispatch(view.state.tr.insertText(text, from));
+            return true;
+          },
+        },
+      }),
+    ];
   },
 });

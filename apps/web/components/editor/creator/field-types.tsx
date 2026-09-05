@@ -13,6 +13,9 @@ import {
   IconStamp,
   IconTextField,
 } from "./creator-icons";
+import { FIELD_DRAG_MIME } from "@/lib/editor/field-drag";
+
+export { FIELD_DRAG_MIME };
 
 const FIELD_ICONS: Record<string, (props: { className?: string }) => ReactElement> = {
   signature: IconSignature,
@@ -42,8 +45,6 @@ export const fieldTypes: FieldTypeEntry[] = FIELD_REGISTRY.map((entry) => ({
 
 /** How many rows stay visible when the tray is collapsed. */
 export const COLLAPSED_FIELD_COUNT = 4;
-
-export const FIELD_DRAG_MIME = "application/x-signer-field";
 
 export function setFieldDragPreview(event: { dataTransfer: DataTransfer }, label: string) {
   if (typeof document === "undefined") {

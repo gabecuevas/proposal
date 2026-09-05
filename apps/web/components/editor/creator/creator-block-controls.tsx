@@ -5,7 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { isPageBackedSeamInsert } from "@/lib/editor/overlay-text-box";
 import { hitTestBlocks, type TopLevelBlock } from "@/lib/editor/block-hit-test";
 import { isScaffoldFlowNode } from "@/lib/editor/extensions/flow-gaps";
+import { PAGE_GAP_PX, pageSizeSpec, type PageSizeId } from "@/lib/editor/page-geometry";
 import { BlockOptionsMenu } from "./block-options-menu";
+import { useCreatorChrome } from "./creator-chrome-context";
 import { ElementMenu } from "./element-menu";
 import { IconDragHandle, IconGear, IconPlus } from "./creator-icons";
 
@@ -20,9 +22,23 @@ type Props = {
   editor: Editor | null;
   /** The paper element the handles are positioned against. */
   paperRef: React.RefObject<HTMLDivElement | null>;
+  scrollerRef?: React.RefObject<HTMLDivElement | null>;
   documentId?: string;
   templateId?: string;
+  pageSize?: PageSizeId;
 };
+
+function readHitTestOptions(paper: HTMLElement, pageSize: PageSizeId = "letter") {
+  const spec = pageSizeSpec(pageSize);
+  const marginRaw = Number.parseFloat(getComputedStyle(paper).getPropertyValue("--creator-page-margin"));
+  const heightRaw = Number.parseFloat(getComputedStyle(paper).getPropertyValue("--creator-page-height"));
+  const gapRaw = Number.parseFloat(getComputedStyle(paper).getPropertyValue("--creator-page-gap"));
+  return {
+    marginPx: Number.isFinite(marginRaw) ? marginRaw : spec.marginPx,
+    pageHeightPx: Number.isFinite(heightRaw) ? heightRaw : spec.heightPx,
+    gapPx: Number.isFinite(gapRaw) ? gapRaw : PAGE_GAP_PX,
+  };
+}
 
 function readTopLevelBlocks(editor: Editor, paper: HTMLElement): TopLevelBlock[] {
   const paperTop = paper.getBoundingClientRect().top;
@@ -67,20 +83,58 @@ function isGapTarget(target: EventTarget | null): boolean {
   return target instanceof Element && Boolean(target.closest("[data-creator-insert-gap]"));
 }
 
-export function CreatorBlockControls({ editor, paperRef, documentId, templateId }: Props) {
+export function CreatorBlockControls({
+  editor,
+  paperRef,
+  scrollerRef,
+  documentId,
+  templateId,
+  pageSize = "letter",
+}: Props) {
+  const chrome = useCreatorChrome();
   const [hover, setHover] = useState<HoverTarget | null>(null);
   const [selected, setSelected] = useState<HoverTarget | null>(null);
   const [insertSlot, setInsertSlot] = useState<InsertSlot | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [addMenuSource, setAddMenuSource] = useState<"handle" | "below" | "gap">("handle");
   const [gearMenuOpen, setGearMenuOpen] = useState(false);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  /** Keep gear/handle visible while scrolling a tall Text Block. */
+  const [stickyOffsetPx, setStickyOffsetPx] = useState(0);
   const draggingRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const menuOpen = addMenuOpen || gearMenuOpen;
   const selectedChrome = dismissed ? null : selected;
   const active = menuOpen ? hover ?? selectedChrome : hover;
+
+  useEffect(() => {
+    const paper = paperRef.current;
+    const scroller =
+      scrollerRef?.current ??
+      (paper?.closest(".overflow-auto") as HTMLElement | null) ??
+      null;
+    if (!paper || !active) {
+      setStickyOffsetPx(0);
+      return;
+    }
+    const syncSticky = () => {
+      const paperRect = paper.getBoundingClientRect();
+      const viewportTop = scroller ? scroller.getBoundingClientRect().top + 12 : 12;
+      const blockTopScreen = paperRect.top + active.topPx;
+      const raw = viewportTop - blockTopScreen;
+      const max = Math.max(0, active.heightPx - 36);
+      setStickyOffsetPx(Math.max(0, Math.min(raw, max)));
+    };
+    syncSticky();
+    scroller?.addEventListener("scroll", syncSticky, { passive: true });
+    window.addEventListener("resize", syncSticky);
+    return () => {
+      scroller?.removeEventListener("scroll", syncSticky);
+      window.removeEventListener("resize", syncSticky);
+    };
+  }, [active, paperRef, scrollerRef]);
 
   useEffect(() => {
     const paper = paperRef.current;
@@ -106,7 +160,7 @@ export function CreatorBlockControls({ editor, paperRef, documentId, templateId 
       }
       const blocks = readTopLevelBlocks(editor, paper);
       const y = event.clientY - paper.getBoundingClientRect().top;
-      const hit = hitTestBlocks(y, blocks, paper.getBoundingClientRect().height);
+      const hit = hitTestBlocks(y, blocks, paper.getBoundingClientRect().height, readHitTestOptions(paper, pageSize));
       if (hit?.kind === "block") {
         setHover(toHover(hit.block));
         setInsertSlot(null);
@@ -147,7 +201,7 @@ export function CreatorBlockControls({ editor, paperRef, documentId, templateId 
       }
       const blocks = readTopLevelBlocks(editor, paper);
       const y = event.clientY - paper.getBoundingClientRect().top;
-      const hit = hitTestBlocks(y, blocks, paper.getBoundingClientRect().height);
+      const hit = hitTestBlocks(y, blocks, paper.getBoundingClientRect().height, readHitTestOptions(paper, pageSize));
       if (hit?.kind === "block") {
         setDismissed(false);
         return;
@@ -188,7 +242,7 @@ export function CreatorBlockControls({ editor, paperRef, documentId, templateId 
       paper.removeEventListener("pointerdown", onPointerDown, true);
       scroller?.removeEventListener("pointerdown", onScrollerDown);
     };
-  }, [editor, menuOpen, paperRef]);
+  }, [editor, menuOpen, paperRef, pageSize]);
 
   const startDrag = useCallback(
     (event: React.PointerEvent) => {
@@ -288,20 +342,25 @@ export function CreatorBlockControls({ editor, paperRef, documentId, templateId 
               onClick={() => {
                 setGearMenuOpen(false);
                 setDismissed(true);
+                setAddMenuSource("gap");
                 setAddMenuOpen((open) => !open);
               }}
               aria-label="Add element"
               title="Add element"
-              aria-expanded={addMenuOpen}
+              aria-expanded={addMenuOpen && addMenuSource === "gap"}
               className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500 shadow-sm hover:border-slate-400 hover:text-foreground"
             >
               <IconPlus className="h-3.5 w-3.5" />
             </button>
-            {addMenuOpen ? (
+            {addMenuOpen && addMenuSource === "gap" ? (
               <div className="absolute left-0 top-8 z-40">
                 <ElementMenu
                   editor={editor}
                   insertPos={insertSlot.insertPos}
+                  onOpenLibrary={() => {
+                    setAddMenuOpen(false);
+                    chrome.openLibrary();
+                  }}
                   onDone={() => {
                     setAddMenuOpen(false);
                     setInsertSlot(null);
@@ -323,20 +382,10 @@ export function CreatorBlockControls({ editor, paperRef, documentId, templateId 
             aria-hidden
           />
 
-          <div className="creator-block-handle pointer-events-auto">
-            <button
-              type="button"
-              onClick={() => {
-                setGearMenuOpen(false);
-                setAddMenuOpen((open) => !open);
-              }}
-              aria-label="Add element"
-              title="Add element"
-              aria-expanded={addMenuOpen}
-              className="flex h-6 w-6 items-center justify-center rounded-full border border-border bg-surface text-muted shadow-sm hover:text-foreground"
-            >
-              <IconPlus className="h-3.5 w-3.5" />
-            </button>
+          <div
+            className="creator-block-handle pointer-events-auto"
+            style={{ top: stickyOffsetPx }}
+          >
             <button
               type="button"
               onPointerDown={startDrag}
@@ -346,8 +395,24 @@ export function CreatorBlockControls({ editor, paperRef, documentId, templateId 
             >
               <IconDragHandle className="h-3.5 w-3.5" />
             </button>
+          </div>
 
-            {addMenuOpen ? (
+          <div className="creator-block-add-below pointer-events-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setGearMenuOpen(false);
+                setAddMenuSource("below");
+                setAddMenuOpen((open) => !(open && addMenuSource === "below"));
+              }}
+              aria-label="Add Text Block below"
+              title="Add below"
+              aria-expanded={addMenuOpen && addMenuSource === "below"}
+              className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500 shadow-sm hover:border-primary hover:text-primary"
+            >
+              <IconPlus className="h-3.5 w-3.5" />
+            </button>
+            {addMenuOpen && addMenuSource === "below" ? (
               <div className="absolute left-0 top-8 z-40">
                 <ElementMenu
                   editor={editor}
@@ -355,13 +420,20 @@ export function CreatorBlockControls({ editor, paperRef, documentId, templateId 
                     const node = editor.state.doc.nodeAt(active.pos);
                     return node ? active.pos + node.nodeSize : active.pos;
                   })()}
+                  onOpenLibrary={() => {
+                    setAddMenuOpen(false);
+                    chrome.openLibrary();
+                  }}
                   onDone={() => setAddMenuOpen(false)}
                 />
               </div>
             ) : null}
           </div>
 
-          <div className="creator-block-gear pointer-events-auto">
+          <div
+            className="creator-block-gear pointer-events-auto"
+            style={{ top: stickyOffsetPx }}
+          >
             <button
               type="button"
               onClick={() => {

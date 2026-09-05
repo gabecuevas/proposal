@@ -316,6 +316,30 @@ export function IconPlus({ className }: IconProps) {
   );
 }
 
+export function IconEye({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path
+        d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.6" />
+    </Svg>
+  );
+}
+
+export function IconDownload({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <path d="M12 4v10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M8 10l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 18h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 export function IconKebab({ className }: IconProps) {
   return (
     <Svg className={className}>

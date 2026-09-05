@@ -1,4 +1,4 @@
-const CLIPBOARD_KEY = "doxysign-copied-signer-field";
+const CLIPBOARD_KEY = "senddox-copied-signer-field";
 
 export type CopiedSignerField = {
   type: "signerField";

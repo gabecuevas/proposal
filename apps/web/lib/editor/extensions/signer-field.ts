@@ -12,7 +12,8 @@ function isFieldFormControl(target: EventTarget | null): boolean {
 
 export const SignerField = Node.create({
   name: "signerField",
-  group: "block",
+  // Only valid inside fieldOverlay / fieldCanvas — never a top-level flow block.
+  group: "",
   atom: true,
   selectable: true,
   draggable: false,

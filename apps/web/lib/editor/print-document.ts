@@ -38,6 +38,10 @@ article p { margin: 0 0 0.75rem; orphans: 2; widows: 2; }
 article h1 { font-size: 1.875rem; font-weight: 600; margin: 0 0 0.75rem; }
 article h2 { font-size: 1.375rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
 article h3 { font-size: 1.125rem; font-weight: 600; margin: 1rem 0 0.5rem; }
+article h1.doc-title, article p.doc-title, article .doc-title {
+  text-align: center;
+  font-weight: 700;
+}
 article ul, article ol { margin: 0 0 0.75rem; padding-left: 1.5rem; }
 article ul { list-style-type: disc; }
 article ol { list-style-type: decimal; }
@@ -51,7 +55,23 @@ article [data-indent="6"] { padding-left: 144px; }
 article [data-indent="7"] { padding-left: 168px; }
 article [data-indent="8"] { padding-left: 192px; }
 article blockquote { margin: 0 0 0.75rem; border-left: 3px solid #cbd5e1; padding-left: 0.875rem; color: #475569; }
-article hr { margin: 1.25rem 0; border: none; border-top: 1px solid #e2e8f0; }
+article hr, article hr.signature-line {
+  margin: 0.85rem 0 1.15rem;
+  border: none;
+  border-top: 1.5px solid #0f172a;
+  height: 0;
+}
+article .signature-fill {
+  display: inline-block;
+  min-width: 12rem;
+  border-bottom: 1.5px solid #0f172a;
+  vertical-align: baseline;
+  height: 1em;
+}
+article strong, article b { font-weight: 700; }
+article em, article i { font-style: italic; }
+article u { text-decoration: underline; }
+article.docx-import p { margin: 0 0 0.65rem; }
 article mark { border-radius: 2px; padding: 0 0.1em; }
 .creator-text-box {
   margin: 0 0 0.75rem;
@@ -94,6 +114,7 @@ td, th { border: 1px solid #cbd5e1; padding: 6px 8px; }
   margin: 0;
   border: 0;
 }
+.creator-flow-break-label { display: none !important; }
 article .field-canvas,
 article .rendered-field-canvas {
   margin: 0;
@@ -110,28 +131,171 @@ ${printPageBackgroundCss()}
 `.trim();
 }
 
+function escapeHtmlTitle(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 /** Full HTML document for Playwright PDF, using the same page box as the editor. */
-export function wrapPrintHtml(bodyHtml: string, pageSize?: PageSizeId | unknown): string {
+export function wrapPrintHtml(
+  bodyHtml: string,
+  pageSize?: PageSizeId | unknown,
+  title = "Document",
+): string {
   const spec = pageSizeSpec(pageSize);
-  return `<!DOCTYPE html><html><head><meta charset="utf-8" /><style>${printDocumentCss(spec)}</style></head><body>${bodyHtml}</body></html>`;
+  const safeTitle = escapeHtmlTitle(title.trim() || "Document");
+  return `<!DOCTYPE html><html><head><meta charset="utf-8" /><title>${safeTitle}</title><style>${printDocumentCss(spec)}</style></head><body>${bodyHtml}</body></html>`;
 }
 
 export function wrapPrintHtmlForDoc(bodyHtml: string, doc: { attrs?: Record<string, unknown> } | null | undefined): string {
   return wrapPrintHtml(bodyHtml, pageSizeFromDoc(doc));
 }
 
-/** Opens the same print CSS the PDF pipeline uses, then triggers the browser print dialog. */
-export function openPrintPreview(bodyHtml: string, pageSize?: PageSizeId | unknown): void {
+function openPrintWindow(
+  bodyHtml: string,
+  pageSize?: PageSizeId | unknown,
+  title = "Document",
+): Window | null {
   if (typeof window === "undefined") {
-    return;
+    return null;
   }
   const popup = window.open("", "_blank", "noopener,noreferrer");
   if (!popup) {
-    return;
+    return null;
   }
   popup.document.open();
-  popup.document.write(wrapPrintHtml(bodyHtml, pageSize));
+  popup.document.write(wrapPrintHtml(bodyHtml, pageSize, title));
   popup.document.close();
   popup.focus();
-  popup.print();
+  return popup;
+}
+
+/** Opens the same print CSS the PDF pipeline uses, then triggers the browser print dialog. */
+export function openPrintPreview(
+  bodyHtml: string,
+  pageSize?: PageSizeId | unknown,
+  title = "Document",
+): void {
+  const popup = openPrintWindow(bodyHtml, pageSize, title);
+  popup?.print();
+}
+
+/** Downloads a PDF blob URL (or any binary response) to the user's machine. */
+export async function downloadPdfFromUrl(url: string, filename: string): Promise<void> {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error("Failed to download PDF");
+  }
+  const blob = await response.blob();
+  downloadPdfBlob(blob, filename);
+}
+
+export function downloadPdfBlob(blob: Blob, filename: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename.endsWith(".pdf") ? filename : `${filename}.pdf`;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+/** Renders live document HTML to a PDF blob via the server Playwright pipeline. */
+export async function renderPdfBlob(input: {
+  bodyHtml: string;
+  pageSize?: PageSizeId | unknown;
+  title?: string;
+  filename?: string;
+  disposition?: "inline" | "attachment";
+}): Promise<Blob> {
+  const disposition = input.disposition ?? "inline";
+  const response = await fetch(`/api/pdf/render?disposition=${disposition}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      bodyHtml: input.bodyHtml,
+      pageSize: input.pageSize,
+      title: input.title,
+      filename: input.filename,
+    }),
+  });
+  if (!response.ok) {
+    let detail = "Failed to render PDF";
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (payload.error) {
+        detail = payload.error;
+      }
+    } catch {
+      // ignore parse errors
+    }
+    throw new Error(detail);
+  }
+  const blob = await response.blob();
+  if (blob.type && blob.type !== "application/pdf" && blob.size < 100) {
+    throw new Error("PDF render returned an unexpected response");
+  }
+  return blob;
+}
+
+/** Opens a real PDF in a new browser tab. Prefers a finalized artifact when provided. */
+export async function openPdfPreview(input: {
+  bodyHtml: string;
+  pageSize?: PageSizeId | unknown;
+  title?: string;
+  artifactUrl?: string | null;
+}): Promise<void> {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (input.artifactUrl) {
+    window.open(input.artifactUrl, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const blob = await renderPdfBlob({
+    bodyHtml: input.bodyHtml,
+    pageSize: input.pageSize,
+    title: input.title,
+    filename: `${input.title ?? "document"}.pdf`,
+    disposition: "inline",
+  });
+  const objectUrl = URL.createObjectURL(blob);
+  // Avoid noopener here: some browsers blank blob: PDF tabs when the opener is detached.
+  const popup = window.open(objectUrl, "_blank");
+  if (!popup) {
+    downloadPdfBlob(blob, `${input.title ?? "document"}.pdf`);
+  }
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+}
+
+/**
+ * Downloads a PDF of the current document.
+ * Prefers a finalized artifact URL when provided; otherwise renders via Playwright.
+ */
+export async function downloadDocumentPdf(input: {
+  bodyHtml: string;
+  pageSize?: PageSizeId | unknown;
+  filename: string;
+  artifactUrl?: string | null;
+}): Promise<void> {
+  const filename = input.filename.trim() || "document.pdf";
+  if (input.artifactUrl) {
+    await downloadPdfFromUrl(input.artifactUrl, filename);
+    return;
+  }
+  const blob = await renderPdfBlob({
+    bodyHtml: input.bodyHtml,
+    pageSize: input.pageSize,
+    title: filename.replace(/\.pdf$/i, ""),
+    filename,
+    disposition: "attachment",
+  });
+  downloadPdfBlob(blob, filename);
 }

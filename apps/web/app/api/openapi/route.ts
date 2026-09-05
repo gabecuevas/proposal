@@ -4,7 +4,7 @@ export async function GET() {
   const spec = {
     openapi: "3.1.0",
     info: {
-      title: "Proposal API",
+      title: "SendDox API",
       version: "0.1.0",
       description: "Core APIs for templates, documents, signing sessions, artifacts, API keys, and webhooks.",
     },
@@ -54,6 +54,7 @@ export async function GET() {
       "/api/documents/{documentId}/signer-fields/{fieldId}": { patch: { summary: "Set signer field value" } },
       "/api/documents/{documentId}/activity": { get: { summary: "List activity feed events" } },
       "/api/documents/{documentId}/artifact-url": { post: { summary: "Create signed finalized PDF URL" } },
+      "/api/pdf/render": { post: { summary: "Render print HTML to a PDF (preview/download)" } },
       "/api/documents/{documentId}/artifact": { get: { summary: "Download finalized PDF by token" } },
       "/api/documents/{documentId}/checkout-session": { post: { summary: "Create Stripe checkout session for document payment" } },
       "/api/documents/{documentId}/payments": { get: { summary: "List document payment attempts and outcomes" } },

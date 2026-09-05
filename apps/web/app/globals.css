@@ -60,16 +60,25 @@ body {
   --creator-page-width: 816px;
   --creator-page-height: 1056px;
   --creator-page-margin: 48px;
-  --creator-page-gap: 32px;
-  --creator-flow-break-height: 128px;
+  --creator-page-gap: 0px;
+  --creator-flow-break-height: 0px;
   --creator-page-count: 1;
   position: relative;
   width: var(--creator-page-width);
   min-width: var(--creator-page-width);
   max-width: var(--creator-page-width);
   flex-shrink: 0;
-  /* Each sheet is a full white page; the canvas shows through the gap. */
+  /* Flow docs: one continuous white sheet (PandaDoc-style). */
+  background-color: #ffffff;
+  background-image: none;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+/* PDF page-backed uploads keep stacked sheets with a visible canvas gap. */
+.creator-paper.is-page-backed {
+  --creator-page-gap: 32px;
   background-color: transparent;
+  box-shadow: none;
   background-image: repeating-linear-gradient(
     to bottom,
     #ffffff 0,
@@ -91,18 +100,25 @@ body {
 .creator-page-index {
   position: absolute;
   left: 50%;
-  transform: translate(-50%, -26px);
+  transform: translate(-50%, calc(-0.5 * var(--creator-page-gap, 0px) - 0.55em));
   font-size: 11px;
   letter-spacing: 0.02em;
   color: #94a3b8;
   pointer-events: none;
   white-space: nowrap;
+  z-index: 2;
+}
+
+/* Flow continuous canvas: sit the label just above each estimated sheet edge. */
+.creator-paper:not(.is-page-backed) .creator-page-index {
+  transform: translate(-50%, -1.4em);
 }
 
 .creator-page-menu {
   position: absolute;
-  right: 0;
-  transform: translateY(-28px);
+  right: var(--creator-page-margin, 48px);
+  transform: translate(100%, -28px);
+  padding-left: 6px;
   pointer-events: auto;
 }
 
@@ -125,11 +141,21 @@ body {
 @media print {
   .creator-page-chrome,
   .creator-page-index,
+  .creator-page-guides,
   .creator-insert-gap {
     display: none !important;
   }
 }
+
+/* Estimated page breaks for flow docs — overlays, never push content. */
 .creator-page-guides {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  overflow: hidden;
+}
+.creator-paper.is-page-backed .creator-page-guides {
   display: none;
 }
 .creator-page-guide {
@@ -141,10 +167,16 @@ body {
 .creator-page-guide::after {
   content: attr(data-page-label);
   position: absolute;
-  right: 8px;
-  top: 6px;
+  left: calc(-1 * var(--creator-page-margin, 48px) - 4.75rem);
+  top: -0.55em;
+  width: 4.5rem;
   font-size: 10px;
+  line-height: 1.2;
+  font-weight: 500;
+  letter-spacing: 0.02em;
   color: #94a3b8;
+  text-align: right;
+  white-space: nowrap;
 }
 /* Margin outline, only while editing. Hidden until Show/Hide Margins returns. */
 .creator-margin-guide {
@@ -165,7 +197,7 @@ body {
   padding: var(--creator-page-margin, 48px);
   min-height: calc(
     var(--creator-page-count, 1) * var(--creator-page-height, 1056px) +
-      (var(--creator-page-count, 1) - 1) * var(--creator-page-gap, 32px)
+      (var(--creator-page-count, 1) - 1) * var(--creator-page-gap, 0px)
   );
   color: #0f172a;
   font-size: 15px;
@@ -251,6 +283,14 @@ body {
   overflow: hidden;
   border: 0;
 }
+/* Sole blank sheet (new doc / new template): keep a real caret target. */
+.tiptap-creator > p.is-empty:only-child,
+.tiptap-creator > p.is-editor-empty:only-child {
+  height: auto;
+  min-height: 1.6em;
+  overflow: visible;
+  margin: 0 0 0.75rem;
+}
 .tiptap-creator > p.is-empty::before,
 .tiptap-creator > p.is-editor-empty::before,
 .tiptap-creator > p.is-editor-empty:first-child::before {
@@ -265,18 +305,25 @@ body {
   margin: 0 0 0.75rem;
   padding: 0.75rem 0.875rem;
   border: none;
-  border-radius: 4px;
+  border-radius: 2px;
   background: transparent;
   overflow: visible;
+  box-sizing: border-box;
+  width: 100%;
 }
 .tiptap-creator .creator-text-box:focus-within,
 .tiptap-creator .ProseMirror-selectednode.creator-text-box,
 .tiptap-creator .creator-text-box.ProseMirror-selectednode {
   border: none;
   box-shadow: none;
+  outline: none;
 }
 .tiptap-creator .creator-text-box p:last-child {
   margin-bottom: 0;
+}
+.tiptap-creator .creator-text-box-content {
+  outline: none;
+  min-height: 1.6em;
 }
 .tiptap-creator iframe {
   max-width: 100%;
@@ -370,26 +417,57 @@ body {
   border: none;
 }
 
-/* Height-only spacer so text can continue on the next sheet without painting
-   over the canvas gap or page margins. */
+/* Page-backed PDF seams only. Flow docs use continuous canvas overlays. */
 .creator-flow-break,
 .tiptap-creator span.ProseMirror-widget.creator-flow-break {
   display: block !important;
   pointer-events: none;
   user-select: none;
-  height: var(--creator-flow-break-height, 128px);
-  min-height: var(--creator-flow-break-height, 128px);
+  height: var(--creator-flow-break-height, 0px);
+  min-height: var(--creator-flow-break-height, 0px);
   width: 100%;
   margin: 0;
   padding: 0;
   border: 0;
   line-height: 0;
   font-size: 0;
-  overflow: hidden;
+  overflow: visible;
   clear: both;
   background: transparent !important;
   box-shadow: none !important;
   break-before: auto;
+  position: relative;
+}
+
+/* PandaDoc-style label in the left chrome, outside the printable column. */
+.creator-flow-break-label {
+  position: absolute;
+  top: 50%;
+  left: calc(-1 * var(--creator-page-margin, 48px) - 4.5rem);
+  width: 4.25rem;
+  transform: translateY(-50%);
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: #94a3b8;
+  text-align: right;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.creator-flow-break-label::before,
+.creator-flow-break-label::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  width: 1.25rem;
+  border-top: 1px dashed #cbd5e1;
+}
+.creator-flow-break-label::before {
+  top: -6px;
+}
+.creator-flow-break-label::after {
+  bottom: -6px;
 }
 
 /* Signer fields ---------------------------------------------------------- */
@@ -399,7 +477,7 @@ body {
 .rendered-field-overlay {
   position: absolute;
   inset: 0;
-  z-index: 28;
+  z-index: 32;
   pointer-events: none;
 }
 .field-overlay-content {
@@ -500,11 +578,6 @@ body {
 .tiptap-creator .field-canvas.ProseMirror-selectednode {
   outline: none;
 }
-.overlay-text-box[data-chrome="off"] .overlay-text-box-content > .is-empty:first-child::before,
-.overlay-text-box[data-chrome="off"] .overlay-text-box-content > .is-editor-empty:first-child::before,
-.ProseMirror-hideselection .overlay-text-box[data-chrome="off"] .overlay-text-box-content > .is-empty:first-child::before {
-  opacity: 0;
-}
 .overlay-text-box-content {
   display: block;
   min-height: 100%;
@@ -513,13 +586,20 @@ body {
   line-height: 1.45;
   outline: none;
 }
-.overlay-text-box-content > .is-empty:first-child::before,
-.overlay-text-box-content > .is-editor-empty:first-child::before,
-.ProseMirror-hideselection .overlay-text-box-content > .is-empty:first-child::before {
-  color: #94a3b8;
-  float: none;
-  height: auto;
+.overlay-text-box-content .is-empty::before,
+.overlay-text-box-content .is-editor-empty::before {
+  content: none !important;
+}
+.overlay-text-box-placeholder {
+  position: absolute;
+  left: 10px;
+  top: 6px;
+  color: #cbd5e1;
+  font-size: 14px;
+  line-height: 1.45;
   pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
 }
 .overlay-text-box-content p:last-child {
   margin-bottom: 0;
@@ -542,11 +622,21 @@ body {
 }
 
 /* Block handles ---------------------------------------------------------- */
+.creator-block-gear {
+  position: absolute;
+  z-index: 25;
+  /* Sit flush against the Text Block / content column, not the paper edge. */
+  top: 0;
+  right: var(--creator-page-margin, 48px);
+  transform: translateX(100%);
+  padding-left: 6px;
+}
+
 .creator-block-handle {
   position: absolute;
   z-index: 25;
   top: 0;
-  left: 0;
+  left: var(--creator-page-margin, 48px);
   display: flex;
   align-items: center;
   gap: 2px;
@@ -602,15 +692,6 @@ body {
   transform: translate(-100%, -50%);
 }
 
-.creator-block-gear {
-  position: absolute;
-  z-index: 25;
-  top: 0;
-  right: 0;
-  transform: translateX(100%);
-  padding-left: 6px;
-}
-
 .creator-block-frame {
   display: block;
   position: absolute;
@@ -619,12 +700,22 @@ body {
   left: var(--creator-page-margin, 48px);
   right: var(--creator-page-margin, 48px);
   pointer-events: none;
-  border-radius: 4px;
-  background: rgba(30, 58, 95, 0.045);
+  border-radius: 2px;
+  border: 1.5px solid rgba(30, 58, 95, 0.35);
+  background: transparent;
 }
 
 .creator-block-frame.is-selected {
-  background: rgba(30, 58, 95, 0.1);
+  border-color: var(--primary, #1e3a5f);
+  background: transparent;
+}
+
+.creator-block-add-below {
+  position: absolute;
+  z-index: 25;
+  left: var(--creator-page-margin, 48px);
+  bottom: 0;
+  transform: translate(-50%, 50%);
 }
 
 .tiptap-creator [data-block-design="highlight"] {

@@ -10,7 +10,7 @@ import { FieldOverlay } from "../extensions/field-overlay";
 import { PageBreak } from "../extensions/page-break";
 import { SignerField } from "../extensions/signer-field";
 import { TextBox } from "../extensions/text-box";
-import { insertTextBlock } from "../insert-elements";
+import { insertAdjustableTextBox, insertTextBlock } from "../insert-elements";
 import {
   canvasForInsertPos,
   collapseOverlayTextBoxSelection,
@@ -82,7 +82,7 @@ describe("overlay text boxes", () => {
     });
 
     expect(canvasForInsertPos(editor, pageTwoPos)?.node.attrs.pageNumber).toBe(2);
-    insertTextBlock(editor, pageTwoPos);
+    insertAdjustableTextBox(editor, pageTwoPos);
     expect(editor.state.doc.childCount).toBe(before);
     expect(topTypes(editor)).toEqual(["fieldCanvas", "pageBreak", "fieldCanvas"]);
     const boxes = overlayTextBoxes(editor);
@@ -118,7 +118,7 @@ describe("overlay text boxes", () => {
     expect(isOverlayTextBoxNode(box)).toBe(false);
   });
 
-  it("places a flowing-doc text box on the field overlay", () => {
+  it("places a flowing-doc text box as a full-width Text Block", () => {
     editor = new Editor({
       element: document.createElement("div"),
       extensions: [
@@ -131,15 +131,22 @@ describe("overlay text boxes", () => {
       content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Hello" }] }] },
     });
     insertTextBlock(editor);
-    const boxes = overlayTextBoxes(editor);
-    expect(boxes).toHaveLength(1);
-    expect(boxes[0]?.parent).toBe("fieldOverlay");
+    const overlayBoxes = overlayTextBoxes(editor).filter((box) => Boolean(box.boxId));
+    expect(overlayBoxes).toHaveLength(0);
+    let flowBox = false;
+    editor.state.doc.descendants((node, _pos, parent) => {
+      if (node.type.name === "textBox" && !String(node.attrs.boxId ?? "") && parent?.type.name === "doc") {
+        flowBox = true;
+      }
+      return true;
+    });
+    expect(flowBox).toBe(true);
     expect(editor.state.doc.textContent).toContain("Hello");
   });
 
   it("collapses the caret out of an overlay text box", () => {
     editor = createPageBackedEditor();
-    insertTextBlock(editor);
+    insertAdjustableTextBox(editor);
     let boxPos = -1;
     editor.state.doc.descendants((node, pos) => {
       if (isOverlayTextBoxNode(node)) {
@@ -176,8 +183,8 @@ describe("overlay text boxes", () => {
 
   it("does not move the caret into a sibling overlay text box", () => {
     editor = createPageBackedEditor();
-    insertTextBlock(editor);
-    insertTextBlock(editor);
+    insertAdjustableTextBox(editor);
+    insertAdjustableTextBox(editor);
     const boxes: number[] = [];
     editor.state.doc.descendants((node, pos) => {
       if (isOverlayTextBoxNode(node)) {

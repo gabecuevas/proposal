@@ -5,8 +5,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "DoxySign | Document Automation Platform",
-    template: "%s | DoxySign",
+    default: "SendDox | Document Automation Platform",
+    template: "%s | SendDox",
   },
   description:
     "Production-grade document automation platform for proposals, approvals, eSignature, payments, and analytics.",

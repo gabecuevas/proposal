@@ -31,7 +31,7 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
     <header className="sticky top-0 z-40 border-b border-border/70 bg-white/85 backdrop-blur">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-4">
         <Link href="/" className="text-lg font-semibold tracking-tight text-[#28206f]">
-          DoxySign
+          SendDox
         </Link>
         <nav className="hidden flex-wrap items-center gap-4 text-sm text-muted md:flex">
           {links.map((link) => (
@@ -79,7 +79,7 @@ export function SiteFooter() {
   return (
     <footer className="border-t border-border/70 bg-white/70">
       <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-8 text-sm text-muted">
-        <p>2026 DoxySign. Document automation for modern teams.</p>
+        <p>2026 SendDox. Document automation for modern teams.</p>
         <div className="flex flex-wrap items-center gap-3">
           <Link href="/security" className="hover:text-foreground">
             Security

@@ -12,11 +12,12 @@ import { PricingProvider } from "@/components/editor/pricing-context";
 import { defaultPricingModel } from "@/lib/editor/defaults";
 import { creatorEditorProps } from "@/lib/editor/editor-config";
 import { editorExtensions } from "@/lib/editor/extensions";
+import { scheduleFocusDocumentStart } from "@/lib/editor/focus-document";
 import { insertPageBreak } from "@/lib/editor/insert-elements";
 import { insertSignerFieldAtPoint, insertSignerFieldBlock } from "@/lib/editor/insert-signer-field";
 import { migrateSignerFieldsDoc } from "@/lib/editor/migrate-signer-fields";
 import { pageSizeFromDoc, withPageSize, type PageSizeId } from "@/lib/editor/page-geometry";
-import { openPrintPreview } from "@/lib/editor/print-document";
+import { downloadDocumentPdf, openPdfPreview, openPrintPreview } from "@/lib/editor/print-document";
 import { AUTOSAVE_DELAY_MS } from "@/lib/editor/autosave";
 import { calculateQuoteTotals } from "@/lib/editor/quote";
 import { renderComputedHtml } from "@/lib/editor/render";
@@ -154,6 +155,7 @@ export default function DocumentDetailPage({ params }: Params) {
   const [showPreview, setShowPreview] = useState(false);
   const [saveConflict, setSaveConflict] = useState<{ serverUpdatedAt: string } | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [selectedRecipientId, setSelectedRecipientId] = useState("");
   const [name, setName] = useState("");
   const [visualPages, setVisualPages] = useState(1);
@@ -383,15 +385,60 @@ export default function DocumentDetailPage({ params }: Params) {
     await loadDocument(documentId);
   }
 
-  async function exportArtifact() {
-    if (!documentId) return;
+  async function resolveArtifactUrl(): Promise<string | null> {
+    if (!documentId || !document?.finalized_pdf_key) {
+      return null;
+    }
     const response = await fetch(`/api/documents/${documentId}/artifact-url`, { method: "POST" });
     if (!response.ok) {
+      return null;
+    }
+    const payload = (await response.json()) as { downloadUrl: string };
+    return payload.downloadUrl;
+  }
+
+  async function exportArtifact() {
+    if (!documentId) return;
+    const downloadUrl = await resolveArtifactUrl();
+    if (!downloadUrl) {
       setError("Finalized PDF is not available yet.");
       return;
     }
-    const payload = (await response.json()) as { downloadUrl: string };
-    window.open(payload.downloadUrl, "_blank", "noopener,noreferrer");
+    window.open(downloadUrl, "_blank", "noopener,noreferrer");
+  }
+
+  async function previewPdf() {
+    setPdfBusy(true);
+    try {
+      const artifactUrl = await resolveArtifactUrl();
+      await openPdfPreview({
+        bodyHtml: previewHtml(),
+        pageSize,
+        title: name || derivedTitle || "PDF Preview",
+        artifactUrl,
+      });
+    } catch {
+      setError("Failed to preview PDF.");
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
+  async function downloadPdf() {
+    setPdfBusy(true);
+    try {
+      const artifactUrl = await resolveArtifactUrl();
+      await downloadDocumentPdf({
+        bodyHtml: previewHtml(),
+        pageSize,
+        filename: `${name || derivedTitle || "document"}.pdf`,
+        artifactUrl,
+      });
+    } catch {
+      setError("Failed to download PDF.");
+    } finally {
+      setPdfBusy(false);
+    }
   }
 
   async function openSigningSession() {
@@ -491,11 +538,16 @@ export default function DocumentDetailPage({ params }: Params) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
+  const focusedDocIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!editor || !document) {
       return;
     }
     editor.commands.setContent(migrateSignerFieldsDoc(document.editor_json));
+    if (focusedDocIdRef.current !== document.id) {
+      focusedDocIdRef.current = document.id;
+      scheduleFocusDocumentStart(editor);
+    }
   }, [document, editor]);
 
   useEffect(() => {
@@ -703,12 +755,16 @@ export default function DocumentDetailPage({ params }: Params) {
             currentPage={currentPage}
             pageSize={pageSize}
             onAddPage={() => editor && insertPageBreak(editor)}
+            onPreviewPdf={() => void previewPdf()}
+            onDownloadPdf={() => void downloadPdf()}
+            pdfBusy={pdfBusy}
           >
             <CreatorCanvas
               editor={editor}
               pageSize={pageSize}
               documentId={documentId || undefined}
               documentName={name || derivedTitle}
+              variableKeys={Object.keys(variableRegistry)}
               onPageCountChange={setVisualPages}
               onVisiblePageChange={setCurrentPage}
               onDropField={(type, clientX, clientY) => {

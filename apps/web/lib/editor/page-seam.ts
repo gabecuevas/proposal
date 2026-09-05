@@ -106,6 +106,24 @@ export function flowSpacerHeightForBreak(input: {
   );
 }
 
+/**
+ * Spacer after an overflow break measured in continuous content coordinates
+ * (page-gap widgets collapsed). Early keep-together breaks leave unused
+ * printable space that must be added on top of the normal seam.
+ */
+export function overflowSpacerHeight(
+  contentBottomPx: number,
+  contentHeightPx: number,
+  defaultSeamPx: number,
+): number {
+  if (!(contentHeightPx > 0) || !(defaultSeamPx > 0)) {
+    return Math.max(1, Math.round(defaultSeamPx || 1));
+  }
+  const into = ((contentBottomPx % contentHeightPx) + contentHeightPx) % contentHeightPx;
+  const remaining = into <= 0.5 ? 0 : contentHeightPx - into;
+  return Math.max(defaultSeamPx, Math.round(remaining + defaultSeamPx));
+}
+
 /** Bottom margin + canvas gap + next top margin, in visual paper/editor coordinates. */
 export function visualSeamBand(
   pageIndex: number,

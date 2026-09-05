@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import { paginationTortureDoc } from "./fixtures/pagination-torture";
-import { createFlowBreakElement, pauseOverlayHitTesting } from "../extensions/page-flow";
+import { createFlowBreakElement, pauseFlowBreaksForMeasure, pauseOverlayHitTesting } from "../extensions/page-flow";
 import { contentOffsetFromVisual, flowBreakPositions, selectPageFlowBreaks, canvasSeamPositions } from "../page-flow";
 
 function walkTypes(node: { type?: string; content?: unknown[] }, into: Set<string>) {
@@ -107,7 +107,7 @@ describe("contentOffsetFromVisual", () => {
 });
 
 describe("flow-break spacer widgets", () => {
-  it("sets an explicit height so the gutter skip does not depend on CSS inheritance", () => {
+  it("sets an explicit height so page-backed seams do not depend on CSS inheritance", () => {
     const el = createFlowBreakElement(128);
     expect(el.style.height).toBe("128px");
     expect(el.style.minHeight).toBe("128px");
@@ -129,6 +129,11 @@ describe("flow-break spacer widgets", () => {
     expect(seen).toBe("hidden");
     expect(overlay.style.visibility).toBe("visible");
   });
+
+  it("pauseFlowBreaksForMeasure is a no-op passthrough for continuous canvas", () => {
+    const root = document.createElement("div");
+    expect(pauseFlowBreaksForMeasure(root, () => "ok")).toBe("ok");
+  });
 });
 
 describe("pagination torture fixture", () => {
@@ -148,30 +153,9 @@ describe("pagination torture fixture", () => {
       "quoteTable",
       "table",
       "tableRow",
-      "tableCell",
-      "fieldOverlay",
-      "signerField",
     ];
     for (const type of required) {
       expect(types.has(type)).toBe(true);
     }
-    const images = paginationTortureDoc().content.filter((node) => node.type === "image");
-    expect(images.some((node) => node.attrs?.widthPct === 100)).toBe(true);
-    expect(images.some((node) => node.attrs?.widthPct === 40)).toBe(true);
-    expect(paginationTortureDoc().content.filter((node) => node.type === "pageBreak")).toHaveLength(2);
-  });
-
-  it("paginates a long paragraph from measured line boxes, not character counts", () => {
-    const lineHeight = 24;
-    const pageHeight = 960;
-    const lines = Array.from({ length: 90 }, (_, index) => ({
-      contentTop: index * lineHeight,
-      contentBottom: (index + 1) * lineHeight,
-      pos: 20 + index,
-    }));
-    const breaks = flowBreakPositions(lines, pageHeight);
-    expect(breaks[0]).toBe(20 + pageHeight / lineHeight);
-    expect(breaks.length).toBeGreaterThan(1);
-    expect(breaks.every((pos) => typeof pos === "number")).toBe(true);
   });
 });

@@ -3,6 +3,7 @@
 import type { Editor } from "@tiptap/core";
 import { useEffect, useState, type ReactElement } from "react";
 import { setBlockClipboard } from "@/lib/editor/block-clipboard";
+import { cleanPasteArtifactsAt, pasteArtifactsPresentIn } from "@/lib/editor/clean-paste-artifacts";
 import {
   defaultLibraryName,
   deleteNodeAt,
@@ -15,6 +16,7 @@ import {
 } from "@/lib/editor/library-blocks";
 import type { EditorNode } from "@/lib/editor/types";
 import {
+  IconBraces,
   IconComment,
   IconCopy,
   IconCut,
@@ -28,7 +30,7 @@ import {
 } from "./creator-icons";
 import { arrangeOverlayTextBox } from "@/lib/editor/overlay-text-box";
 
-type View = "root" | "ai" | "comment" | "design" | "arrange";
+type View = "root" | "ai" | "comment" | "design" | "arrange" | "html";
 
 type Props = {
   editor: Editor;
@@ -279,6 +281,74 @@ export function BlockOptionsMenu({ editor, pos, documentId, templateId, onClose,
     );
   }
 
+  if (view === "html") {
+    const liveNode = editor.state.doc.nodeAt(pos);
+    const hasArtifacts = liveNode ? pasteArtifactsPresentIn(liveNode) : false;
+    const dom = editor.view.nodeDOM(pos);
+    const html =
+      dom instanceof HTMLElement
+        ? dom.outerHTML
+        : JSON.stringify(block, null, 2);
+    return (
+      <div
+        role="menu"
+        className="w-[min(36rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-border bg-surface py-1 text-[13px] text-foreground shadow-xl"
+      >
+        <SubHeader title="View HTML" onBack={() => setView("root")} />
+        <p className="mb-2 px-2 text-[11px] text-muted">
+          Live DOM for this block — useful when page breaks look wrong after paste.
+        </p>
+        {hasArtifacts ? (
+          <div className="mx-2 mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-950">
+            This block still has pasted “Page N of N” footers and/or extreme line-heights from Word/PDF.
+            Remove them so SendDox can paginate cleanly.
+            <button
+              type="button"
+              className="mt-1.5 block rounded-md bg-amber-900 px-2.5 py-1 text-[12px] font-medium text-white"
+              onClick={() => {
+                const result = cleanPasteArtifactsAt(editor, pos);
+                setStatus(
+                  `Removed ${result.removedFooters} footer${result.removedFooters === 1 ? "" : "s"}, clamped ${result.clampedHeights} line-height${result.clampedHeights === 1 ? "" : "s"}`,
+                );
+              }}
+            >
+              Clean paste artifacts
+            </button>
+          </div>
+        ) : null}
+        <textarea
+          readOnly
+          value={html}
+          aria-label="Block HTML"
+          className="mx-2 mb-2 h-72 w-[calc(100%-1rem)] resize-y rounded-md border border-border bg-slate-950 px-2 py-1.5 font-mono text-[11px] leading-relaxed text-slate-100 outline-none"
+        />
+        <div className="flex gap-2 px-2 pb-2">
+          <button
+            type="button"
+            className="rounded-md bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground"
+            onClick={() => {
+              void navigator.clipboard.writeText(html);
+              setStatus("HTML copied");
+            }}
+          >
+            Copy HTML
+          </button>
+          <button
+            type="button"
+            className="rounded-md border border-border px-3 py-1.5 text-[13px]"
+            onClick={() => {
+              void navigator.clipboard.writeText(JSON.stringify(block, null, 2));
+              setStatus("JSON copied");
+            }}
+          >
+            Copy JSON
+          </button>
+        </div>
+        {status ? <p className="px-2 pb-2 text-xs text-muted">{status}</p> : null}
+      </div>
+    );
+  }
+
   return (
     <MenuShell>
       {showArrange ? (
@@ -310,6 +380,7 @@ export function BlockOptionsMenu({ editor, pos, documentId, templateId, onClose,
         hint={locked ? "Locked" : "Unlocked"}
         onClick={() => updateNodeAttrs(editor, pos, { locked: !locked })}
       />
+      <MenuRow Icon={IconBraces} label="View HTML" onClick={() => setView("html")} />
       <Divider />
       <MenuRow Icon={IconTrash} label="Delete" onClick={remove} />
       <Divider />

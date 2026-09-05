@@ -3,8 +3,14 @@
 import { buildPageBackedEditorDoc, templateNameFromFileName, type TemplatePageImage } from "@/lib/editor/pdf-template";
 import { rasterizePdf, readImageDimensions } from "@/lib/pdf/rasterize";
 
-export const ACCEPTED_UPLOAD_TYPES = ["application/pdf", "image/png", "image/jpeg", "image/webp"];
-export const ACCEPTED_UPLOAD_EXTENSIONS = ".pdf,.png,.jpg,.jpeg,.webp";
+export const ACCEPTED_UPLOAD_TYPES = [
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+export const ACCEPTED_UPLOAD_EXTENSIONS = ".pdf,.png,.jpg,.jpeg,.webp,.docx";
 
 export type UploadProgress = {
   fileName: string;
@@ -14,7 +20,17 @@ export type UploadProgress = {
   ratio: number | null;
 };
 
+export function isDocxUpload(file: File): boolean {
+  const name = file.name.toLowerCase();
+  const type = file.type.toLowerCase();
+  // Google Docs and most Word exporters produce OOXML .docx, not legacy .doc.
+  return name.endsWith(".docx") || type.includes("wordprocessingml");
+}
+
 export function isSupportedUpload(file: File): boolean {
+  if (isDocxUpload(file)) {
+    return true;
+  }
   return ACCEPTED_UPLOAD_TYPES.includes(file.type);
 }
 
@@ -69,21 +85,79 @@ async function pagesFromFile(
   return [{ key, pageNumber: 1, width, height }];
 }
 
+/**
+ * Convert DOCX to PDF pages via the server (mammoth + Playwright), then use the
+ * same page-backed template path as PDF uploads.
+ */
+async function pagesFromDocx(
+  file: File,
+  onProgress: (progress: UploadProgress) => void,
+): Promise<TemplatePageImage[]> {
+  onProgress({ fileName: file.name, stage: "Converting Word document…", ratio: 0.05 });
+
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch("/api/templates/from-docx", { method: "POST", body: form });
+  if (!response.ok) {
+    let message = "Could not convert Word document.";
+    try {
+      const payload = (await response.json()) as { error?: string };
+      if (payload.error) {
+        message = payload.error;
+      }
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  const pdfBlob = await response.blob();
+  const pdfFile = new File([pdfBlob], file.name.replace(/\.docx$/i, ".pdf"), {
+    type: "application/pdf",
+  });
+
+  onProgress({ fileName: file.name, stage: "Rendering pages…", ratio: 0.4 });
+  const rendered = await rasterizePdf(pdfFile, (done, total) => {
+    onProgress({
+      fileName: file.name,
+      stage: `Rendering page ${done} of ${total}…`,
+      ratio: 0.4 + (done / Math.max(1, total)) * 0.55,
+    });
+  });
+
+  const pages: TemplatePageImage[] = [];
+  for (const page of rendered) {
+    onProgress({
+      fileName: file.name,
+      stage: `Uploading page ${page.pageNumber} of ${rendered.length}…`,
+      ratio: 0.95,
+    });
+    const key = await uploadBlob(page.blob, `page-${page.pageNumber}.jpg`);
+    pages.push({ key, pageNumber: page.pageNumber, width: page.width, height: page.height });
+  }
+  return pages;
+}
+
 export async function createTemplateFromFile(
   file: File,
   onProgress: (progress: UploadProgress) => void,
+  options?: { folderId?: string | null },
 ): Promise<{ id: string; name: string }> {
-  const pages = await pagesFromFile(file, onProgress);
+  const pages = isDocxUpload(file)
+    ? await pagesFromDocx(file, onProgress)
+    : await pagesFromFile(file, onProgress);
 
   onProgress({ fileName: file.name, stage: "Creating template…", ratio: 1 });
 
+  const kindTag = isDocxUpload(file) ? "docx" : "pdf";
   const response = await fetch("/api/templates", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: templateNameFromFileName(file.name),
       editor_json: buildPageBackedEditorDoc(pages),
-      tags: ["uploaded"],
+      tags: ["uploaded", kindTag],
+      folder_id: options?.folderId ?? null,
     }),
   });
 

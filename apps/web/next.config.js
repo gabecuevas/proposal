@@ -37,6 +37,7 @@ loadRootEnv();
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ["@repo/db", "@repo/shared", "@repo/ui"],
+  serverExternalPackages: ["playwright", "playwright-core"],
 };
 
 export default nextConfig;

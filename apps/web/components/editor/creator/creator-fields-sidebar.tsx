@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
 import { SignerFieldPropertiesPanel } from "@/components/editor/signer-field-properties";
 import type { Editor } from "@tiptap/core";
-import { FIELD_DRAG_MIME, fieldTypes, setFieldDragPreview } from "./field-types";
+import { fieldTypes, setFieldDragPreview } from "./field-types";
+import { FIELD_DRAG_MIME } from "@/lib/editor/field-drag";
 import {
   IconBraces,
   IconChevron,
@@ -28,7 +29,7 @@ type Props = {
   onReviewData?: () => void;
 };
 
-const STORAGE_KEY = "doxysign-fields-panel-open";
+const STORAGE_KEY = "senddox-fields-panel-open";
 
 function readOpen(): boolean {
   if (typeof window === "undefined") {

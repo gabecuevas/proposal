@@ -1,6 +1,12 @@
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { CREATOR_PAPER_SELECTOR, pageAtVisualOffset, readPaperPageGapPx, readPaperPageHeightPx, visualTopForPage } from "./page-geometry";
+import {
+  CREATOR_PAPER_SELECTOR,
+  pageAtVisualOffset,
+  readPaperPageGapPx,
+  readPaperPageHeightPx,
+  visualTopForPage,
+} from "./page-geometry";
 import {
   attrsToJson,
   clamp01,
@@ -12,8 +18,6 @@ import {
 } from "./signer-field-attrs";
 
 type NodeTarget = { pos: number; node: ProseMirrorNode };
-
-export { CREATOR_PAPER_SELECTOR };
 
 function findNodes(editor: Editor, typeName: string): NodeTarget[] {
   const found: NodeTarget[] = [];
@@ -36,29 +40,38 @@ function hasCanvas(editor: Editor): boolean {
   return findNodes(editor, "fieldCanvas").length > 0;
 }
 
-/** Returns the overlay node, appending one to the end of the doc if needed. */
-function ensureOverlay(editor: Editor): NodeTarget | null {
-  const existing = findNodes(editor, "fieldOverlay")[0];
-  if (existing) {
-    return existing;
-  }
-  const inserted = editor
-    .chain()
-    .insertContentAt(editor.state.doc.content.size, { type: "fieldOverlay" })
-    .run();
-  if (!inserted) {
-    return null;
-  }
-  return findNodes(editor, "fieldOverlay")[0] ?? null;
-}
-
-function appendField(
+/**
+ * Inserts a signer field into an overlay/canvas in one transaction.
+ * Creating the overlay empty then appending the field in a second step can
+ * leave a barren overlay when a React node view is still mounting.
+ */
+function insertFieldIntoContainer(
   editor: Editor,
-  target: NodeTarget,
+  target: NodeTarget | null,
   attrs: Record<string, unknown>,
 ): boolean {
-  const insertPos = target.pos + 1 + target.node.content.size;
-  return editor.chain().focus().insertContentAt(insertPos, { type: "signerField", attrs }).run();
+  const fieldType = editor.schema.nodes.signerField;
+  const overlayType = editor.schema.nodes.fieldOverlay;
+  if (!fieldType) {
+    return false;
+  }
+
+  const fieldNode = fieldType.create(attrs);
+  let tr = editor.state.tr;
+
+  if (target) {
+    const insertPos = target.pos + 1 + target.node.content.size;
+    tr = tr.insert(insertPos, fieldNode);
+  } else {
+    if (!overlayType) {
+      return false;
+    }
+    const overlayNode = overlayType.create(null, fieldNode);
+    tr = tr.insert(editor.state.doc.content.size, overlayNode);
+  }
+
+  editor.view.dispatch(tr.scrollIntoView());
+  return true;
 }
 
 function newFieldAttrs(
@@ -83,6 +96,47 @@ function newFieldAttrs(
   );
 }
 
+/** Prefer the caret / viewport so click-insert lands on the text the user is looking at. */
+function placementNearSelection(
+  editor: Editor,
+  size: { wPct: number; hPct: number },
+): { xPct: number; yPct: number; page: number } | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  const paper = document.querySelector(CREATOR_PAPER_SELECTOR) as HTMLElement | null;
+  if (!paper) {
+    return null;
+  }
+  const paperRect = paper.getBoundingClientRect();
+  if (paperRect.width <= 0 || paperRect.height <= 0) {
+    return null;
+  }
+
+  let clientX = paperRect.left + paperRect.width * 0.12;
+  let clientY = paperRect.top + Math.min(paperRect.height, window.innerHeight - paperRect.top) * 0.28;
+  try {
+    const coords = editor.view.coordsAtPos(editor.state.selection.from);
+    if (Number.isFinite(coords.left) && Number.isFinite(coords.top)) {
+      clientX = coords.left;
+      clientY = coords.top;
+    }
+  } catch {
+    // keep viewport fallback
+  }
+
+  const pageHeightPx = readPaperPageHeightPx(paper);
+  const gapPx = readPaperPageGapPx(paper);
+  const xPct = centered(clientX - paperRect.left, paperRect.width, size.wPct);
+  const yFromTop = Math.max(0, clientY - paperRect.top);
+  const page = pageAtVisualOffset(yFromTop, pageHeightPx, gapPx);
+  const yPct = Math.min(
+    Math.max(0, 1 - size.hPct),
+    (yFromTop - visualTopForPage(page, pageHeightPx, gapPx)) / pageHeightPx - size.hPct / 2,
+  );
+  return { xPct, yPct, page };
+}
+
 export function insertSignerFieldBlock(
   editor: Editor,
   input: {
@@ -95,10 +149,18 @@ export function insertSignerFieldBlock(
   },
 ): boolean {
   const size = defaultSizeForType(input.type);
+  const near =
+    input.xPct === undefined || input.yPct === undefined || input.page === undefined
+      ? placementNearSelection(editor, size)
+      : null;
   const overrides: Record<string, unknown> = {
-    ...(typeof input.xPct === "number" ? { xPct: clamp01(input.xPct) } : {}),
-    ...(typeof input.yPct === "number" ? { yPct: clamp01(input.yPct) } : {}),
-    ...(typeof input.page === "number" ? { page: Math.max(0, Math.trunc(input.page)) } : {}),
+    ...(typeof input.xPct === "number" ? { xPct: clamp01(input.xPct) } : near ? { xPct: near.xPct } : {}),
+    ...(typeof input.yPct === "number" ? { yPct: clamp01(input.yPct) } : near ? { yPct: near.yPct } : {}),
+    ...(typeof input.page === "number"
+      ? { page: Math.max(0, Math.trunc(input.page)) }
+      : near
+        ? { page: near.page }
+        : {}),
   };
 
   if (hasCanvas(editor)) {
@@ -112,22 +174,19 @@ export function insertSignerFieldBlock(
         }
         overrides.yPct = yPct;
       }
-      return appendField(editor, target, newFieldAttrs(input, overrides, offset));
+      return insertFieldIntoContainer(editor, target, newFieldAttrs(input, overrides, offset));
     }
   }
 
-  const overlay = ensureOverlay(editor);
-  if (!overlay) {
-    return false;
-  }
-  const offset = overlay.node.childCount;
+  const overlay = findNodes(editor, "fieldOverlay")[0] ?? null;
+  const offset = overlay?.node.childCount ?? 0;
   if (overrides.yPct === undefined) {
     overrides.yPct = clamp01(0.06 + (offset % 8) * 0.1);
   }
   if (overrides.page === undefined) {
     overrides.page = Math.floor(offset / 8);
   }
-  return appendField(editor, overlay, newFieldAttrs(input, overrides, offset));
+  return insertFieldIntoContainer(editor, overlay, newFieldAttrs(input, overrides, offset));
 }
 
 /**
@@ -155,7 +214,7 @@ export function insertSignerFieldAtPoint(
       const xPct = centered(input.clientX - rect.left, rect.width, size.wPct);
       const yPct = centered(input.clientY - rect.top, rect.height, size.hPct);
       if (target) {
-        return appendField(
+        return insertFieldIntoContainer(
           editor,
           target,
           newFieldAttrs(input, { xPct, yPct, page: 0 }, target.node.childCount),
@@ -186,14 +245,11 @@ export function insertSignerFieldAtPoint(
     (yFromTop - visualTopForPage(page, pageHeightPx, gapPx)) / pageHeightPx - size.hPct / 2,
   );
 
-  const overlay = ensureOverlay(editor);
-  if (!overlay) {
-    return false;
-  }
-  return appendField(
+  const overlay = findNodes(editor, "fieldOverlay")[0] ?? null;
+  return insertFieldIntoContainer(
     editor,
     overlay,
-    newFieldAttrs(input, { xPct, yPct, page }, overlay.node.childCount),
+    newFieldAttrs(input, { xPct, yPct, page }, overlay?.node.childCount ?? 0),
   );
 }
 
@@ -268,12 +324,9 @@ export function pasteCopiedSignerField(
   if (hasCanvas(editor)) {
     const target = findTargetCanvas(editor);
     if (target) {
-      return appendField(editor, target, json);
+      return insertFieldIntoContainer(editor, target, json);
     }
   }
-  const overlay = ensureOverlay(editor);
-  if (!overlay) {
-    return false;
-  }
-  return appendField(editor, overlay, json);
+  const overlay = findNodes(editor, "fieldOverlay")[0] ?? null;
+  return insertFieldIntoContainer(editor, overlay, json);
 }

@@ -12,11 +12,12 @@ import { CreatorPageWorkspace } from "@/components/editor/creator/creator-page-w
 import { defaultEditorDoc } from "@/lib/editor/defaults";
 import { creatorEditorProps } from "@/lib/editor/editor-config";
 import { editorExtensions } from "@/lib/editor/extensions";
+import { scheduleFocusDocumentStart } from "@/lib/editor/focus-document";
 import { insertPageBreak } from "@/lib/editor/insert-elements";
 import { insertSignerFieldAtPoint, insertSignerFieldBlock } from "@/lib/editor/insert-signer-field";
 import { migrateSignerFieldsDoc } from "@/lib/editor/migrate-signer-fields";
 import { pageSizeFromDoc, withPageSize, type PageSizeId } from "@/lib/editor/page-geometry";
-import { openPrintPreview } from "@/lib/editor/print-document";
+import { downloadDocumentPdf, openPdfPreview, openPrintPreview } from "@/lib/editor/print-document";
 import { AUTOSAVE_DELAY_MS } from "@/lib/editor/autosave";
 import { calculateQuoteTotals } from "@/lib/editor/quote";
 import { renderComputedHtml } from "@/lib/editor/render";
@@ -91,6 +92,7 @@ export function TemplateEditor({
   const [selectedRecipientId, setSelectedRecipientId] = useState("recipient-primary");
   const [mode, setMode] = useState<"sender-preview" | "recipient-fill" | "finalized">("sender-preview");
   const [debugOpen, setDebugOpen] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [visualPages, setVisualPages] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState<PageSizeId>(() => pageSizeFromDoc(migratedInitial));
@@ -115,6 +117,9 @@ export function TemplateEditor({
     extensions: editorExtensions,
     content: migratedInitial,
     editorProps: creatorEditorProps,
+    onCreate({ editor: created }) {
+      scheduleFocusDocumentStart(created);
+    },
     onUpdate({ editor: nextEditor }) {
       setSerialized(serializeStable(withPageSize(nextEditor.getJSON() as EditorDoc, pageSizeRef.current)));
     },
@@ -137,6 +142,36 @@ export function TemplateEditor({
       signerFieldValues: [],
       activeRecipientId: selectedRecipientId,
     });
+  }
+
+  async function previewPdf() {
+    setPdfBusy(true);
+    try {
+      await openPdfPreview({
+        bodyHtml: buildComputedHtml(),
+        pageSize,
+        title: name || "PDF Preview",
+      });
+    } catch {
+      setStatus("PDF preview failed");
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
+  async function downloadPdf() {
+    setPdfBusy(true);
+    try {
+      await downloadDocumentPdf({
+        bodyHtml: buildComputedHtml(),
+        pageSize,
+        filename: `${name.trim() || "template"}.pdf`,
+      });
+    } catch {
+      setStatus("PDF download failed");
+    } finally {
+      setPdfBusy(false);
+    }
   }
 
   const saveNow = useCallback(async () => {
@@ -374,12 +409,16 @@ export function TemplateEditor({
             currentPage={currentPage}
             pageSize={pageSize}
             onAddPage={() => editor && insertPageBreak(editor)}
+            onPreviewPdf={() => void previewPdf()}
+            onDownloadPdf={() => void downloadPdf()}
+            pdfBusy={pdfBusy}
           >
             <CreatorCanvas
               editor={editor}
               pageSize={pageSize}
               templateId={templateId}
               documentName={name}
+              variableKeys={Object.keys(variableRegistry)}
               onPageCountChange={setVisualPages}
               onVisiblePageChange={setCurrentPage}
               onDropField={(type, clientX, clientY) => {

@@ -105,6 +105,10 @@ export const FlowGaps = Extension.create({
                 return true;
               }
             }
+            // Blank Google Docs sheet: sole empty paragraph must accept the caret.
+            if (flowChildCount(view.state.doc) === 0) {
+              return false;
+            }
             if ($pos.depth === 1 && isScaffoldFlowNode($pos.parent)) {
               return true;
             }

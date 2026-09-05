@@ -6,7 +6,20 @@ import { clamp01 } from "./signer-field-attrs";
 
 type NodeTarget = { pos: number; node: ProseMirrorNode };
 
-export const OVERLAY_TEXT_BOX_PLACEHOLDER = "Type [ for variable or in-text field";
+export const OVERLAY_TEXT_BOX_PLACEHOLDER = "Insert text here...";
+
+export function isOverlayTextBoxEmpty(node: ProseMirrorNode): boolean {
+  if (node.childCount === 0) {
+    return true;
+  }
+  if (node.childCount === 1) {
+    const child = node.firstChild;
+    if (child?.type.name === "paragraph" && child.content.size === 0) {
+      return true;
+    }
+  }
+  return false;
+}
 
 export const DEFAULT_OVERLAY_TEXT_BOX_SIZE = { wPct: 0.42, hPct: 0.08 };
 
@@ -263,7 +276,7 @@ export function nextOverlayTextBoxName(editor: Editor): string {
     }
     return true;
   });
-  return `Text ${count + 1}`;
+  return `Adjustable Text ${count + 1}`;
 }
 
 function appendOverlayChild(editor: Editor, target: NodeTarget, json: object): boolean {

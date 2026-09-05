@@ -18,8 +18,10 @@ model Workspace {
   updatedAt     DateTime @updatedAt
 
   templates     Template[]
+  templateFolders TemplateFolder[]
   documents     Document[]
   contentBlocks ContentBlock[]
+  contentBlockFolders ContentBlockFolder[]
   activityEvents DocumentActivityEvent[]
   auditExportLedgers AuditExportLedger[]
   apiKeys       ApiKey[]
@@ -38,9 +40,41 @@ model Workspace {
   owner         User?            @relation("workspace_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
 }
 
+model TemplateFolder {
+  id             String   @id @default(cuid())
+  workspace_id   String
+  parent_id      String?
+  name           String
+  created_by     String
+  updated_at     DateTime @updatedAt
+  created_at     DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  parent    TemplateFolder?  @relation("FolderTree", fields: [parent_id], references: [id], onDelete: Cascade)
+  children  TemplateFolder[] @relation("FolderTree")
+  templates Template[]
+  shares    TemplateFolderShare[]
+
+  @@index([workspace_id, parent_id])
+}
+
+model TemplateFolderShare {
+  id           String   @id @default(cuid())
+  folder_id    String
+  user_id      String
+  role         String   @default("viewer")
+  created_at   DateTime @default(now())
+
+  folder TemplateFolder @relation(fields: [folder_id], references: [id], onDelete: Cascade)
+
+  @@unique([folder_id, user_id])
+  @@index([user_id])
+}
+
 model Template {
   id             String   @id @default(cuid())
   workspace_id   String
+  folder_id      String?
   name           String
   tags           Json
   variable_registry_json Json?
@@ -48,11 +82,29 @@ model Template {
   editor_json    Json
   schema_version Int      @default(1)
   created_by     String
+  updated_by     String?
   updated_at     DateTime @updatedAt
   created_at     DateTime @default(now())
 
   workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  folder    TemplateFolder? @relation(fields: [folder_id], references: [id], onDelete: SetNull)
   documents Document[]
+  shares    TemplateShare[]
+
+  @@index([workspace_id, folder_id])
+}
+
+model TemplateShare {
+  id           String   @id @default(cuid())
+  template_id  String
+  user_id      String
+  role         String   @default("viewer")
+  created_at   DateTime @default(now())
+
+  template Template @relation(fields: [template_id], references: [id], onDelete: Cascade)
+
+  @@unique([template_id, user_id])
+  @@index([user_id])
 }
 
 model Document {
@@ -152,18 +204,69 @@ model DocumentSentVersion {
   @@index([workspace_id, created_at])
 }
 
+model ContentBlockFolder {
+  id           String   @id @default(cuid())
+  workspace_id String
+  parent_id    String?
+  name         String
+  created_by   String
+  updated_at   DateTime @updatedAt
+  created_at   DateTime @default(now())
+
+  workspace Workspace            @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  parent    ContentBlockFolder?  @relation("ContentBlockFolderTree", fields: [parent_id], references: [id], onDelete: Cascade)
+  children  ContentBlockFolder[] @relation("ContentBlockFolderTree")
+  blocks    ContentBlock[]
+  shares    ContentBlockFolderShare[]
+
+  @@index([workspace_id, parent_id])
+}
+
+model ContentBlockFolderShare {
+  id         String   @id @default(cuid())
+  folder_id  String
+  user_id    String
+  role       String   @default("viewer")
+  created_at DateTime @default(now())
+
+  folder ContentBlockFolder @relation(fields: [folder_id], references: [id], onDelete: Cascade)
+
+  @@unique([folder_id, user_id])
+  @@index([user_id])
+}
+
 model ContentBlock {
   id             String   @id @default(cuid())
   workspace_id   String
+  folder_id      String?
   name           String
   block_type     String
   editor_json    Json
   version        Int      @default(1)
   schema_version Int      @default(1)
+  created_by     String?
+  updated_by     String?
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  workspace Workspace          @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  folder    ContentBlockFolder? @relation(fields: [folder_id], references: [id], onDelete: SetNull)
+  shares    ContentBlockShare[]
+
+  @@index([workspace_id, folder_id])
+}
+
+model ContentBlockShare {
+  id         String   @id @default(cuid())
+  block_id   String
+  user_id    String
+  role       String   @default("viewer")
+  created_at DateTime @default(now())
+
+  block ContentBlock @relation(fields: [block_id], references: [id], onDelete: Cascade)
+
+  @@unique([block_id, user_id])
+  @@index([user_id])
 }
 
 model Recipient {

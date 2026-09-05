@@ -11,6 +11,7 @@ import {
   insertPageBreak,
   insertQuote,
   insertQuoteTable,
+  insertAdjustableTextBox,
   insertTable,
   insertTableOfContents,
   insertTextBlock,
@@ -60,7 +61,20 @@ type Entry = {
 };
 
 const entries: Entry[] = [
-  { id: "text", label: "Text box", hint: "Place on the page", Icon: IconTextT, run: insertTextBlock },
+  {
+    id: "text",
+    label: "Text Block",
+    hint: "Full width between margins",
+    Icon: IconTextT,
+    run: insertTextBlock,
+  },
+  {
+    id: "adjustableText",
+    label: "Adjustable Text Box",
+    hint: "Floating box on the page",
+    Icon: IconTextT,
+    run: insertAdjustableTextBox,
+  },
   {
     id: "heading",
     label: "Heading",
@@ -298,7 +312,7 @@ export function ElementMenu({
       </p>
       <div className="max-h-80 overflow-y-auto">
         {visibleEntries
-          .filter((entry) => entry.id === "text")
+          .filter((entry) => entry.id === "text" || entry.id === "adjustableText")
           .map((entry) => (
             <Row
               key={entry.id}
@@ -323,7 +337,7 @@ export function ElementMenu({
           <Row Icon={IconTable} label="Table" hint="Rows and columns" onClick={() => setView("table")} />
         ) : null}
         {visibleEntries
-          .filter((entry) => entry.id !== "text")
+          .filter((entry) => entry.id !== "text" && entry.id !== "adjustableText")
           .map((entry) => (
             <Row
               key={entry.id}

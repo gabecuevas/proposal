@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hitTestBlocks, type TopLevelBlock } from "../block-hit-test";
+import { clampInsertGapTop, hitTestBlocks, type TopLevelBlock } from "../block-hit-test";
 
 const blocks: TopLevelBlock[] = [
   { index: 0, pos: 0, size: 10, top: 48, bottom: 100 },
@@ -7,11 +7,11 @@ const blocks: TopLevelBlock[] = [
 ];
 
 describe("hitTestBlocks", () => {
-  it("returns a gap above the first block", () => {
+  it("returns a gap above the first block, clamped to the top margin", () => {
     expect(hitTestBlocks(20, blocks, 1056)).toEqual({
       kind: "gap",
       insertPos: 0,
-      topPx: 46,
+      topPx: 48,
     });
   });
 
@@ -19,7 +19,7 @@ describe("hitTestBlocks", () => {
     expect(hitTestBlocks(50, blocks, 1056)).toEqual({
       kind: "gap",
       insertPos: 0,
-      topPx: 46,
+      topPx: 48,
     });
   });
 
@@ -44,16 +44,24 @@ describe("hitTestBlocks", () => {
     });
   });
 
-  it("returns an insert slot on empty paper at the pointer", () => {
-    expect(hitTestBlocks(80, [], 1056)).toEqual({
-      kind: "gap",
-      insertPos: 0,
-      topPx: 80,
-    });
+  it("hides the insert gap on empty paper until the first block exists", () => {
+    expect(hitTestBlocks(80, [], 1056)).toBeNull();
   });
 
   it("ignores coordinates outside the paper", () => {
     expect(hitTestBlocks(-1, blocks, 1056)).toBeNull();
     expect(hitTestBlocks(1057, blocks, 1056)).toBeNull();
+  });
+});
+
+describe("clampInsertGapTop", () => {
+  it("keeps the insert line inside page margins", () => {
+    expect(clampInsertGapTop(10, 1056)).toBe(48);
+    expect(clampInsertGapTop(1040, 1056)).toBe(1008);
+  });
+
+  it("rejects positions in the gutter between pages", () => {
+    // Page 0 ends at 1056; gap is 32px before page 1.
+    expect(clampInsertGapTop(1060, 1056 + 32 + 1056, { pageHeightPx: 1056, gapPx: 32 })).toBeNull();
   });
 });

@@ -12,7 +12,7 @@ import {
   type PageSizeId,
 } from "@/lib/editor/page-geometry";
 
-const STORAGE_KEY = "doxysign-page-preview-open";
+const STORAGE_KEY = "senddox-page-preview-open";
 const THUMB_WIDTH = 120;
 
 type Props = {
@@ -22,6 +22,8 @@ type Props = {
   currentPage: number;
   pageSize?: PageSizeId;
   name?: string;
+  /** 0 for continuous flow canvas; PAGE_GAP_PX for page-backed PDFs. */
+  pageGapPx?: number;
 };
 
 function readOpen(): boolean {
@@ -38,6 +40,7 @@ export function CreatorPageNav({
   currentPage,
   pageSize = "letter",
   name = "Document",
+  pageGapPx = PAGE_GAP_PX,
 }: Props) {
   const spec = pageSizeSpec(pageSize);
   const [open, setOpen] = useState(false);
@@ -86,7 +89,7 @@ export function CreatorPageNav({
     }
     const paperTop = paper.offsetTop;
     scroller.scrollTo({
-      top: paperTop + visualTopForPage(pageIndex, spec.heightPx, PAGE_GAP_PX) - 24,
+      top: paperTop + visualTopForPage(pageIndex, spec.heightPx, pageGapPx) - 24,
       behavior: "smooth",
     });
   }
@@ -111,7 +114,7 @@ export function CreatorPageNav({
     "--creator-page-width": `${spec.widthPx}px`,
     "--creator-page-height": `${spec.heightPx}px`,
     "--creator-page-margin": `${spec.marginPx}px`,
-    "--creator-page-gap": `${PAGE_GAP_PX}px`,
+    "--creator-page-gap": `${pageGapPx}px`,
   } as CSSProperties;
 
   return (
@@ -161,8 +164,8 @@ export function CreatorPageNav({
                   style={{
                     ...thumbVars,
                     width: spec.widthPx,
-                    height: stackedPaperHeightPx(pages, spec.heightPx, PAGE_GAP_PX),
-                    transform: pageThumbContentTransform(index, spec.heightPx, PAGE_GAP_PX, scale),
+                    height: stackedPaperHeightPx(pages, spec.heightPx, pageGapPx),
+                    transform: pageThumbContentTransform(index, spec.heightPx, pageGapPx, scale),
                   }}
                   dangerouslySetInnerHTML={sourceHtml ? { __html: sourceHtml } : undefined}
                 />
@@ -175,7 +178,12 @@ export function CreatorPageNav({
   );
 }
 
-export function readVisiblePage(scroller: HTMLElement, paper: HTMLElement, pageHeightPx: number): number {
+export function readVisiblePage(
+  scroller: HTMLElement,
+  paper: HTMLElement,
+  pageHeightPx: number,
+  gapPx = PAGE_GAP_PX,
+): number {
   const y = scroller.scrollTop - paper.offsetTop + 48;
-  return pageAtVisualOffset(Math.max(0, y), pageHeightPx, PAGE_GAP_PX) + 1;
+  return pageAtVisualOffset(Math.max(0, y), pageHeightPx, gapPx) + 1;
 }

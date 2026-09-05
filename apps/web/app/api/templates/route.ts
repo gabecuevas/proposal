@@ -11,11 +11,15 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const q = url.searchParams.get("q") ?? undefined;
   const tag = url.searchParams.get("tag") ?? undefined;
+  const folderParam = url.searchParams.get("folderId");
+  const folderId =
+    folderParam === null ? undefined : folderParam === "root" || folderParam === "" ? null : folderParam;
   const templates = await listTemplates(auth.workspaceId, {
     limit: pagination.limit + 1,
     before: pagination.before,
     query: q,
     tag,
+    folderId,
   });
   const page = getNextCursorFromTimestampPage(templates, pagination.limit, (item) => item.created_at ?? new Date());
   return jsonWithRequestId(request, { templates: page.items, nextCursor: page.nextCursor });
@@ -29,6 +33,7 @@ export async function POST(request: NextRequest) {
     name?: string;
     editor_json?: EditorDoc;
     tags?: string[];
+    folder_id?: string | null;
   };
   try {
     const template = await createTemplate({
@@ -37,6 +42,7 @@ export async function POST(request: NextRequest) {
       createdBy: auth.userId,
       editor_json: payload.editor_json,
       tags: Array.isArray(payload.tags) ? payload.tags.map(String).slice(0, 20) : undefined,
+      folder_id: payload.folder_id,
     });
     return jsonWithRequestId(request, { template }, { status: 201 });
   } catch (error) {

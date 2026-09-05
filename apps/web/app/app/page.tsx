@@ -8,7 +8,7 @@ import { SheetTable, sheetTd, sheetTh, sheetTr } from "@/components/ui/sheet-tab
 import { buildSampleOverview } from "@/lib/dashboard/sample-data";
 import type { DashboardActivityKind, DashboardOverview } from "@/lib/dashboard/types";
 
-const SAMPLE_DISMISSED_KEY = "doxysign.dashboard.sampleDismissed";
+const SAMPLE_DISMISSED_KEY = "senddox.dashboard.sampleDismissed";
 
 const emptyOverview: DashboardOverview = {
   currency: "USD",

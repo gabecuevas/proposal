@@ -5,6 +5,7 @@ import {
   forcedBreakMinSeamPx,
   forcedBreakSpacerHeight,
   flowSpacerHeightForBreak,
+  overflowSpacerHeight,
   rangeOverlapsSeam,
   validFlowPos,
   visualSeamBand,
@@ -31,9 +32,11 @@ describe("page seams", () => {
     expect(validFlowPos(3922, 2846)).toBe(2846);
   });
 
-  it("fills the rest of the sheet after an explicit page break", () => {
-    expect(forcedBreakSpacerHeight(100, 1056, 32, 48, 128)).toBe(1036);
-    expect(forcedBreakSpacerHeight(1008, 1056, 32, 48, 128)).toBe(128);
+  it("fills unused printable space when an overflow break lands early", () => {
+    expect(overflowSpacerHeight(960, 960, 128)).toBe(128);
+    expect(overflowSpacerHeight(900, 960, 128)).toBe(188);
+    expect(overflowSpacerHeight(1920, 960, 128)).toBe(128);
+    expect(overflowSpacerHeight(1800, 960, 128)).toBe(248);
   });
 
   it("uses only the canvas gap after a full-sheet page image", () => {

@@ -5,6 +5,7 @@ import { NodeSelection } from "@tiptap/pm/state";
 import { useEffect, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import {
   PAGE_GAP_PX,
+  pageCountForHeight,
   pageCountForPaperHeight,
   pageSizeSpec,
   visualTopForPage,
@@ -16,6 +17,7 @@ import {
   savePageToLibrary,
 } from "@/lib/editor/page-actions";
 import { CreatorBlockControls } from "./creator-block-controls";
+import { BlankPageStarter } from "./blank-page-starter";
 import { CreatorChromeProvider } from "./creator-chrome-context";
 import { CreatorPageBackgrounds } from "./creator-page-backgrounds";
 import { CreatorPageMenu } from "./creator-page-menu";
@@ -26,6 +28,7 @@ import { FIELD_DRAG_MIME } from "./field-types";
 import { SlashInsertMenu } from "./slash-insert-menu";
 import { copySignerFieldNode, readCopiedSignerField } from "@/lib/editor/field-clipboard";
 import { pasteCopiedSignerField } from "@/lib/editor/insert-signer-field";
+import { FIELD_DROP_EVENT, type FieldDropDetail } from "@/lib/editor/field-drag";
 
 /** Editor-only gutter for block handles. Not part of the printable page. */
 const PAPER_CHROME_GUTTER_PX = 64;
@@ -39,6 +42,7 @@ type Props = {
   documentId?: string;
   templateId?: string;
   documentName?: string;
+  variableKeys?: string[];
   children?: ReactNode;
 };
 
@@ -51,6 +55,7 @@ export function CreatorCanvas({
   documentId,
   templateId,
   documentName,
+  variableKeys = [],
   children,
 }: Props) {
   const paperRef = useRef<HTMLDivElement>(null);
@@ -59,7 +64,9 @@ export function CreatorCanvas({
   const [pageCount, setPageCount] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [openMenuPage, setOpenMenuPage] = useState<number | null>(null);
+  const [pageBacked, setPageBacked] = useState(false);
   const pageActions = useCreatorPageActions();
+  const pageGapPx = pageBacked ? PAGE_GAP_PX : 0;
 
   useEffect(() => {
     const paper = paperRef.current;
@@ -69,20 +76,24 @@ export function CreatorCanvas({
     }
     const measure = () => {
       const flow = paper.querySelector(".ProseMirror") as HTMLElement | null;
-      const pageBacked = flow?.classList.contains("is-page-backed") ?? false;
+      const backed = flow?.classList.contains("is-page-backed") ?? false;
+      setPageBacked(backed);
+      const gapPx = backed ? PAGE_GAP_PX : 0;
       const canvasCount = flow?.querySelectorAll("[data-field-canvas]").length ?? 0;
       const pages =
-        pageBacked && canvasCount > 0
+        backed && canvasCount > 0
           ? canvasCount
-          : pageCountForPaperHeight(
-              flow?.scrollHeight || paper.scrollHeight,
-              spec.heightPx,
-              PAGE_GAP_PX,
-            );
+          : backed
+            ? pageCountForPaperHeight(
+                flow?.scrollHeight || paper.scrollHeight,
+                spec.heightPx,
+                PAGE_GAP_PX,
+              )
+            : pageCountForHeight(flow?.scrollHeight || paper.scrollHeight, spec.heightPx);
       setPageCount(pages);
       onPageCountChange?.(pages);
       if (scroller) {
-        const visible = readVisiblePage(scroller, paper, spec.heightPx);
+        const visible = readVisiblePage(scroller, paper, spec.heightPx, gapPx);
         setCurrentPage(visible);
         onVisiblePageChange?.(visible);
       }
@@ -166,6 +177,18 @@ export function CreatorCanvas({
     return () => window.removeEventListener("keydown", onFieldKeys);
   }, [editor]);
 
+  useEffect(() => {
+    function onFieldDrop(event: Event) {
+      const detail = (event as CustomEvent<FieldDropDetail>).detail;
+      if (!detail?.type) {
+        return;
+      }
+      onDropField(detail.type, detail.clientX, detail.clientY);
+    }
+    window.addEventListener(FIELD_DROP_EVENT, onFieldDrop);
+    return () => window.removeEventListener(FIELD_DROP_EVENT, onFieldDrop);
+  }, [onDropField]);
+
   function onDragOver(event: DragEvent<HTMLDivElement>) {
     if (event.dataTransfer.types.includes(FIELD_DRAG_MIME)) {
       event.preventDefault();
@@ -183,7 +206,7 @@ export function CreatorCanvas({
   }
 
   return (
-    <CreatorChromeProvider documentId={documentId} templateId={templateId}>
+    <CreatorChromeProvider documentId={documentId} templateId={templateId} editor={editor}>
     <div className="flex min-h-0 min-w-0 flex-1" onDragOver={onDragOver} onDrop={onDrop}>
       <CreatorPageNav
         paperRef={paperRef}
@@ -192,6 +215,7 @@ export function CreatorCanvas({
         currentPage={currentPage}
         pageSize={pageSize}
         name={documentName}
+        pageGapPx={pageGapPx}
       />
       <div
         ref={scrollerRef}
@@ -216,19 +240,31 @@ export function CreatorCanvas({
                 "--creator-page-width": `${spec.widthPx}px`,
                 "--creator-page-height": `${spec.heightPx}px`,
                 "--creator-page-margin": `${spec.marginPx}px`,
-                "--creator-page-gap": `${PAGE_GAP_PX}px`,
-                "--creator-flow-break-height": `${spec.marginPx * 2 + PAGE_GAP_PX}px`,
+                "--creator-page-gap": `${pageGapPx}px`,
+                "--creator-flow-break-height": pageBacked ? `${spec.marginPx * 2 + PAGE_GAP_PX}px` : "0px",
                 width: spec.widthPx,
                 minWidth: spec.widthPx,
                 maxWidth: spec.widthPx,
               } as CSSProperties
             }
           >
+            {!pageBacked && pageCount > 1 ? (
+              <div className="creator-page-guides" aria-hidden>
+                {Array.from({ length: pageCount - 1 }, (_, index) => (
+                  <div
+                    key={`guide-${index + 1}`}
+                    className="creator-page-guide"
+                    data-page-label="Estimated page break"
+                    style={{ top: (index + 1) * spec.heightPx }}
+                  />
+                ))}
+              </div>
+            ) : null}
             {Array.from({ length: pageCount }, (_, index) => (
               <div
                 key={index}
                 className="creator-page-chrome"
-                style={{ top: visualTopForPage(index, spec.heightPx, PAGE_GAP_PX) }}
+                style={{ top: visualTopForPage(index, spec.heightPx, pageGapPx) }}
               >
                 <div className="creator-page-index">
                   Page {index + 1} of {pageCount}
@@ -268,12 +304,15 @@ export function CreatorCanvas({
             <div data-creator-surface className="relative">
               <CreatorPageBackgrounds editor={editor} pageCount={pageCount} spec={spec} />
               <EditorContent editor={editor} />
+              <BlankPageStarter editor={editor} variableKeys={variableKeys} />
             </div>
             <CreatorBlockControls
               editor={editor}
               paperRef={paperRef}
+              scrollerRef={scrollerRef}
               documentId={documentId}
               templateId={templateId}
+              pageSize={pageSize}
             />
             <CreatorSelectionToolbar editor={editor} paperRef={paperRef} />
             <SlashInsertMenu editor={editor} paperRef={paperRef} />

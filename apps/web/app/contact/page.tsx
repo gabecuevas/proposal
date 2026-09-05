@@ -7,11 +7,11 @@ export default function ContactPage() {
       <div className="mt-8 grid gap-4 md:grid-cols-2">
         <article className="glass-card rounded-xl p-5">
           <h2 className="font-semibold">Sales</h2>
-          <p className="mt-2 text-sm text-muted">sales@doxysign.app</p>
+          <p className="mt-2 text-sm text-muted">sales@senddox.com</p>
         </article>
         <article className="glass-card rounded-xl p-5">
           <h2 className="font-semibold">Support</h2>
-          <p className="mt-2 text-sm text-muted">support@doxysign.app</p>
+          <p className="mt-2 text-sm text-muted">support@senddox.com</p>
         </article>
       </div>
     </main>

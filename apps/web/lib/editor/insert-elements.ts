@@ -34,8 +34,9 @@ export function insertImageAsset(editor: Editor, asset: UploadedAsset, at?: numb
       align: "center",
     },
   };
-  if (at != null) {
-    insertContentAtTopLevel(editor, at, node);
+  const pos = resolveBlockInsertPos(editor, at);
+  if (pos != null) {
+    insertContentAtTopLevel(editor, pos, node);
     return;
   }
   editor.chain().focus().insertContent(node).run();
@@ -92,6 +93,23 @@ export function topLevelInsertPos(editor: Editor, pos: number): number {
   return $pos.before(1);
 }
 
+/**
+ * When the caret sits inside a Text Block, new structural elements (another
+ * Text Block, table, image, …) must be siblings after it — never nested or
+ * mid-split. Returns undefined to keep TipTap's default insert-at-selection.
+ */
+export function resolveBlockInsertPos(editor: Editor, at?: number): number | undefined {
+  if (at != null) {
+    return at;
+  }
+  const { $from } = editor.state.selection;
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if ($from.node(depth).type.name === "textBox") {
+      return $from.after(depth);
+    }
+  }
+  return undefined;
+}
 export function insertContentAtTopLevel(editor: Editor, pos: number, content: object | object[]): boolean {
   const insertPos = topLevelInsertPos(editor, pos);
   const items = Array.isArray(content) ? content : [content];
@@ -149,8 +167,9 @@ export function insertVideo(editor: Editor, rawUrl: string, at?: number): boolea
   if (!src) {
     return false;
   }
-  if (at != null) {
-    return insertContentAtTopLevel(editor, at, { type: "youtube", attrs: { src } });
+  const pos = resolveBlockInsertPos(editor, at);
+  if (pos != null) {
+    return insertContentAtTopLevel(editor, pos, { type: "youtube", attrs: { src } });
   }
   const ok = editor.chain().focus().setYoutubeVideo({ src, width: 640, height: 360 }).run();
   if (ok) {
@@ -160,8 +179,9 @@ export function insertVideo(editor: Editor, rawUrl: string, at?: number): boolea
 }
 
 export function insertTable(editor: Editor, rows = 3, cols = 3, at?: number): void {
-  if (at != null) {
-    insertContentAtTopLevel(editor, at, tableNode(rows, cols));
+  const pos = resolveBlockInsertPos(editor, at);
+  if (pos != null) {
+    insertContentAtTopLevel(editor, pos, tableNode(rows, cols));
     return;
   }
   editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
@@ -169,16 +189,22 @@ export function insertTable(editor: Editor, rows = 3, cols = 3, at?: number): vo
 }
 
 export function insertTextBlock(editor: Editor, at?: number): void {
-  if (insertOverlayTextBox(editor, at)) {
-    return;
-  }
   const node = { type: "textBox", content: [emptyParagraph()] };
-  if (at != null) {
-    insertContentAtTopLevel(editor, at, node);
+  const pos = resolveBlockInsertPos(editor, at);
+  if (pos != null) {
+    insertContentAtTopLevel(editor, pos, node);
     return;
   }
   editor.chain().focus().insertTextBox().run();
   requestPageFlowSync(editor);
+}
+
+/** Floating overlay box — kept as an alternative to the full-width Text Block. */
+export function insertAdjustableTextBox(editor: Editor, at?: number): void {
+  if (insertOverlayTextBox(editor, at)) {
+    return;
+  }
+  insertTextBlock(editor, at);
 }
 
 export function insertHeading(editor: Editor, level: 1 | 2 | 3, at?: number): void {
@@ -221,8 +247,9 @@ export function insertQuote(editor: Editor, at?: number): void {
 }
 
 export function insertDivider(editor: Editor, at?: number): void {
-  if (at != null) {
-    insertContentAtTopLevel(editor, at, { type: "horizontalRule" });
+  const pos = resolveBlockInsertPos(editor, at);
+  if (pos != null) {
+    insertContentAtTopLevel(editor, pos, { type: "horizontalRule" });
     return;
   }
   editor.chain().focus().setHorizontalRule().run();
@@ -230,16 +257,18 @@ export function insertDivider(editor: Editor, at?: number): void {
 
 export function insertPageBreak(editor: Editor, at?: number): void {
   const node = { type: "pageBreak" };
-  if (at != null) {
-    insertContentAtTopLevel(editor, at, node);
+  const pos = resolveBlockInsertPos(editor, at);
+  if (pos != null) {
+    insertContentAtTopLevel(editor, pos, node);
     return;
   }
   editor.chain().focus().insertContent(node).run();
 }
 
 export function insertTableOfContents(editor: Editor, at?: number): void {
-  if (at != null) {
-    insertContentAtTopLevel(editor, at, { type: "tableOfContents" });
+  const pos = resolveBlockInsertPos(editor, at);
+  if (pos != null) {
+    insertContentAtTopLevel(editor, pos, { type: "tableOfContents" });
     return;
   }
   editor.chain().focus().insertTableOfContents().run();
@@ -247,8 +276,9 @@ export function insertTableOfContents(editor: Editor, at?: number): void {
 
 export function insertQuoteTable(editor: Editor, tableId = "default", at?: number): void {
   const node = { type: "quoteTable", attrs: { tableId } };
-  if (at != null) {
-    insertContentAtTopLevel(editor, at, node);
+  const pos = resolveBlockInsertPos(editor, at);
+  if (pos != null) {
+    insertContentAtTopLevel(editor, pos, node);
     return;
   }
   editor.chain().focus().insertContent(node).run();

@@ -5,13 +5,13 @@ export default function Home() {
     <main className="marketing-hero">
       <section className="mx-auto w-full max-w-6xl px-6 py-20 md:py-28">
         <p className="text-sm font-semibold uppercase tracking-[0.16em] text-primary">
-          DoxySign - Document Automation Platform
+          SendDox - Document Automation Platform
         </p>
         <h1 className="mt-5 max-w-4xl text-4xl font-semibold leading-tight md:text-7xl">
           Beautiful documents, faster approvals, and payments that close the loop.
         </h1>
         <p className="mt-5 max-w-2xl text-lg text-muted">
-          DoxySign helps revenue teams move from proposal to signature to payment without switching tools.
+          SendDox helps revenue teams move from proposal to signature to payment without switching tools.
           Build templates, automate approvals, collect eSignatures, and track outcomes with a modern workflow.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
