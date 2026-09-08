@@ -162,7 +162,7 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  border-top: 1px dashed rgba(148, 163, 184, 0.85);
+  border-top: 1px dashed rgba(148, 163, 184, 0.7);
 }
 .creator-page-guide::after {
   content: attr(data-page-label);
@@ -208,6 +208,31 @@ body {
 }
 .tiptap-creator p {
   margin: 0 0 0.75rem;
+}
+.tiptap-creator .creator-text-box p {
+  margin: 0 0 0.35rem;
+}
+.tiptap-creator .creator-text-box h1 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin: 0 0 0.35rem;
+}
+.tiptap-creator .creator-text-box h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0.55rem 0 0.3rem;
+}
+.tiptap-creator .creator-text-box h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0.45rem 0 0.25rem;
+}
+.tiptap-creator .fill-blank,
+.tiptap-creator span[data-fill-blank] {
+  text-decoration: none;
+  border-bottom: 1.5px solid currentColor;
+  white-space: pre;
+  line-height: 1;
 }
 .tiptap-creator h1 {
   font-size: 1.875rem;
@@ -302,8 +327,8 @@ body {
   margin: 0 0 0.75rem;
 }
 .tiptap-creator .creator-text-box {
-  margin: 0 0 0.75rem;
-  padding: 0.75rem 0.875rem;
+  margin: 0 0 0.5rem;
+  padding: 0.15rem 0;
   border: none;
   border-radius: 2px;
   background: transparent;
@@ -504,6 +529,21 @@ body {
   width: calc(var(--field-w) * 100%);
   min-height: 0;
   pointer-events: auto;
+  box-sizing: border-box;
+}
+/* Incomplete fillable fields: faint grey outline + soft yellow fill cue. */
+.signer-field-node .signer-field-shell {
+  border: 1px solid rgba(148, 163, 184, 0.75);
+  background: rgba(254, 243, 199, 0.55);
+}
+.signer-field-node.is-field-active .signer-field-shell {
+  border-color: var(--primary, #1e3a5f);
+  background: #ffffff;
+  box-shadow: 0 0 0 1px var(--primary, #1e3a5f);
+}
+.rendered-signer-field:not(.signer-field--finalized) {
+  border: 1px solid rgba(148, 163, 184, 0.75);
+  background: rgba(254, 243, 199, 0.55);
 }
 /* Inside the overlay a field is anchored to a page, so its offset counts whole
    pages plus a fraction of one. Inside a canvas everything is relative to that

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
+import { extractSigningFields, summarizeSigningFields } from "@/lib/editor/signer-field-attrs";
 import { SignerFieldPropertiesPanel } from "@/components/editor/signer-field-properties";
 import type { Editor } from "@tiptap/core";
 import { fieldTypes, setFieldDragPreview } from "./field-types";
@@ -38,6 +39,34 @@ function readOpen(): boolean {
   return window.localStorage.getItem(STORAGE_KEY) === "1";
 }
 
+function useSigningFieldCounts(editor: Editor | null, recipients: Recipient[]) {
+  const [counts, setCounts] = useState(() => summarizeSigningFields([]));
+
+  useEffect(() => {
+    if (!editor) {
+      setCounts(summarizeSigningFields([]));
+      return;
+    }
+    const senderIds = recipients.filter((r) => r.role === "sender").map((r) => r.id);
+    const sync = () => {
+      setCounts(
+        summarizeSigningFields(extractSigningFields(editor.getJSON()), {
+          senderRecipientIds: senderIds.length > 0 ? senderIds : ["sender-self"],
+        }),
+      );
+    };
+    sync();
+    editor.on("update", sync);
+    editor.on("selectionUpdate", sync);
+    return () => {
+      editor.off("update", sync);
+      editor.off("selectionUpdate", sync);
+    };
+  }, [editor, recipients]);
+
+  return counts;
+}
+
 export function CreatorFieldsSidebar({
   editor,
   recipients,
@@ -52,6 +81,7 @@ export function CreatorFieldsSidebar({
 }: Props) {
   const [open, setOpen] = useState(false);
   const selected = recipients.find((r) => r.id === selectedRecipientId) ?? recipients[0];
+  const fieldCounts = useSigningFieldCounts(editor, recipients);
 
   useEffect(() => {
     setOpen(readOpen());
@@ -77,6 +107,14 @@ export function CreatorFieldsSidebar({
         >
           «
         </button>
+        {fieldCounts.total > 0 ? (
+          <span
+            className="mb-2 rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-900"
+            title={`${fieldCounts.total} fillable fields`}
+          >
+            {fieldCounts.total}
+          </span>
+        ) : null}
         <div className="flex flex-col items-center gap-1">
           {fieldTypes.map((field) => (
             <FieldIconButton
@@ -149,6 +187,11 @@ export function CreatorFieldsSidebar({
             ) : null}
           </div>
         ) : null}
+        <FieldTrackingSummary
+          total={fieldCounts.total}
+          sender={fieldCounts.sender}
+          recipients={fieldCounts.recipients}
+        />
       </div>
 
       <div className="flex flex-col gap-1.5 px-3 py-3">
@@ -182,6 +225,32 @@ export function CreatorFieldsSidebar({
         <SignerFieldPropertiesPanel editor={editor} hideEmpty />
       </div>
     </aside>
+  );
+}
+
+function FieldTrackingSummary({
+  total,
+  sender,
+  recipients,
+}: {
+  total: number;
+  sender: number;
+  recipients: number;
+}) {
+  if (total === 0) {
+    return (
+      <p className="mt-2 text-xs text-muted">No fillable fields on this document yet.</p>
+    );
+  }
+  return (
+    <div className="mt-2 rounded-lg border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-xs text-slate-700">
+      <p className="font-medium text-slate-800">
+        {total} fillable field{total === 1 ? "" : "s"} to complete
+      </p>
+      <p className="mt-1 text-muted">
+        Sender: {sender} · Recipient{recipients === 1 ? "" : "s"}: {recipients}
+      </p>
+    </div>
   );
 }
 

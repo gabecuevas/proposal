@@ -52,6 +52,8 @@ function renderTextWithMarks(node: EditorNode): string {
       html = `<em>${html}</em>`;
     } else if (mark.type === "underline") {
       html = `<u>${html}</u>`;
+    } else if (mark.type === "fillBlank") {
+      html = `<span class="fill-blank" data-fill-blank="true">${html}</span>`;
     } else if (mark.type === "strike") {
       html = `<s>${html}</s>`;
     } else if (mark.type === "link") {
@@ -130,16 +132,12 @@ function renderSignerFieldNode(node: EditorNode, input: RenderInput): string {
   const canEdit = input.mode === "recipient-fill" && input.activeRecipientId === recipientId;
   const label = escapeHtml(attrs.label.trim() || type);
   const placeholder = escapeHtml(attrs.placeholder);
-  const left = attrs.xPct * 100;
-  const top = attrs.yPct * 100;
-  const width = attrs.wPct * 100;
-  const height = attrs.hPct * 100;
-
   const baseDataAttrs = `data-field-id="${escapeHtml(fieldId)}" data-recipient-id="${escapeHtml(recipientId)}" data-type="${escapeHtml(type)}" data-required="${String(attrs.required)}"`;
 
-  // Rendered output always lands on paper, so it stays light regardless of theme.
-  const shellClass = `rendered-signer-field absolute flex flex-col overflow-hidden rounded border border-slate-300 bg-white/95 p-1.5 text-[11px] shadow-sm`;
-  const layoutStyle = `--field-x:${attrs.xPct};--field-y:${attrs.yPct};--field-w:${attrs.wPct};--field-h:${attrs.hPct};--field-page:${attrs.page};left:${left}%;top:${top}%;width:${width}%;height:${height}%;min-height:36px`;
+  // Layout via CSS vars — print + globals.css own absolute/page positioning.
+  // Do not set inline top/left/height (they override page-anchored overlay CSS).
+  const shellClass = `rendered-signer-field flex flex-col overflow-hidden rounded-[2px] border border-slate-300 bg-amber-50/80 p-1 text-[11px]`;
+  const layoutStyle = `--field-x:${attrs.xPct};--field-y:${attrs.yPct};--field-w:${attrs.wPct};--field-h:${attrs.hPct};--field-page:${attrs.page}`;
 
   if (input.mode === "finalized") {
     let display = "";
@@ -150,11 +148,11 @@ function renderSignerFieldNode(node: EditorNode, input: RenderInput): string {
         display = String(value);
       }
     }
-    return `<div class="${shellClass} signer-field--finalized" style="${layoutStyle}" ${baseDataAttrs} data-field-mode="finalized"><span class="font-medium text-slate-900">${label}</span><span class="mt-0.5 text-slate-700">${escapeHtml(display)}</span></div>`;
+    return `<div class="${shellClass} signer-field--finalized bg-white/95" style="${layoutStyle}" ${baseDataAttrs} data-field-mode="finalized"><span class="font-medium text-slate-900">${label}</span><span class="mt-0.5 text-slate-700">${escapeHtml(display)}</span></div>`;
   }
 
   if (input.mode === "sender-preview") {
-    const hint = attrs.required ? "Required" : "Optional";
+    const hint = attrs.required ? "Needs to be filled" : "Optional";
     return `<div class="${shellClass} signer-field--sender-preview" style="${layoutStyle}" ${baseDataAttrs} data-field-mode="sender-preview" data-editable="false"><span class="font-medium text-slate-800">${label}</span><span class="mt-0.5 text-slate-500">${hint}</span><span class="mt-auto truncate text-[10px] text-slate-400">${escapeHtml(type)}</span></div>`;
   }
 

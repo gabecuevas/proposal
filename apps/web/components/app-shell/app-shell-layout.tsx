@@ -1,7 +1,8 @@
 "use client";
 
-import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { NewDocumentWorkflowProvider } from "@/components/documents/new-document-workflow-context";
 import { AppBreadcrumbs } from "./app-breadcrumbs";
 import { AppSidebar } from "./app-sidebar";
 import { AppTopBar } from "./app-top-bar";
@@ -142,7 +143,9 @@ function AppShellChrome({ children, userEmail, userName, userInitials }: AppShel
 export function AppShellLayout(props: AppShellLayoutProps) {
   return (
     <Suspense fallback={<div className="app-theme min-h-screen bg-background" />}>
-      <AppShellChrome {...props} />
+      <NewDocumentWorkflowProvider>
+        <AppShellChrome {...props} />
+      </NewDocumentWorkflowProvider>
     </Suspense>
   );
 }

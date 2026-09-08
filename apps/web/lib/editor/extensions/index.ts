@@ -24,6 +24,7 @@ import { CreatorDocument } from "./creator-document";
 import { FieldCanvas } from "./field-canvas";
 import { FieldOverlay } from "./field-overlay";
 import { FlowGaps } from "./flow-gaps";
+import { FillBlank } from "./fill-blank";
 import { FontSize } from "./font-size";
 import { Indent } from "./indent";
 import { LineHeight } from "./line-height";
@@ -86,6 +87,7 @@ export const editorExtensions = [
     blockquote: {},
   }),
   Underline,
+  FillBlank,
   TextStyle,
   FontFamily.configure({ types: ["textStyle"] }),
   Color.configure({ types: ["textStyle"] }),

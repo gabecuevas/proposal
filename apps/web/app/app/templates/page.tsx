@@ -11,6 +11,7 @@ import {
   ShareMembersModal,
   type WorkspaceMemberOption,
 } from "@/components/templates/library-modals";
+import { UseTemplateRecipientModal } from "@/components/templates/use-template-recipient-modal";
 import {
   LibraryViewActionsBar,
   type LibraryViewMode,
@@ -47,6 +48,7 @@ type FolderItem = {
   id: string;
   name: string;
   parent_id: string | null;
+  template_count?: number;
   shared_with: Array<{ user_id: string; name: string; email: string; role: string }>;
 };
 
@@ -128,6 +130,11 @@ function sharedLabel(shared: Array<{ name: string }>): string {
   return `${shared.length} people`;
 }
 
+function folderLabel(folder: FolderItem): string {
+  const count = folder.template_count ?? 0;
+  return `${folder.name} (${count})`;
+}
+
 export default function AppTemplatesPage() {
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([]);
@@ -149,6 +156,7 @@ export default function AppTemplatesPage() {
   const [shareSeed, setShareSeed] = useState<string[]>([]);
   const [shareFolderId, setShareFolderId] = useState<string | null>(null);
   const [browsingSamples, setBrowsingSamples] = useState(false);
+  const [useTemplateTarget, setUseTemplateTarget] = useState<{ id: string; name: string } | null>(null);
 
   const currentFolderId = path[path.length - 1]?.id ?? null;
   const browseFolders = tab !== "suggested" && !browsingSamples;
@@ -754,11 +762,11 @@ export default function AppTemplatesPage() {
                         className="inline-flex items-center gap-2 text-left hover:text-primary"
                       >
                         <FolderIcon className="text-amber-700" />
-                        {folder.name}
+                        {folderLabel(folder)}
                       </button>
                     </td>
-                    <td className={sheetTd()}>—</td>
-                    <td className={sheetTd()}>—</td>
+                    <td className={sheetTd()} />
+                    <td className={sheetTd()} />
                     <td className={sheetTd()}>
                       <button
                         type="button"
@@ -769,8 +777,8 @@ export default function AppTemplatesPage() {
                       </button>
                     </td>
                     <td className={sheetTd()}>Folder</td>
-                    <td className={sheetTd()}>—</td>
-                    <td className={sheetTd()}>—</td>
+                    <td className={sheetTd()} />
+                    <td className={sheetTd()} />
                   </tr>
                 ))
               : null}
@@ -790,9 +798,18 @@ export default function AppTemplatesPage() {
                     </td>
                   ) : null}
                   <td className={sheetTd("font-medium text-foreground")}>
-                    <Link href={`/app/templates/${template.id}`} className="hover:text-primary">
-                      {template.name}
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      <Link href={`/app/templates/${template.id}`} className="hover:text-primary">
+                        {template.name}
+                      </Link>
+                      <button
+                        type="button"
+                        className="shrink-0 rounded border border-border px-2 py-0.5 text-[11px] font-medium text-muted hover:border-primary/40 hover:text-primary"
+                        onClick={() => setUseTemplateTarget({ id: template.id, name: template.name })}
+                      >
+                        Use
+                      </button>
+                    </div>
                   </td>
                   <td className={sheetTd()}>{formatDate(template.created_at)}</td>
                   <td className={sheetTd()}>{formatDate(template.updated_at)}</td>
@@ -826,7 +843,7 @@ export default function AppTemplatesPage() {
                     </svg>
                   </div>
                   <div className="border-t border-border p-3">
-                    <p className="truncate font-semibold text-foreground">{folder.name}</p>
+                    <p className="truncate font-semibold text-foreground">{folderLabel(folder)}</p>
                     <p className="mt-0.5 text-sm text-muted">{sharedLabel(folder.shared_with)}</p>
                   </div>
                 </button>
@@ -888,6 +905,17 @@ export default function AppTemplatesPage() {
                   aria-label={starred ? "Remove from favorites" : "Add to favorites"}
                 >
                   {starred ? "★" : "☆"}
+                </button>
+                <button
+                  type="button"
+                  className="absolute left-2 top-2 rounded border border-border bg-white/95 px-2 py-0.5 text-[11px] font-medium text-foreground shadow-sm hover:border-primary/40 hover:text-primary"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setUseTemplateTarget({ id: template.id, name: template.name });
+                  }}
+                >
+                  Use
                 </button>
                 <label
                   data-library-select
@@ -968,6 +996,12 @@ export default function AppTemplatesPage() {
         busy={busy}
         onClose={() => setModal(null)}
         onConfirm={deleteSelected}
+      />
+      <UseTemplateRecipientModal
+        open={Boolean(useTemplateTarget)}
+        templateId={useTemplateTarget?.id ?? ""}
+        templateName={useTemplateTarget?.name ?? ""}
+        onClose={() => setUseTemplateTarget(null)}
       />
     </SheetPage>
   );

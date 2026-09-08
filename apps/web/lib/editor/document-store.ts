@@ -22,6 +22,7 @@ import { extractSigningFields } from "./signer-field-attrs";
 import { normalizeEditorDoc } from "./stable";
 import { resolveTemplateVariables } from "./variables";
 import { getContentBlocksByIds } from "./content-block-store";
+import { applyTitleToDoc } from "@/lib/ui/document-title";
 import {
   collectContentBlockIds,
   isDraftEditableStatus,
@@ -238,9 +239,21 @@ function remapSignerRecipientIds(
   return walk(doc) as EditorDoc;
 }
 
+export type CreateDocumentFromTemplateRecipient = {
+  name: string;
+  email: string;
+  contactId?: string | null;
+};
+
 export async function createDocumentFromTemplate(
   templateId: string,
   workspaceId: string,
+  options?: {
+    /** @deprecated Prefer `recipients`. */
+    recipient?: CreateDocumentFromTemplateRecipient;
+    recipients?: CreateDocumentFromTemplateRecipient[];
+    title?: string;
+  },
 ): Promise<DocumentRecord> {
   const template = await prisma.template.findFirst({
     where: { id: templateId, workspace_id: workspaceId },
@@ -251,32 +264,111 @@ export async function createDocumentFromTemplate(
 
   const templateDoc = normalizeEditorDoc(template.editor_json as EditorDoc);
   const logicalRecipientIds = collectSignerRecipientIds(templateDoc);
-  const fallbackRecipientIds = ["recipient-primary", "recipient-finance"];
-  const recipientKeys = logicalRecipientIds.length > 0 ? logicalRecipientIds : fallbackRecipientIds;
+  const fallbackRecipientIds = ["recipient-primary"];
+  const recipientKeys =
+    logicalRecipientIds.length > 0 ? logicalRecipientIds : fallbackRecipientIds;
 
-  const recipientMap = recipientKeys.reduce<Record<string, string>>((acc, key) => {
-    acc[key] = `${key}-${randomUUID()}`;
-    return acc;
-  }, {});
+  const providedList = (
+    options?.recipients?.length ? options.recipients : options?.recipient ? [options.recipient] : []
+  )
+    .map((item) => ({
+      name: item.name?.trim() || "",
+      email: item.email?.trim() || "",
+      contactId: item.contactId?.trim() || null,
+    }))
+    .filter((item) => item.name && item.email);
+  const hasProvidedRecipient = providedList.length > 0;
+  const primary = providedList[0];
 
-  const normalizedDoc = remapSignerRecipientIds(templateDoc, recipientMap);
+  const recipientMap: Record<string, string> = {};
+  let recipients: Array<{
+    id: string;
+    key: string;
+    email: string;
+    name: string;
+    role: "signer";
+    signing_order: number;
+  }>;
 
-  const recipients = recipientKeys.map((key, index) => ({
-    id: recipientMap[key],
-    key,
-    email: `${key}@example.com`,
-    name: key
-      .replaceAll("-", " ")
-      .replaceAll(/\b\w/g, (letter) => letter.toUpperCase()),
-    role: "signer" as const,
-    signing_order: index + 1,
-  }));
+  if (hasProvidedRecipient && primary) {
+    const primaryId = randomUUID();
+    const signerKeys = recipientKeys.filter((key) => key !== "sender-self");
+    const keysToMap = signerKeys.length > 0 ? signerKeys : ["recipient-primary"];
+    for (const key of recipientKeys) {
+      if (key === "sender-self") {
+        recipientMap[key] = "sender-self";
+      } else {
+        recipientMap[key] = primaryId;
+      }
+    }
+    for (const key of keysToMap) {
+      if (!recipientMap[key]) {
+        recipientMap[key] = primaryId;
+      }
+    }
+    recipients = providedList.map((item, index) => ({
+      id: index === 0 ? primaryId : randomUUID(),
+      key: index === 0 ? (keysToMap[0] ?? "recipient-primary") : `recipient-${index + 1}`,
+      email: item.email,
+      name: item.name,
+      role: "signer" as const,
+      signing_order: index + 1,
+    }));
+  } else {
+    for (const key of recipientKeys) {
+      recipientMap[key] = key === "sender-self" ? "sender-self" : `${key}-${randomUUID()}`;
+    }
+    recipients = recipientKeys
+      .filter((key) => key !== "sender-self")
+      .map((key, index) => ({
+        id: recipientMap[key]!,
+        key,
+        email: `${key}@example.com`,
+        name: key
+          .replaceAll("-", " ")
+          .replaceAll(/\b\w/g, (letter) => letter.toUpperCase()),
+        role: "signer" as const,
+        signing_order: index + 1,
+      }));
+    if (recipients.length === 0) {
+      const id = randomUUID();
+      recipientMap["recipient-primary"] = id;
+      recipients = [
+        {
+          id,
+          key: "recipient-primary",
+          email: "recipient-primary@example.com",
+          name: "Primary Signer",
+          role: "signer",
+          signing_order: 1,
+        },
+      ];
+    }
+  }
+
+  let normalizedDoc = remapSignerRecipientIds(templateDoc, recipientMap);
+  const title = options?.title?.trim();
+  if (title) {
+    normalizedDoc = applyTitleToDoc(normalizedDoc, title);
+  }
+  const contactId = primary?.contactId || null;
+
+  if (contactId) {
+    const contact = await prisma.contact.findFirst({
+      where: { id: contactId, workspace_id: workspaceId },
+      select: { id: true },
+    });
+    if (!contact) {
+      throw new Error("Contact not found");
+    }
+  }
 
   const row = await prisma.$transaction(async (tx) => {
     const created = await tx.document.create({
       data: {
         workspace_id: workspaceId,
         template_id: template.id,
+        contact_id: contactId,
         editor_json: normalizedDoc as InputJsonValue,
         schema_version: CURRENT_DOC_VERSION,
         doc_version: CURRENT_DOC_VERSION,
@@ -305,6 +397,7 @@ export async function createDocumentFromTemplate(
         metadata_json: {
           templateId: template.id,
           recipientCount: recipients.length,
+          hasProvidedRecipient,
         },
       },
     });

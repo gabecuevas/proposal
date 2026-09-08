@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { cn } from "@repo/ui/utils";
+import { useNewDocumentWorkflow } from "@/components/documents/new-document-workflow-context";
 import { documentTrackingCounts } from "@/lib/ui/document-tracking";
 import { SettingsMenu } from "./settings-menu";
 import { sidebarIcons, IconSearch } from "./shell-icons";
@@ -134,6 +135,7 @@ export function AppSidebar({
   open,
   onNavigate,
 }: AppSidebarProps) {
+  const { openWorkflow } = useNewDocumentWorkflow();
   const counts = useShellCounts(section.id);
   const teamMemberCount = useTeamMemberCount(
     Boolean(section.filters?.some((filter) => filter.id === "members")),
@@ -157,14 +159,17 @@ export function AppSidebar({
       >
         {section.createCta ? (
           <div className="shrink-0 px-3 pb-2 pt-3">
-            <Link
-              href="/app/proposals/new"
-              onClick={onNavigate}
-              className="flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-95"
+            <button
+              type="button"
+              onClick={() => {
+                openWorkflow();
+                onNavigate();
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-95"
             >
               <span className="text-base leading-none">+</span>
               New Document
-            </Link>
+            </button>
           </div>
         ) : null}
 

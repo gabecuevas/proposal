@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { enhanceDocxHtmlForPrint, htmlToEditorContent } from "../docx-to-editor";
+import {
+  applyImportLayoutHeuristics,
+  enhanceDocxHtmlForPrint,
+  htmlToEditorContent,
+  packContinuousTextBlock,
+  transformDocxParagraph,
+} from "../docx-to-editor";
 
 describe("htmlToEditorContent", () => {
   it("preserves bold, italic, and underline marks", () => {
@@ -35,17 +41,37 @@ describe("htmlToEditorContent", () => {
     expect(JSON.stringify(nodes)).toContain("Cell");
   });
 
-  it("converts underscore fill lines to horizontal rules", () => {
+  it("keeps underscore fill lines as solid fillBlank marks", () => {
     const nodes = htmlToEditorContent(`<p>________________</p><p>Sign here</p>`);
-    expect(nodes[0]?.type).toBe("horizontalRule");
+    expect(nodes[0]?.type).toBe("paragraph");
+    const fill = (nodes[0]?.content ?? []).find((n) => n.type === "text");
+    expect(fill?.marks?.some((m) => m.type === "fillBlank")).toBe(true);
+    expect(String(fill?.text ?? "")).toMatch(/^\u00a0+$/);
     expect(nodes[1]?.type).toBe("paragraph");
   });
 
-  it("centers title headings", () => {
-    const nodes = htmlToEditorContent(`<h1 class="doc-title">INDEPENDENT CONTRACTOR AGREEMENT</h1>`);
-    expect(nodes[0]?.type).toBe("heading");
+  it("uses fillBlank for inline blanks inside a sentence", () => {
+    const nodes = htmlToEditorContent(`<p>Services: ______________. Done.</p>`);
+    const texts = (nodes[0]?.content ?? []).filter((n) => n.type === "text");
+    const blank = texts.find((t) => t.marks?.some((m) => m.type === "fillBlank"));
+    expect(blank).toBeTruthy();
+    expect(String(blank?.text ?? "")).toMatch(/^\u00a0+$/);
+  });
+
+  it("centers title class paragraphs and applies layout markers", () => {
+    const nodes = htmlToEditorContent(
+      `<p class="doc-title">INDEPENDENT CONTRACTOR AGREEMENT</p><p>«sd:c»«sd:i1»(a) Centered indented</p>`,
+    );
     expect(nodes[0]?.attrs?.textAlign).toBe("center");
-    expect(nodes[0]?.attrs?.level).toBe(1);
+    expect(nodes[1]?.attrs?.textAlign).toBe("center");
+    expect(nodes[1]?.attrs?.indent).toBe(1);
+    expect(JSON.stringify(nodes[1])).not.toContain("«sd:");
+  });
+
+  it("maps left padding to indent", () => {
+    const nodes = htmlToEditorContent(`<p style="padding-left: 40px">(a) Clause</p>`);
+    expect(nodes[0]?.type).toBe("paragraph");
+    expect(nodes[0]?.attrs?.indent).toBe(2);
   });
 
   it("keeps bullet lists", () => {
@@ -55,9 +81,63 @@ describe("htmlToEditorContent", () => {
   });
 });
 
+describe("transformDocxParagraph", () => {
+  it("encodes center alignment and indent as markers", () => {
+    const next = transformDocxParagraph({
+      type: "paragraph",
+      alignment: "center",
+      indent: { start: "720" },
+      children: [{ type: "run", children: [{ type: "text", value: "Title" }] }],
+    });
+    const first = (next as { children: Array<{ children: Array<{ value: string }> }> }).children[0];
+    expect(first?.children?.[0]?.value).toContain("«sd:c»");
+    expect(first?.children?.[0]?.value).toContain("«sd:i2»");
+  });
+});
+
+describe("applyImportLayoutHeuristics", () => {
+  it("centers title-like opening paragraphs and indents clauses", () => {
+    const nodes = applyImportLayoutHeuristics([
+      { type: "paragraph", content: [{ type: "text", text: "INDEPENDENT CONTRACTOR AGREEMENT - SMB" }] },
+      { type: "paragraph", content: [{ type: "text", text: "Independent Contractor Services Agreement" }] },
+      { type: "paragraph", content: [{ type: "text", text: "(a) Contractor will perform." }] },
+    ]);
+    expect(nodes[0]?.attrs?.textAlign).toBe("center");
+    expect(nodes[1]?.attrs?.textAlign).toBe("center");
+    expect(nodes[2]?.attrs?.indent).toBe(1);
+  });
+});
+
+describe("packContinuousTextBlock", () => {
+  it("wraps body copy in a single continuous textBox", () => {
+    const packed = packContinuousTextBlock(
+      htmlToEditorContent(
+        `<p class="doc-title">TITLE</p><p>Intro</p><p><strong>1. Section</strong></p><p style="padding-left:20px">(a) Detail</p>`,
+      ),
+    );
+    expect(packed).toHaveLength(1);
+    expect(packed[0]?.type).toBe("textBox");
+    expect(packed[0]?.attrs?.boxId).toBe("");
+    const types = (packed[0]?.content ?? []).map((n) => n.type);
+    expect(types).toEqual(["paragraph", "paragraph", "paragraph", "paragraph"]);
+    expect(packed[0]?.content?.[0]?.attrs?.textAlign).toBe("center");
+  });
+
+  it("keeps formatting inside the textBox", () => {
+    const packed = packContinuousTextBlock(
+      htmlToEditorContent(`<p>Hello <strong>World</strong></p>`),
+    );
+    const para = packed[0]?.content?.[0];
+    const bold = (para?.content ?? []).find((n) => n.text === "World");
+    expect(bold?.marks?.some((m) => m.type === "bold")).toBe(true);
+  });
+});
+
 describe("enhanceDocxHtmlForPrint", () => {
   it("wraps content in article and centers the first title", () => {
-    const html = enhanceDocxHtmlForPrint(`<p><strong>INDEPENDENT CONTRACTOR AGREEMENT</strong></p><p>Body</p>`);
+    const html = enhanceDocxHtmlForPrint(
+      `<p><strong>INDEPENDENT CONTRACTOR AGREEMENT</strong></p><p>Body</p>`,
+    );
     expect(html).toContain('<article class="docx-import">');
     expect(html).toMatch(/text-align:\s*center/i);
     expect(html).toContain("doc-title");

@@ -13,9 +13,10 @@ type InlineState = {
 };
 
 export const MAMMOTH_STYLE_MAP = [
-  "p[style-name='Title'] => h1.doc-title:fresh",
-  "p[style-name='title'] => h1.doc-title:fresh",
-  "p[style-name='Subtitle'] => h2.doc-subtitle:fresh",
+  // Keep titles as paragraphs so import doesn't inflate heading spacing.
+  "p[style-name='Title'] => p.doc-title:fresh",
+  "p[style-name='title'] => p.doc-title:fresh",
+  "p[style-name='Subtitle'] => p.doc-subtitle:fresh",
   "p[style-name='Heading 1'] => h1:fresh",
   "p[style-name='Heading 2'] => h2:fresh",
   "p[style-name='Heading 3'] => h3:fresh",
@@ -23,6 +24,93 @@ export const MAMMOTH_STYLE_MAP = [
   "p[style-name='Quote'] => blockquote > p:fresh",
   "p[style-name='Intense Quote'] => blockquote > p:fresh",
 ];
+
+/** Invisible layout markers prepended by mammoth transformDocument. */
+const LAYOUT_MARK_RE = /^«sd:(c|r|j|i[1-8])»/;
+
+function twipsToIndentLevel(twips: number): number {
+  if (!Number.isFinite(twips) || twips <= 0) return 0;
+  // ~360 twips ≈ 0.25" — typical Word indent step for (a)/(b) clauses.
+  return Math.min(8, Math.max(1, Math.round(twips / 360)));
+}
+
+function makeLayoutMarkerRun(markers: string[]): Record<string, unknown> {
+  return {
+    type: "run",
+    children: [{ type: "text", value: markers.join("") }],
+    styleId: null,
+    styleName: null,
+    isBold: false,
+    isUnderline: false,
+    isItalic: false,
+    isStrikethrough: false,
+    isAllCaps: false,
+    isSmallCaps: false,
+    verticalAlignment: "baseline",
+    font: null,
+    fontSize: null,
+    highlight: null,
+  };
+}
+
+/**
+ * Encode Word alignment/indent into text markers so HTML conversion preserves them.
+ * Mammoth does not emit padding-left / text-align by default.
+ */
+export function transformDocxParagraph(paragraph: {
+  type?: string;
+  alignment?: string | null;
+  indent?: { start?: string | number | null };
+  children?: unknown[];
+  [key: string]: unknown;
+}) {
+  if (paragraph.type !== "paragraph") return paragraph;
+  const markers: string[] = [];
+  const alignment = String(paragraph.alignment ?? "").toLowerCase();
+  if (alignment === "center") markers.push("«sd:c»");
+  else if (alignment === "right") markers.push("«sd:r»");
+  else if (alignment === "both" || alignment === "justify") markers.push("«sd:j»");
+
+  const indentLevel = twipsToIndentLevel(Number(paragraph.indent?.start ?? 0));
+  if (indentLevel > 0) markers.push(`«sd:i${indentLevel}»`);
+  if (markers.length === 0) return paragraph;
+
+  return {
+    ...paragraph,
+    children: [makeLayoutMarkerRun(markers), ...(paragraph.children ?? [])],
+  };
+}
+
+function consumeLayoutMarkers(text: string): {
+  text: string;
+  align: "left" | "center" | "right" | "justify" | null;
+  indent: number;
+} {
+  let rest = text;
+  let align: "left" | "center" | "right" | "justify" | null = null;
+  let indent = 0;
+  while (LAYOUT_MARK_RE.test(rest)) {
+    const match = rest.match(LAYOUT_MARK_RE);
+    if (!match) break;
+    const code = match[1]!;
+    if (code === "c") align = "center";
+    else if (code === "r") align = "right";
+    else if (code === "j") align = "justify";
+    else if (code.startsWith("i")) indent = Number(code.slice(1));
+    rest = rest.slice(match[0].length);
+  }
+  return { text: rest, align, indent };
+}
+
+function fillBlankNode(charCount: number, extraMarks: Mark[] = []): EditorNode {
+  const count = Math.max(6, Math.min(72, charCount));
+  const marks: Mark[] = [{ type: "fillBlank" }, ...extraMarks.filter((m) => m.type !== "underline")];
+  return {
+    type: "text",
+    text: "\u00a0".repeat(count),
+    marks,
+  };
+}
 
 function decodeEntities(value: string): string {
   return value
@@ -79,6 +167,13 @@ function isSignatureLineText(text: string): boolean {
   return /^[_\u2013\u2014\-]{4,}$/.test(trimmed);
 }
 
+/** Solid fill/signature line that can live inside a Text Block (HR cannot). */
+function signatureFillParagraph(
+  align: "left" | "center" | "right" | "justify" | null = null,
+): EditorNode {
+  return paragraphNode([fillBlankNode(40)], align);
+}
+
 function plainTextOf(nodes: EditorNode[]): string {
   return nodes
     .map((n) => {
@@ -92,13 +187,153 @@ function plainTextOf(nodes: EditorNode[]): string {
 function paragraphNode(
   content: EditorNode[],
   align: "left" | "center" | "right" | "justify" | null,
+  indent = 0,
 ): EditorNode {
-  const attrs = align ? { textAlign: align } : undefined;
+  const attrs: Record<string, JSONValue> = {};
+  if (align) attrs.textAlign = align;
+  if (indent > 0) attrs.indent = indent;
   return {
     type: "paragraph",
-    attrs,
+    attrs: Object.keys(attrs).length > 0 ? attrs : undefined,
     content: content.length > 0 ? content : undefined,
   };
+}
+
+function parseIndentFromStyle(style: string | undefined): number {
+  if (!style) return 0;
+  const match = style.match(/(?:padding|margin)-left\s*:\s*([\d.]+)\s*(px|pt|em|rem)?/i);
+  if (!match) return 0;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  const unit = (match[2] ?? "px").toLowerCase();
+  const px = unit === "pt" ? value * (96 / 72) : unit === "em" || unit === "rem" ? value * 16 : value;
+  return Math.min(8, Math.max(0, Math.round(px / 20)));
+}
+
+const TEXT_BOX_CHILD_TYPES = new Set(["paragraph", "heading", "bulletList", "orderedList"]);
+
+function applyItalicToInline(nodes: EditorNode[]): EditorNode[] {
+  return nodes.map((node) => {
+    if (node.type !== "text") return node;
+    const marks = [...(node.marks ?? [])];
+    if (!marks.some((m) => m.type === "italic")) {
+      marks.push({ type: "italic" });
+    }
+    return { ...node, marks };
+  });
+}
+
+/**
+ * Normalize blocks that cannot nest in a TipTap Text Block, then pack consecutive
+ * body copy into a single continuous textBox (PandaDoc-style import).
+ * Tables and other structural siblings stay outside the text block.
+ */
+export function packContinuousTextBlock(blocks: EditorNode[]): EditorNode[] {
+  const normalized: EditorNode[] = [];
+
+  for (const block of blocks) {
+    if (block.type === "horizontalRule") {
+      normalized.push(signatureFillParagraph());
+      continue;
+    }
+    if (block.type === "blockquote") {
+      for (const child of block.content ?? []) {
+        if (child.type === "paragraph" || child.type === "heading") {
+          normalized.push({
+            ...child,
+            content: applyItalicToInline(child.content ?? []),
+          });
+        } else if (TEXT_BOX_CHILD_TYPES.has(child.type)) {
+          normalized.push(child);
+        } else {
+          normalized.push(child);
+        }
+      }
+      continue;
+    }
+    normalized.push(block);
+  }
+
+  const laidOut = applyImportLayoutHeuristics(normalized);
+
+  const result: EditorNode[] = [];
+  let run: EditorNode[] = [];
+
+  const flushRun = () => {
+    if (run.length === 0) return;
+    result.push({
+      type: "textBox",
+      attrs: { boxId: "" },
+      content: run,
+    });
+    run = [];
+  };
+
+  for (const block of laidOut) {
+    if (TEXT_BOX_CHILD_TYPES.has(block.type)) {
+      run.push(block);
+      continue;
+    }
+    flushRun();
+    result.push(block);
+  }
+  flushRun();
+
+  if (result.length === 0) {
+    return [
+      {
+        type: "textBox",
+        attrs: { boxId: "" },
+        content: [{ type: "paragraph" }],
+      },
+    ];
+  }
+  return result;
+}
+
+function blockPlainText(node: EditorNode): string {
+  if (node.type === "text") return node.text ?? "";
+  return (node.content ?? []).map(blockPlainText).join("");
+}
+
+function looksLikeTitle(text: string): boolean {
+  const t = text.replace(/\u00a0/g, " ").trim();
+  if (!t || t.length > 110) return false;
+  if (/agreement|independent contractor|statement of work|exhibit\s+[a-z]/i.test(t) && t.length < 90) {
+    return true;
+  }
+  const letters = t.replace(/[^A-Za-z]/g, "");
+  return letters.length >= 10 && letters === letters.toUpperCase();
+}
+
+function looksLikeClauseIndent(text: string): boolean {
+  return /^\(([a-z]|[ivxlcdm]+|\d+)\)\s/i.test(text.replace(/\u00a0/g, " ").trim());
+}
+
+/** Center titles and indent lettered clauses when Word styles were missing. */
+export function applyImportLayoutHeuristics(blocks: EditorNode[]): EditorNode[] {
+  let titleSlots = 0;
+  return blocks.map((block, index) => {
+    if (block.type !== "paragraph" && block.type !== "heading") return block;
+    const text = blockPlainText(block).replace(/\u00a0/g, " ").trim();
+    const attrs = { ...(block.attrs ?? {}) };
+
+    if (
+      titleSlots < 2 &&
+      index < 4 &&
+      !attrs.textAlign &&
+      looksLikeTitle(text)
+    ) {
+      attrs.textAlign = "center";
+      titleSlots += 1;
+    }
+
+    if ((!attrs.indent || Number(attrs.indent) === 0) && looksLikeClauseIndent(text)) {
+      attrs.indent = 1;
+    }
+
+    return { ...block, attrs: Object.keys(attrs).length ? attrs : undefined };
+  });
 }
 
 /**
@@ -116,6 +351,8 @@ export function htmlToEditorContent(html: string): EditorNode[] {
   let inline: EditorNode[] = [];
   let state: InlineState = { bold: 0, italic: 0, underline: 0, strike: 0, linkHref: null };
   let pendingAlign: "left" | "center" | "right" | "justify" | null = null;
+  let pendingIndent = 0;
+  let pendingSubtitle = false;
   let openHeading: number | null = null;
   let inBlockquote = false;
   let listType: "bulletList" | "orderedList" | null = null;
@@ -125,22 +362,28 @@ export function htmlToEditorContent(html: string): EditorNode[] {
   const spanStyleStack: Array<{ bold: boolean; italic: boolean; underline: boolean }> = [];
 
   function pushInline(text: string) {
-    const node = makeText(text, state);
-    if (node) inline.push(node);
+    const layout = consumeLayoutMarkers(text);
+    if (layout.align && !pendingAlign) pendingAlign = layout.align;
+    if (layout.indent > 0 && pendingIndent === 0) pendingIndent = layout.indent;
+    const source = layout.text;
+
+    // Solid fill blanks — underscore glyphs + underline look dashed.
+    const parts = source.split(/([_\u2013\u2014\-]{4,})/);
+    for (const part of parts) {
+      if (!part) continue;
+      if (/^[_\u2013\u2014\-]{4,}$/.test(part)) {
+        const extras = marksFromState(state)?.filter((m) => m.type !== "underline") ?? [];
+        inline.push(fillBlankNode(part.length, extras));
+        continue;
+      }
+      const node = makeText(part, state);
+      if (node) inline.push(node);
+    }
   }
 
   function emitBlock(node: EditorNode) {
     if (inListItem) {
       listItemParas.push(node);
-      return;
-    }
-    if (inBlockquote) {
-      const last = blocks[blocks.length - 1];
-      if (last?.type === "blockquote") {
-        last.content = [...(last.content ?? []), node];
-      } else {
-        blocks.push({ type: "blockquote", content: [node] });
-      }
       return;
     }
     blocks.push(node);
@@ -149,45 +392,48 @@ export function htmlToEditorContent(html: string): EditorNode[] {
   function flushInlineAsParagraph() {
     if (openHeading !== null) {
       const level = Math.min(3, Math.max(1, openHeading));
+      const content = inBlockquote ? applyItalicToInline(inline) : inline;
       emitBlock({
         type: "heading",
         attrs: {
           level,
           ...(pendingAlign ? { textAlign: pendingAlign } : {}),
+          ...(pendingIndent > 0 ? { indent: pendingIndent } : {}),
         },
-        content: inline.length > 0 ? inline : undefined,
+        content: content.length > 0 ? content : undefined,
       });
       inline = [];
       pendingAlign = null;
+      pendingIndent = 0;
+      pendingSubtitle = false;
       openHeading = null;
       return;
     }
 
     const text = plainTextOf(inline).replace(/\u00a0/g, " ").trim();
     if (isSignatureLineText(text)) {
-      emitBlock({ type: "horizontalRule" });
+      emitBlock(signatureFillParagraph(pendingAlign));
       inline = [];
       pendingAlign = null;
+      pendingIndent = 0;
+      pendingSubtitle = false;
       return;
     }
 
     if (inline.length === 0) {
       pendingAlign = null;
+      pendingIndent = 0;
+      pendingSubtitle = false;
       return;
     }
 
-    const fillOnly = inline.filter(
-      (n) => !(n.type === "text" && isSignatureLineText(String(n.text ?? "").trim())),
-    );
-    const hadFill = fillOnly.length !== inline.length;
-    if (fillOnly.length > 0 || !hadFill) {
-      emitBlock(paragraphNode(hadFill ? fillOnly : inline, pendingAlign));
-    }
-    if (hadFill) {
-      emitBlock({ type: "horizontalRule" });
-    }
+    let content = inBlockquote ? applyItalicToInline(inline) : inline;
+    if (pendingSubtitle) content = applyItalicToInline(content);
+    emitBlock(paragraphNode(content, pendingAlign, pendingIndent));
     inline = [];
     pendingAlign = null;
+    pendingIndent = 0;
+    pendingSubtitle = false;
   }
 
   function closeListItem() {
@@ -235,7 +481,7 @@ export function htmlToEditorContent(html: string): EditorNode[] {
     }
     if (tag === "hr") {
       flushInlineAsParagraph();
-      emitBlock({ type: "horizontalRule" });
+      emitBlock(signatureFillParagraph());
       continue;
     }
     if (tag === "img") continue;
@@ -274,18 +520,20 @@ export function htmlToEditorContent(html: string): EditorNode[] {
       } else if (/^h[1-6]$/.test(tag)) {
         flushInlineAsParagraph();
         openHeading = Number(tag.slice(1));
+        const style = getAttr(rawAttrs, "style");
         pendingAlign =
-          parseStyleAlign(getAttr(rawAttrs, "style")) ??
-          (hasClass(rawAttrs, "doc-title") ? "center" : null);
+          parseStyleAlign(style) ?? (hasClass(rawAttrs, "doc-title") ? "center" : null);
+        pendingIndent = parseIndentFromStyle(style);
       } else if (tag === "blockquote") {
         flushInlineAsParagraph();
         inBlockquote = true;
-        blocks.push({ type: "blockquote", content: [] });
       } else if (tag === "p" || tag === "div") {
         flushInlineAsParagraph();
-        pendingAlign =
-          parseStyleAlign(getAttr(rawAttrs, "style")) ??
-          (hasClass(rawAttrs, "doc-title") ? "center" : null);
+        const style = getAttr(rawAttrs, "style");
+        const titleClass = hasClass(rawAttrs, "doc-title") || hasClass(rawAttrs, "doc-subtitle");
+        pendingAlign = parseStyleAlign(style) ?? (titleClass ? "center" : null);
+        pendingIndent = parseIndentFromStyle(style);
+        pendingSubtitle = hasClass(rawAttrs, "doc-subtitle");
       } else if (tag === "td" || tag === "th") {
         if (inline.length > 0) pushInline(" ");
       }
@@ -339,13 +587,14 @@ const mammothOptions = {
   styleMap: MAMMOTH_STYLE_MAP,
   includeDefaultStyleMap: true,
   ignoreEmptyParagraphs: false,
+  transformDocument: mammoth.transforms.paragraph(transformDocxParagraph),
 };
 
 export async function convertDocxBufferToEditorDoc(buffer: Buffer): Promise<EditorDoc> {
   const result = await mammoth.convertToHtml({ buffer }, mammothOptions);
   return {
     type: "doc",
-    content: htmlToEditorContent(result.value || ""),
+    content: packContinuousTextBlock(htmlToEditorContent(result.value || "")),
   };
 }
 

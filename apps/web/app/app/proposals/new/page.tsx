@@ -1,44 +1,25 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useNewDocumentWorkflow } from "@/components/documents/new-document-workflow-context";
 
+/**
+ * Legacy route: opens the New Document workflow slide-over, then returns to Documents.
+ */
 export default function NewProposalPage() {
   const router = useRouter();
-  const [message, setMessage] = useState("Creating document…");
+  const { openWorkflow } = useNewDocumentWorkflow();
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const response = await fetch("/api/documents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (cancelled) {
-        return;
-      }
-      if (!response.ok) {
-        setMessage("Could not create a document. Try again from Documents.");
-        return;
-      }
-      const data = (await response.json()) as { document?: { id: string } };
-      const id = data.document?.id;
-      if (id) {
-        router.replace(`/app/documents/${id}`);
-        return;
-      }
-      setMessage("Unexpected response. Open Documents to continue.");
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
+    openWorkflow();
+    router.replace("/app/documents");
+  }, [openWorkflow, router]);
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-2 bg-background">
+    <div className="flex h-full flex-col items-center justify-center gap-2 bg-background">
       <div className="h-8 w-8 animate-pulse rounded-full border-2 border-primary/30 border-t-primary" aria-hidden />
-      <p className="text-sm text-muted">{message}</p>
+      <p className="text-sm text-muted">Opening new document workflow…</p>
     </div>
   );
 }

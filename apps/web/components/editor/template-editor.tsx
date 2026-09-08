@@ -9,6 +9,7 @@ import { CreatorCanvas } from "@/components/editor/creator/creator-canvas";
 import { CreatorFieldsSidebar } from "@/components/editor/creator/creator-fields-sidebar";
 import { CreatorHeader } from "@/components/editor/creator/creator-header";
 import { CreatorPageWorkspace } from "@/components/editor/creator/creator-page-workspace";
+import { UseTemplateRecipientModal } from "@/components/templates/use-template-recipient-modal";
 import { defaultEditorDoc } from "@/lib/editor/defaults";
 import { creatorEditorProps } from "@/lib/editor/editor-config";
 import { editorExtensions } from "@/lib/editor/extensions";
@@ -74,6 +75,7 @@ export function TemplateEditor({
 
   const [status, setStatus] = useState("Idle");
   const [name, setName] = useState(initialName);
+  const [useTemplateOpen, setUseTemplateOpen] = useState(false);
   const [serialized, setSerialized] = useState(() =>
     serializeStable(withPageSize(migratedInitial, pageSizeFromDoc(migratedInitial))),
   );
@@ -395,10 +397,13 @@ export function TemplateEditor({
           onPrint={() => openPrintPreview(buildComputedHtml(), pageSize)}
           onInsertField={insertSignerField}
           variableKeys={Object.keys(variableRegistry)}
-          fileItems={[{ label: "Make a copy", onClick: () => void duplicateTemplate() }]}
-          primaryActionLabel="Save template"
+          fileItems={[
+            { label: "Make a copy", onClick: () => void duplicateTemplate() },
+            { label: "Create document…", onClick: () => setUseTemplateOpen(true) },
+          ]}
+          primaryActionLabel="Create document"
           primaryActionShowsSendIcon={false}
-          onPrimaryAction={() => void saveNow()}
+          onPrimaryAction={() => setUseTemplateOpen(true)}
         />
 
         <div className="flex min-h-0 min-w-0 flex-1">
@@ -445,6 +450,13 @@ export function TemplateEditor({
             unassignedRoleCount={0}
           />
         </div>
+
+        <UseTemplateRecipientModal
+          open={useTemplateOpen}
+          templateId={templateId}
+          templateName={name}
+          onClose={() => setUseTemplateOpen(false)}
+        />
 
         <details
           className="shrink-0 border-t border-border bg-surface"

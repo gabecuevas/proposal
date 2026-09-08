@@ -71,14 +71,25 @@ article .signature-fill {
 article strong, article b { font-weight: 700; }
 article em, article i { font-style: italic; }
 article u { text-decoration: underline; }
-article.docx-import p { margin: 0 0 0.65rem; }
+article .fill-blank,
+article span[data-fill-blank] {
+  text-decoration: none;
+  border-bottom: 1.5px solid currentColor;
+  white-space: pre;
+  line-height: 1;
+}
+article.docx-import p { margin: 0 0 0.4rem; }
 article mark { border-radius: 2px; padding: 0 0.1em; }
 .creator-text-box {
-  margin: 0 0 0.75rem;
-  padding: 0.75rem 0.875rem;
+  margin: 0 0 0.5rem;
+  padding: 0.15rem 0;
   break-inside: auto;
 }
+.creator-text-box p { margin: 0 0 0.35rem; }
 .creator-text-box p:last-child { margin-bottom: 0; }
+.creator-text-box h1 { font-size: 1.125rem; font-weight: 700; margin: 0 0 0.35rem; }
+.creator-text-box h2 { font-size: 1.05rem; font-weight: 700; margin: 0.55rem 0 0.3rem; }
+.creator-text-box h3 { font-size: 1rem; font-weight: 700; margin: 0.45rem 0 0.25rem; }
 .overlay-text-box, .rendered-overlay-text-box {
   position: absolute;
   left: calc(var(--field-x) * 100%);
@@ -126,6 +137,41 @@ article .rendered-field-canvas {
 .rendered-field-overlay {
   --creator-page-gap: 0px;
   --creator-page-height: ${spec.heightPx}px;
+  position: absolute;
+  inset: 0;
+  z-index: 32;
+  pointer-events: none;
+}
+.rendered-field-overlay .rendered-signer-field,
+.rendered-field-canvas .rendered-signer-field {
+  position: absolute;
+  left: calc(var(--field-x) * 100%);
+  width: calc(var(--field-w) * 100%);
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  border-radius: 2px;
+  background: rgba(254, 243, 199, 0.65);
+  color: #0f172a;
+  font-size: 11px;
+  line-height: 1.3;
+  padding: 2px 6px;
+  pointer-events: none;
+}
+.rendered-field-overlay .rendered-signer-field {
+  top: calc(
+    var(--field-page) * (var(--creator-page-height, ${spec.heightPx}px) + var(--creator-page-gap, 0px)) +
+      var(--field-y) * var(--creator-page-height, ${spec.heightPx}px)
+  );
+  height: calc(var(--field-h) * var(--creator-page-height, ${spec.heightPx}px));
+}
+.rendered-field-canvas .rendered-signer-field {
+  top: calc(var(--field-y) * 100%);
+  height: calc(var(--field-h) * 100%);
+}
+.rendered-signer-field.signer-field--finalized {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: #cbd5e1;
 }
 ${printPageBackgroundCss()}
 `.trim();

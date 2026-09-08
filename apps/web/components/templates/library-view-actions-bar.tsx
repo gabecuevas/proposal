@@ -117,6 +117,16 @@ export function LibraryViewActionsBar({
           <p className="text-xs text-muted">{selectionCount} selected</p>
         ) : null}
 
+        {showNewFolder ? (
+          <button
+            type="button"
+            onClick={onNewFolder}
+            className={`${btnBase} border border-border px-2.5 text-foreground hover:bg-slate-50`}
+          >
+            + New Folder
+          </button>
+        ) : null}
+
         <div
           className="inline-flex h-7 items-center rounded-md border border-border bg-surface p-0.5"
           role="group"
@@ -151,16 +161,6 @@ export function LibraryViewActionsBar({
             <IconPreviewEye />
           </button>
         </div>
-
-        {showNewFolder ? (
-          <button
-            type="button"
-            onClick={onNewFolder}
-            className={`${btnBase} border border-border px-2.5 text-foreground hover:bg-slate-50`}
-          >
-            + New Folder
-          </button>
-        ) : null}
 
         <div className="relative" ref={rootRef}>
           <button

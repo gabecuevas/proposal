@@ -4,7 +4,7 @@ import { NodeSelection, Plugin, TextSelection } from "@tiptap/pm/state";
 import type { EditorView, NodeView } from "@tiptap/pm/view";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 import { TextBoxView } from "@/components/editor/overlay-text-box-view";
-import { overlayTextBoxSelectionPlugin } from "../overlay-text-box";
+import { collapseTextBoxSelection, overlayTextBoxSelectionPlugin } from "../overlay-text-box";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -125,6 +125,14 @@ export const TextBox = Node.create({
         return this.editor.commands.insertContent({ type: "paragraph" });
       },
       "Shift-Enter": () => this.editor.commands.setHardBreak(),
+      Escape: () => {
+        const tr = collapseTextBoxSelection(this.editor.state);
+        if (!tr) {
+          return false;
+        }
+        this.editor.view.dispatch(tr);
+        return true;
+      },
     };
   },
 

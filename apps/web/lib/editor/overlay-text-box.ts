@@ -136,11 +136,27 @@ export function isOverlayTextBoxNode(node: { type?: { name?: string }; attrs?: R
   return Boolean(node?.type?.name === "textBox" && String(node.attrs?.boxId ?? ""));
 }
 
+/** Full-width flow Text Block (DOCX import / Insert → Text Block), not an overlay box. */
+export function isFlowTextBoxNode(node: { type?: { name?: string }; attrs?: Record<string, unknown> } | null): boolean {
+  return Boolean(node?.type?.name === "textBox" && !String(node.attrs?.boxId ?? ""));
+}
+
 export function isOverlayTextBoxEventTarget(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&
     Boolean(target.closest(".overlay-text-box, [data-text-box-options]"))
   );
+}
+
+/** True when the event landed inside a flow Text Block’s content DOM. */
+export function isFlowTextBoxEventTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  if (isOverlayTextBoxEventTarget(target)) {
+    return false;
+  }
+  return Boolean(target.closest(".creator-text-box, [data-node-type='textBox']"));
 }
 
 function overlayTextBoxAtSelection(state: EditorState): { pos: number; node: ProseMirrorNode } | null {
@@ -151,6 +167,20 @@ function overlayTextBoxAtSelection(state: EditorState): { pos: number; node: Pro
   for (let depth = selection.$from.depth; depth > 0; depth--) {
     const node = selection.$from.node(depth);
     if (isOverlayTextBoxNode(node)) {
+      return { pos: selection.$from.before(depth), node };
+    }
+  }
+  return null;
+}
+
+function flowTextBoxAtSelection(state: EditorState): { pos: number; node: ProseMirrorNode } | null {
+  const { selection } = state;
+  if (selection instanceof NodeSelection && isFlowTextBoxNode(selection.node)) {
+    return { pos: selection.from, node: selection.node };
+  }
+  for (let depth = selection.$from.depth; depth > 0; depth--) {
+    const node = selection.$from.node(depth);
+    if (isFlowTextBoxNode(node)) {
       return { pos: selection.$from.before(depth), node };
     }
   }
@@ -190,35 +220,141 @@ export function collapseOverlayTextBoxSelection(state: EditorState): Transaction
   return state.tr.setSelection(next);
 }
 
-/** Clicks on the page (not the box) should not keep an overlay text box selected. */
+/**
+ * Exit editing inside a flow Text Block by selecting the block itself.
+ * Typing / Enter re-enters via enterTextBoxIfNodeSelected.
+ */
+export function collapseFlowTextBoxSelection(state: EditorState): Transaction | null {
+  const box = flowTextBoxAtSelection(state);
+  if (!box) {
+    return null;
+  }
+  if (state.selection instanceof NodeSelection && state.selection.from === box.pos) {
+    return null;
+  }
+  try {
+    const next = NodeSelection.create(state.doc, box.pos);
+    if (next.eq(state.selection)) {
+      return null;
+    }
+    return state.tr.setSelection(next);
+  } catch {
+    return null;
+  }
+}
+
+/** Exit whichever text box is being edited (overlay or flow). */
+export function collapseTextBoxSelection(state: EditorState): Transaction | null {
+  return collapseOverlayTextBoxSelection(state) ?? collapseFlowTextBoxSelection(state);
+}
+
+/** Format / insert menus should not force-exit text editing. */
+export function isTextEditingChromeEventTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    Boolean(
+      target.closest(
+        [
+          ".creator-format-toolbar",
+          ".creator-selection-toolbar",
+          ".slash-insert-menu",
+          "[data-text-box-options]",
+          "[data-radix-popper-content-wrapper]",
+          "[role='menu']",
+          "[role='listbox']",
+        ].join(", "),
+      ),
+    )
+  );
+}
+
+function isOtherContentBlockTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  return Boolean(
+    target.closest(
+      [
+        ".signer-field-node",
+        ".creator-image-block",
+        "[data-youtube-video]",
+        "table",
+        "[data-node-type='quoteTable']",
+        "[data-node-type='tableOfContents']",
+        "[data-node-type='pageBreak']",
+        "[data-node-type='fieldCanvas']",
+      ].join(", "),
+    ),
+  );
+}
+
+function isIdleFlowTextBoxSelection(state: EditorState): boolean {
+  const { selection } = state;
+  return selection instanceof NodeSelection && isFlowTextBoxNode(selection.node);
+}
+
+/** Clicks outside the Text Box exit editing so fillable fields can be placed on top. */
 export function overlayTextBoxSelectionPlugin(): Plugin {
   return new Plugin({
+    view(view) {
+      const onPointerDown = (event: PointerEvent) => {
+        if (event.button !== 0) {
+          return;
+        }
+        if (isOverlayTextBoxEventTarget(event.target) || isFlowTextBoxEventTarget(event.target)) {
+          return;
+        }
+        if (isTextEditingChromeEventTarget(event.target)) {
+          return;
+        }
+        const tr = collapseTextBoxSelection(view.state);
+        if (tr) {
+          view.dispatch(tr);
+        }
+      };
+      document.addEventListener("pointerdown", onPointerDown, true);
+      return {
+        destroy() {
+          document.removeEventListener("pointerdown", onPointerDown, true);
+        },
+      };
+    },
     props: {
       handleDOMEvents: {
         mousedown(view, event) {
-          if (isOverlayTextBoxEventTarget(event.target)) {
+          if (event.button !== 0) {
             return false;
           }
-          const target = event.target;
-          const onPaper =
-            target instanceof Element &&
-            Boolean(target.closest("[data-creator-paper], .tiptap-creator, .ProseMirror"));
-          if (!onPaper) {
+          if (isOverlayTextBoxEventTarget(event.target) || isFlowTextBoxEventTarget(event.target)) {
             return false;
           }
-          if (target instanceof Element && target.closest(".signer-field-node")) {
+          if (isTextEditingChromeEventTarget(event.target)) {
             return false;
           }
-          const tr = collapseOverlayTextBoxSelection(view.state);
-          if (!tr) {
+          if (isOtherContentBlockTarget(event.target)) {
+            const tr = collapseTextBoxSelection(view.state);
+            if (tr) {
+              view.dispatch(tr);
+            }
             return false;
           }
-          view.dispatch(tr);
-          return true;
+          const tr = collapseTextBoxSelection(view.state);
+          if (tr) {
+            view.dispatch(tr);
+          }
+          // Swallow padding / paper clicks so ProseMirror does not put the caret
+          // back inside the Text Box after we idle it.
+          if (tr || isIdleFlowTextBoxSelection(view.state)) {
+            return true;
+          }
+          return false;
         },
       },
-      handleClick(_view, _pos, event) {
-        if (isOverlayTextBoxEventTarget(event.target)) {
+      handleClick(view, _pos, event) {
+        if (isOverlayTextBoxEventTarget(event.target) || isFlowTextBoxEventTarget(event.target)) {
+          return false;
+        }
+        if (isTextEditingChromeEventTarget(event.target) || isOtherContentBlockTarget(event.target)) {
           return false;
         }
         const target = event.target;
@@ -228,10 +364,7 @@ export function overlayTextBoxSelectionPlugin(): Plugin {
         ) {
           return false;
         }
-        if (target.closest(".signer-field-node")) {
-          return false;
-        }
-        return true;
+        return isIdleFlowTextBoxSelection(view.state);
       },
     },
   });

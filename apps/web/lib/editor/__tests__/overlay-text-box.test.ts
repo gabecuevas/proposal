@@ -13,7 +13,10 @@ import { TextBox } from "../extensions/text-box";
 import { insertAdjustableTextBox, insertTextBlock } from "../insert-elements";
 import {
   canvasForInsertPos,
+  collapseFlowTextBoxSelection,
   collapseOverlayTextBoxSelection,
+  isFlowTextBoxEventTarget,
+  isFlowTextBoxNode,
   isOverlayTextBoxEventTarget,
   isOverlayTextBoxNode,
   isPageBackedSeamInsert,
@@ -219,6 +222,61 @@ describe("overlay text boxes", () => {
     box.append(inner);
     expect(isOverlayTextBoxEventTarget(inner)).toBe(true);
     expect(isOverlayTextBoxEventTarget(document.createElement("div"))).toBe(false);
+  });
+
+  it("collapses a flow Text Box to NodeSelection so fields can sit on top", () => {
+    editor = new Editor({
+      element: document.createElement("div"),
+      extensions: [
+        CreatorDocument,
+        StarterKit.configure({ document: false }),
+        FieldOverlay,
+        SignerField,
+        TextBox,
+      ],
+      content: {
+        type: "doc",
+        content: [
+          {
+            type: "textBox",
+            attrs: { boxId: "" },
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "Imported body" }] },
+              { type: "paragraph", content: [{ type: "text", text: "More copy" }] },
+            ],
+          },
+        ],
+      },
+    });
+    let boxPos = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (isFlowTextBoxNode(node)) {
+        boxPos = pos;
+        return false;
+      }
+      return true;
+    });
+    expect(boxPos).toBeGreaterThanOrEqual(0);
+    editor.commands.setTextSelection(boxPos + 2);
+    expect(editor.isActive("textBox")).toBe(true);
+    expect(editor.state.selection instanceof NodeSelection).toBe(false);
+
+    const tr = collapseFlowTextBoxSelection(editor.state);
+    expect(tr).not.toBeNull();
+    editor.view.dispatch(tr!);
+
+    expect(editor.state.selection instanceof NodeSelection).toBe(true);
+    expect(isFlowTextBoxNode((editor.state.selection as NodeSelection).node)).toBe(true);
+    expect(collapseFlowTextBoxSelection(editor.state)).toBeNull();
+  });
+
+  it("treats flow Text Box content as an inside-click target", () => {
+    const box = document.createElement("div");
+    box.className = "creator-text-box";
+    const inner = document.createElement("p");
+    box.append(inner);
+    expect(isFlowTextBoxEventTarget(inner)).toBe(true);
+    expect(isFlowTextBoxEventTarget(document.createElement("div"))).toBe(false);
   });
 });
 

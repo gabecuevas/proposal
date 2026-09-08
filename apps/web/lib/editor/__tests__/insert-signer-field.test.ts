@@ -8,7 +8,7 @@ import { FieldOverlay } from "../extensions/field-overlay";
 import { FlowGaps } from "../extensions/flow-gaps";
 import { SignerField } from "../extensions/signer-field";
 import { TextBox } from "../extensions/text-box";
-import { insertSignerFieldBlock } from "../insert-signer-field";
+import { insertSignerFieldBlock, topLeftPct } from "../insert-signer-field";
 
 function createEditor(content: object) {
   return new Editor({
@@ -24,6 +24,14 @@ function createEditor(content: object) {
     content,
   });
 }
+
+describe("topLeftPct", () => {
+  it("anchors the field top-left at the pointer and keeps it on-page", () => {
+    expect(topLeftPct(100, 1000, 0.2)).toBeCloseTo(0.1);
+    expect(topLeftPct(0, 1000, 0.2)).toBe(0);
+    expect(topLeftPct(950, 1000, 0.2)).toBeCloseTo(0.8);
+  });
+});
 
 describe("insertSignerFieldBlock over Text Blocks", () => {
   let editor: Editor;

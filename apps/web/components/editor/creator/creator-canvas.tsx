@@ -254,7 +254,7 @@ export function CreatorCanvas({
                   <div
                     key={`guide-${index + 1}`}
                     className="creator-page-guide"
-                    data-page-label="Estimated page break"
+                    data-page-label="Page break"
                     style={{ top: (index + 1) * spec.heightPx }}
                   />
                 ))}

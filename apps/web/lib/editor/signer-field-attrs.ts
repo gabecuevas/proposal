@@ -86,8 +86,8 @@ export function defaultPlaceholderForType(type: SignerFieldEditorType): string {
   }
 }
 
-/** Single-line fillable fields: ~30px on Letter, tight around 12px type. */
-export const SINGLE_LINE_FIELD_H_PCT = 0.028;
+/** Single-line fillable fields: ~23px on Letter, tight around 12px type. */
+export const SINGLE_LINE_FIELD_H_PCT = 0.022;
 
 export function locksSingleLineHeight(type: SignerFieldEditorType, multiline: boolean): boolean {
   if (type === "text") {
@@ -99,7 +99,7 @@ export function locksSingleLineHeight(type: SignerFieldEditorType, multiline: bo
 export function defaultSizeForType(type: SignerFieldEditorType): { wPct: number; hPct: number } {
   switch (type) {
     case "text":
-      return { wPct: 0.32, hPct: SINGLE_LINE_FIELD_H_PCT };
+      return { wPct: 0.14, hPct: SINGLE_LINE_FIELD_H_PCT };
     case "date":
       return { wPct: 0.24, hPct: SINGLE_LINE_FIELD_H_PCT };
     case "checkbox":
@@ -138,7 +138,12 @@ export function parseSignerFieldAttrs(raw: Record<string, unknown> | undefined, 
   const multiline = Boolean(raw?.multiline);
   let hPct = typeof raw?.hPct === "number" ? clamp01(raw.hPct) : size.hPct;
   if (locksSingleLineHeight(type, multiline)) {
-    hPct = SINGLE_LINE_FIELD_H_PCT;
+    // Default to the compact single-line height, but keep a taller value when
+    // typing/auto-resize has already expanded the field.
+    hPct =
+      typeof raw?.hPct === "number"
+        ? Math.max(SINGLE_LINE_FIELD_H_PCT, clamp01(raw.hPct))
+        : SINGLE_LINE_FIELD_H_PCT;
   }
 
   const validationRaw = String(raw?.validation ?? "none");
@@ -216,6 +221,57 @@ export function extractSigningFields(doc: { content?: Walkable[] } | null | unde
   }
   (doc?.content ?? []).forEach((child, index) => walk(child, index));
   return fields;
+}
+
+export type SigningFieldCounts = {
+  total: number;
+  required: number;
+  sender: number;
+  recipients: number;
+  byRecipient: Array<{ recipientId: string; count: number; required: number }>;
+};
+
+const DEFAULT_SENDER_IDS = new Set(["sender-self"]);
+
+/** Counts fillable fields so the UI can show how many the Sender vs Recipients must complete. */
+export function summarizeSigningFields(
+  fields: SignerFieldAttrs[],
+  options?: { senderRecipientIds?: Iterable<string> },
+): SigningFieldCounts {
+  const senderIds = new Set(options?.senderRecipientIds ?? DEFAULT_SENDER_IDS);
+  const byRecipientMap = new Map<string, { count: number; required: number }>();
+  let sender = 0;
+  let recipients = 0;
+  let required = 0;
+
+  for (const field of fields) {
+    const id = field.recipientId || "unassigned";
+    const bucket = byRecipientMap.get(id) ?? { count: 0, required: 0 };
+    bucket.count += 1;
+    if (field.required) {
+      bucket.required += 1;
+      required += 1;
+    }
+    byRecipientMap.set(id, bucket);
+
+    if (senderIds.has(id)) {
+      sender += 1;
+    } else {
+      recipients += 1;
+    }
+  }
+
+  return {
+    total: fields.length,
+    required,
+    sender,
+    recipients,
+    byRecipient: [...byRecipientMap.entries()].map(([recipientId, stats]) => ({
+      recipientId,
+      count: stats.count,
+      required: stats.required,
+    })),
+  };
 }
 
 export function isDropdownField(field: SignerFieldAttrs): field is SignerFieldAttrs & { type: "dropdown" } {

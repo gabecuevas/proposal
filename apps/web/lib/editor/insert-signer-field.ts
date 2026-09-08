@@ -7,6 +7,7 @@ import {
   readPaperPageHeightPx,
   visualTopForPage,
 } from "./page-geometry";
+import { collapseTextBoxSelection } from "./overlay-text-box";
 import {
   attrsToJson,
   clamp01,
@@ -16,6 +17,14 @@ import {
   parseSignerFieldAttrs,
   type SignerFieldEditorType,
 } from "./signer-field-attrs";
+
+/** Leave Text Box editing so overlay fields sit on top instead of fighting the caret. */
+function exitTextBoxEditing(editor: Editor): void {
+  const tr = collapseTextBoxSelection(editor.state);
+  if (tr) {
+    editor.view.dispatch(tr);
+  }
+}
 
 type NodeTarget = { pos: number; node: ProseMirrorNode };
 
@@ -127,13 +136,10 @@ function placementNearSelection(
 
   const pageHeightPx = readPaperPageHeightPx(paper);
   const gapPx = readPaperPageGapPx(paper);
-  const xPct = centered(clientX - paperRect.left, paperRect.width, size.wPct);
+  const xPct = topLeftPct(clientX - paperRect.left, paperRect.width, size.wPct);
   const yFromTop = Math.max(0, clientY - paperRect.top);
   const page = pageAtVisualOffset(yFromTop, pageHeightPx, gapPx);
-  const yPct = Math.min(
-    Math.max(0, 1 - size.hPct),
-    (yFromTop - visualTopForPage(page, pageHeightPx, gapPx)) / pageHeightPx - size.hPct / 2,
-  );
+  const yPct = topLeftPct(yFromTop - visualTopForPage(page, pageHeightPx, gapPx), pageHeightPx, size.hPct);
   return { xPct, yPct, page };
 }
 
@@ -148,6 +154,7 @@ export function insertSignerFieldBlock(
     page?: number;
   },
 ): boolean {
+  exitTextBoxEditing(editor);
   const size = defaultSizeForType(input.type);
   const near =
     input.xPct === undefined || input.yPct === undefined || input.page === undefined
@@ -193,6 +200,8 @@ export function insertSignerFieldBlock(
  * Places a field where it was released. A drop over an uploaded page lands on
  * that page's canvas; anywhere else lands on the overlay above the content, so
  * a signature can sit on top of text, an image, a table or a video.
+ *
+ * Coordinates use the field's top-left at the pointer (same anchor as drag-move).
  */
 export function insertSignerFieldAtPoint(
   editor: Editor,
@@ -203,16 +212,16 @@ export function insertSignerFieldAtPoint(
     clientY: number;
   },
 ): boolean {
+  exitTextBoxEditing(editor);
   const size = defaultSizeForType(input.type);
-  const hit = document.elementFromPoint(input.clientX, input.clientY);
-  const canvasEl = hit?.closest("[data-field-canvas]") as HTMLElement | null;
+  const canvasEl = canvasElementAtPoint(input.clientX, input.clientY);
 
   if (canvasEl) {
     const rect = canvasEl.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
       const target = canvasFromElement(editor, canvasEl);
-      const xPct = centered(input.clientX - rect.left, rect.width, size.wPct);
-      const yPct = centered(input.clientY - rect.top, rect.height, size.hPct);
+      const xPct = topLeftPct(input.clientX - rect.left, rect.width, size.wPct);
+      const yPct = topLeftPct(input.clientY - rect.top, rect.height, size.hPct);
       if (target) {
         return insertFieldIntoContainer(
           editor,
@@ -224,26 +233,23 @@ export function insertSignerFieldAtPoint(
     }
   }
 
-  const paper = (hit?.closest(CREATOR_PAPER_SELECTOR) ??
-    document.querySelector(CREATOR_PAPER_SELECTOR)) as HTMLElement | null;
-  if (!paper) {
+  // Prefer the live overlay box so drop % matches CSS positioning; fall back to paper.
+  const origin = placementOriginElement();
+  if (!origin) {
     return insertSignerFieldBlock(editor, input);
   }
 
-  const paperRect = paper.getBoundingClientRect();
-  if (paperRect.width <= 0) {
+  const originRect = origin.getBoundingClientRect();
+  if (originRect.width <= 0) {
     return insertSignerFieldBlock(editor, input);
   }
 
-  const pageHeightPx = readPaperPageHeightPx(paper);
-  const gapPx = readPaperPageGapPx(paper);
-  const xPct = centered(input.clientX - paperRect.left, paperRect.width, size.wPct);
-  const yFromTop = Math.max(0, input.clientY - paperRect.top);
+  const pageHeightPx = readPaperPageHeightPx(origin);
+  const gapPx = readPaperPageGapPx(origin);
+  const xPct = topLeftPct(input.clientX - originRect.left, originRect.width, size.wPct);
+  const yFromTop = Math.max(0, input.clientY - originRect.top);
   const page = pageAtVisualOffset(yFromTop, pageHeightPx, gapPx);
-  const yPct = Math.min(
-    Math.max(0, 1 - size.hPct),
-    (yFromTop - visualTopForPage(page, pageHeightPx, gapPx)) / pageHeightPx - size.hPct / 2,
-  );
+  const yPct = topLeftPct(yFromTop - visualTopForPage(page, pageHeightPx, gapPx), pageHeightPx, size.hPct);
 
   const overlay = findNodes(editor, "fieldOverlay")[0] ?? null;
   return insertFieldIntoContainer(
@@ -253,8 +259,41 @@ export function insertSignerFieldAtPoint(
   );
 }
 
-function centered(offsetPx: number, extentPx: number, sizePct: number): number {
-  return Math.min(Math.max(0, 1 - sizePct), clamp01(offsetPx / extentPx - sizePct / 2));
+/** Top-left of the field at the pointer; clamped so the field stays on-page. */
+export function topLeftPct(offsetPx: number, extentPx: number, sizePct: number): number {
+  if (extentPx <= 0) {
+    return 0;
+  }
+  return Math.min(Math.max(0, 1 - sizePct), clamp01(offsetPx / extentPx));
+}
+
+function elementsAtPoint(clientX: number, clientY: number): Element[] {
+  if (typeof document.elementsFromPoint === "function") {
+    return document.elementsFromPoint(clientX, clientY);
+  }
+  const hit = document.elementFromPoint(clientX, clientY);
+  return hit ? [hit] : [];
+}
+
+function canvasElementAtPoint(clientX: number, clientY: number): HTMLElement | null {
+  for (const el of elementsAtPoint(clientX, clientY)) {
+    if (!(el instanceof Element)) {
+      continue;
+    }
+    const canvas = el.closest("[data-field-canvas]");
+    if (canvas instanceof HTMLElement) {
+      return canvas;
+    }
+  }
+  return null;
+}
+
+function placementOriginElement(): HTMLElement | null {
+  const overlay = document.querySelector(".ProseMirror [data-field-overlay], [data-field-overlay]") as HTMLElement | null;
+  if (overlay && overlay.getBoundingClientRect().width > 0) {
+    return overlay;
+  }
+  return document.querySelector(CREATOR_PAPER_SELECTOR) as HTMLElement | null;
 }
 
 function canvasFromElement(editor: Editor, canvasEl: HTMLElement): NodeTarget | null {

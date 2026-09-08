@@ -16,7 +16,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { revealInputCaret } from "@/lib/editor/field-input-caret";
-import { clamp01, locksSingleLineHeight, parseSignerFieldAttrs, type SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
+import { clamp01, defaultSizeForType, locksSingleLineHeight, parseSignerFieldAttrs, SINGLE_LINE_FIELD_H_PCT, type SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
 import { commitSignerFieldPlaceholder, EMPTY_TEXT_PLACEHOLDER, storedFieldText } from "@/lib/editor/commit-signer-field-text";
 import { PAGE_MARGIN_PX, pageAtVisualOffset, readPaperPageGapPx, readPaperPageHeightPx, visualTopForPage } from "@/lib/editor/page-geometry";
 import { snapRect, snapResize, type AlignGuide, type FieldRect } from "@/lib/editor/field-snap";
@@ -35,7 +35,7 @@ import {
 import { useSignerRecipients } from "./signer-field-context";
 
 const MIN_W_PCT = 0.06;
-const MIN_H_PCT = 0.022;
+const MIN_H_PCT = 0.018;
 const FORM_CONTROL_SELECTOR = "input, textarea, select, button, [data-field-settings], [data-assign-pill], [data-field-gear]";
 
 function typeLabel(type: string): string {
@@ -215,33 +215,99 @@ function useIsolateFieldEvents(ref: RefObject<HTMLElement | null>) {
   }, [ref]);
 }
 
+function measureFieldTextSizePx(
+  text: string,
+  input: HTMLElement,
+  maxWidthPx: number,
+): { widthPx: number; heightPx: number } {
+  const style = getComputedStyle(input);
+  const padL = Number.parseFloat(style.paddingLeft) || 0;
+  const padR = Number.parseFloat(style.paddingRight) || 0;
+  const padX = padL + padR + 12;
+  const lineHeight = Number.parseFloat(style.lineHeight) || 16;
+
+  const mirror = document.createElement("div");
+  mirror.setAttribute("aria-hidden", "true");
+  mirror.textContent = text.length > 0 ? text : " ";
+  mirror.style.position = "absolute";
+  mirror.style.visibility = "hidden";
+  mirror.style.top = "-9999px";
+  mirror.style.left = "-9999px";
+  mirror.style.font = style.font;
+  mirror.style.letterSpacing = style.letterSpacing;
+  mirror.style.whiteSpace = "pre";
+  mirror.style.width = "max-content";
+  mirror.style.lineHeight = style.lineHeight;
+  document.body.appendChild(mirror);
+
+  let widthPx = Math.ceil(mirror.getBoundingClientRect().width + padX);
+  let heightPx = Math.ceil(Math.max(mirror.getBoundingClientRect().height, lineHeight));
+
+  const maxInner = Math.max(32, maxWidthPx - padX);
+  if (widthPx > maxWidthPx && maxWidthPx > 0) {
+    mirror.style.whiteSpace = "pre-wrap";
+    mirror.style.overflowWrap = "anywhere";
+    mirror.style.width = `${maxInner}px`;
+    widthPx = Math.ceil(maxWidthPx);
+    heightPx = Math.ceil(Math.max(mirror.getBoundingClientRect().height, lineHeight));
+  }
+
+  mirror.remove();
+  return { widthPx, heightPx };
+}
+
 function FieldTextInput({
   placeholder,
   multiline,
   masked,
+  maxWidthPx,
   onCommit,
   onFocus,
   onBlur,
+  onContentSizeChange,
 }: {
   placeholder: string;
   multiline: boolean;
   masked: boolean;
+  /** Remaining width on the page so text can wrap once the field hits the edge. */
+  maxWidthPx: number;
   onCommit: (value: string) => void;
   onFocus?: () => void;
   onBlur?: (event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+  /** Report intrinsic content size so the field shell can grow while typing. */
+  onContentSizeChange?: (size: { widthPx: number; heightPx: number }) => void;
 }) {
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
   const focusedRef = useRef(false);
   const onCommitRef = useRef(onCommit);
   onCommitRef.current = onCommit;
+  const onContentSizeChangeRef = useRef(onContentSizeChange);
+  onContentSizeChangeRef.current = onContentSizeChange;
+  const maxWidthRef = useRef(maxWidthPx);
+  maxWidthRef.current = maxWidthPx;
   const stored = storedFieldText(placeholder);
   const [value, setValue] = useState(stored);
+
+  const reportSize = useCallback((el: HTMLInputElement | HTMLTextAreaElement, text: string) => {
+    if (!onContentSizeChangeRef.current) {
+      return;
+    }
+    onContentSizeChangeRef.current(measureFieldTextSizePx(text, el, maxWidthRef.current));
+  }, []);
 
   useEffect(() => {
     if (!focusedRef.current) {
       setValue(storedFieldText(placeholder));
     }
   }, [placeholder]);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) {
+      return;
+    }
+    reportSize(el, el.value);
+  }, [value, multiline, maxWidthPx, reportSize]);
 
   useEffect(() => {
     const el = inputRef.current;
@@ -255,7 +321,9 @@ function FieldTextInput({
     };
     const onNativeInput = (event: Event) => {
       event.stopPropagation();
-      setValue((event.target as HTMLInputElement | HTMLTextAreaElement).value);
+      const target = event.target as HTMLInputElement | HTMLTextAreaElement;
+      setValue(target.value);
+      reportSize(target, target.value);
     };
     const onNativeKeyDown = (event: Event) => {
       const keyEvent = event as KeyboardEvent;
@@ -292,7 +360,7 @@ function FieldTextInput({
       el.removeEventListener("focusout", onFocusOut);
       document.removeEventListener("pointerdown", onPointerDownCapture, true);
     };
-  }, [multiline]);
+  }, [multiline, reportSize]);
 
   const commitFromEl = (event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     focusedRef.current = false;
@@ -301,7 +369,7 @@ function FieldTextInput({
   };
 
   const sharedClass =
-    "h-full w-full bg-transparent px-1.5 py-0 text-[12px] leading-[18px] text-foreground caret-foreground outline-none placeholder:text-slate-400";
+    "h-full w-full bg-transparent px-1.5 py-0 text-[12px] leading-4 text-foreground caret-foreground outline-none placeholder:text-slate-400";
 
   const focusHandlers = {
     onPointerDown: (event: ReactPointerEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -313,6 +381,7 @@ function FieldTextInput({
       const start = el.selectionStart;
       const end = el.selectionEnd;
       onFocus?.();
+      reportSize(el, el.value);
       revealInputCaret(el, start, end);
       requestAnimationFrame(() => {
         if (document.activeElement !== el) {
@@ -323,30 +392,38 @@ function FieldTextInput({
     onBlur: commitFromEl,
   };
 
-  if (multiline) {
+  // Password mask keeps a single-line input; all other text uses a textarea so
+  // wrapped lines can grow the field height while typing.
+  if (masked && !multiline) {
     return (
-      <textarea
-        ref={inputRef as RefObject<HTMLTextAreaElement>}
-        rows={3}
+      <input
+        ref={inputRef as RefObject<HTMLInputElement>}
+        type="password"
         value={value}
         placeholder={EMPTY_TEXT_PLACEHOLDER}
         autoComplete="off"
-        className={`${sharedClass} resize-none py-1`}
-        onChange={(event) => setValue(event.target.value)}
+        className={sharedClass}
+        onChange={(event) => {
+          setValue(event.target.value);
+          reportSize(event.target, event.target.value);
+        }}
         {...focusHandlers}
       />
     );
   }
 
   return (
-    <input
-      ref={inputRef as RefObject<HTMLInputElement>}
-      type={masked ? "password" : "text"}
+    <textarea
+      ref={inputRef as RefObject<HTMLTextAreaElement>}
+      rows={1}
       value={value}
       placeholder={EMPTY_TEXT_PLACEHOLDER}
       autoComplete="off"
-      className={sharedClass}
-      onChange={(event) => setValue(event.target.value)}
+      className={`${sharedClass} resize-none overflow-hidden whitespace-pre-wrap break-words py-0.5`}
+      onChange={(event) => {
+        setValue(event.target.value);
+        reportSize(event.target, event.target.value);
+      }}
       {...focusHandlers}
     />
   );
@@ -425,6 +502,49 @@ export function SignerFieldView({ node, updateAttributes, selected, editor, getP
     },
     [editor, getPos],
   );
+
+  const onTextContentSizeChange = useCallback(
+    (size: { widthPx: number; heightPx: number }) => {
+      const el = rootRef.current;
+      if (!el) {
+        return;
+      }
+      const container = resolveContainer(el);
+      if (!container || container.widthPx <= 0 || container.pageHeightPx <= 0) {
+        return;
+      }
+
+      const floorW = defaultSizeForType("text").wPct;
+      const maxW = Math.max(floorW, 1 - attrs.xPct);
+      const neededW = Math.min(maxW, Math.max(floorW, size.widthPx / container.widthPx));
+      const floorH = Math.max(MIN_H_PCT, SINGLE_LINE_FIELD_H_PCT);
+      const maxH = Math.max(floorH, 1 - attrs.yPct);
+      const neededH = Math.min(maxH, Math.max(floorH, size.heightPx / container.pageHeightPx));
+
+      const patch: { wPct?: number; hPct?: number } = {};
+      // Grow with typed content; never shrink a manually resized field.
+      if (neededW > attrs.wPct + 0.0015) {
+        patch.wPct = neededW;
+      }
+      if (neededH > attrs.hPct + 0.0015) {
+        patch.hPct = neededH;
+      }
+
+      if (Object.keys(patch).length > 0) {
+        updateAttributes(patch);
+      }
+    },
+    [attrs.hPct, attrs.wPct, attrs.xPct, attrs.yPct, updateAttributes],
+  );
+
+  const textMaxWidthPx = (() => {
+    const el = rootRef.current;
+    const container = el ? resolveContainer(el) : null;
+    if (!container || container.widthPx <= 0) {
+      return 320;
+    }
+    return Math.max(48, (1 - attrs.xPct) * container.widthPx);
+  })();
 
   const onDragPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
@@ -563,7 +683,7 @@ export function SignerFieldView({ node, updateAttributes, selected, editor, getP
 
   return (
     <NodeViewWrapper
-      className={`signer-field-node overflow-visible ${chromeVisible ? "z-40" : "z-20"}`}
+      className={`signer-field-node overflow-visible ${chromeVisible ? "z-40" : "z-20"}${fieldActive ? " is-field-active" : ""}`}
       style={positionVars}
       data-signer-field-id={attrs.fieldId}
       data-field-page={attrs.page}
@@ -689,8 +809,8 @@ export function SignerFieldView({ node, updateAttributes, selected, editor, getP
       ) : null}
 
       <div
-        className={`flex h-full min-h-0 w-full items-center rounded-[2px] border bg-white ${
-          fieldActive ? "border-primary shadow-[0_0_0_1px_var(--primary)]" : "border-primary/70"
+        className={`signer-field-shell flex h-full min-h-0 w-full rounded-[2px] ${
+          attrs.type === "text" ? "items-stretch" : "items-center"
         }`}
       >
         {attrs.type === "text" ? (
@@ -698,7 +818,9 @@ export function SignerFieldView({ node, updateAttributes, selected, editor, getP
             placeholder={attrs.placeholder}
             multiline={attrs.multiline}
             masked={attrs.maskValue}
+            maxWidthPx={textMaxWidthPx}
             onCommit={commitText}
+            onContentSizeChange={onTextContentSizeChange}
             onFocus={() => {
               selectThis(true);
             }}
@@ -710,7 +832,7 @@ export function SignerFieldView({ node, updateAttributes, selected, editor, getP
           </label>
         ) : (
           <span className="flex min-w-0 items-center gap-1.5 px-2 text-[12px] text-slate-400">
-            <FieldTypeIcon type={attrs.type} className="h-3.5 w-3.5 shrink-0 text-primary" />
+            <FieldTypeIcon type={attrs.type} className="h-3.5 w-3.5 shrink-0 text-slate-400" />
             <span className="truncate">{placeholder}</span>
           </span>
         )}

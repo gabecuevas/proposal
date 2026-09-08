@@ -289,8 +289,31 @@ export type TemplateFolderRecord = {
   created_by: string;
   created_at: string;
   updated_at: string;
+  /** Templates stored directly in this folder (not nested children). */
+  template_count: number;
   shared_with: Array<{ user_id: string; name: string; email: string; role: string }>;
 };
+
+async function templateCountsByFolder(
+  workspaceId: string,
+  folderIds: string[],
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  if (folderIds.length === 0) {
+    return counts;
+  }
+  const rows = await prisma.template.groupBy({
+    by: ["folder_id"],
+    where: { workspace_id: workspaceId, folder_id: { in: folderIds } },
+    _count: { _all: true },
+  });
+  for (const row of rows) {
+    if (row.folder_id) {
+      counts.set(row.folder_id, row._count._all);
+    }
+  }
+  return counts;
+}
 
 function mapFolderRows(
   rows: Array<{
@@ -303,6 +326,7 @@ function mapFolderRows(
     shares: Array<{ user_id: string; role: string }>;
   }>,
   userMap: Map<string, { name: string; email: string }>,
+  templateCounts: Map<string, number>,
 ): TemplateFolderRecord[] {
   return rows.map((row) => ({
     id: row.id,
@@ -311,6 +335,7 @@ function mapFolderRows(
     created_by: row.created_by,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
+    template_count: templateCounts.get(row.id) ?? 0,
     shared_with: row.shares.map((share) => ({
       user_id: share.user_id,
       role: share.role,
@@ -330,7 +355,11 @@ export async function listTemplateFolders(
     orderBy: [{ name: "asc" }],
   });
   const userMap = await loadUserMap(rows.flatMap((r) => r.shares.map((s) => s.user_id)));
-  return mapFolderRows(rows, userMap);
+  const templateCounts = await templateCountsByFolder(
+    workspaceId,
+    rows.map((row) => row.id),
+  );
+  return mapFolderRows(rows, userMap, templateCounts);
 }
 
 export async function listAllTemplateFolders(workspaceId: string): Promise<TemplateFolderRecord[]> {
@@ -340,7 +369,11 @@ export async function listAllTemplateFolders(workspaceId: string): Promise<Templ
     orderBy: [{ name: "asc" }],
   });
   const userMap = await loadUserMap(rows.flatMap((r) => r.shares.map((s) => s.user_id)));
-  return mapFolderRows(rows, userMap);
+  const templateCounts = await templateCountsByFolder(
+    workspaceId,
+    rows.map((row) => row.id),
+  );
+  return mapFolderRows(rows, userMap, templateCounts);
 }
 
 export async function createTemplateFolder(input: {
@@ -365,6 +398,7 @@ export async function createTemplateFolder(input: {
     created_by: row.created_by,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
+    template_count: 0,
     shared_with: [],
   };
 }
@@ -385,6 +419,7 @@ export async function renameTemplateFolder(input: {
     data: { name: input.name.trim() || existing.name },
     include: { shares: true },
   });
+  const templateCounts = await templateCountsByFolder(input.workspaceId, [row.id]);
   return {
     id: row.id,
     name: row.name,
@@ -392,6 +427,7 @@ export async function renameTemplateFolder(input: {
     created_by: row.created_by,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
+    template_count: templateCounts.get(row.id) ?? 0,
     shared_with: [],
   };
 }
