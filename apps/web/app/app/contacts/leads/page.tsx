@@ -427,6 +427,8 @@ export default function LeadsPage() {
     }
     openedFromQueryRef.current = openId;
     openLead(lead);
+    // Intentionally omit openLead: open once when the deep-link id appears in the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- openLead is a stable page action
   }, [leads, searchParams]);
 
   function openNew() {
@@ -1038,7 +1040,7 @@ export default function LeadsPage() {
         ],
       },
     ],
-    [commitAddress, commitCompanyAssociation, commitIndustry, commitLinkedIn, commitWebsite, companies, currentUserName, editor, ensureCompanyOption, linkedCompany, selected, selectedId, saveLead],
+    [commitAddress, commitCompanyAssociation, commitIndustry, commitLinkedIn, commitWebsite, currentUserName, editor, ensureCompanyOption, linkedCompany, selected, selectedId, saveLead],
   );
 
   const isNewLead = !selectedId;

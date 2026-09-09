@@ -164,7 +164,7 @@ function hasClass(attrs: string, className: string): boolean {
 
 function isSignatureLineText(text: string): boolean {
   const trimmed = text.replace(/\u00a0/g, " ").trim();
-  return /^[_\u2013\u2014\-]{4,}$/.test(trimmed);
+  return /^[_\u2013\u2014-]{4,}$/.test(trimmed);
 }
 
 /** Solid fill/signature line that can live inside a Text Block (HR cannot). */
@@ -368,10 +368,10 @@ export function htmlToEditorContent(html: string): EditorNode[] {
     const source = layout.text;
 
     // Solid fill blanks — underscore glyphs + underline look dashed.
-    const parts = source.split(/([_\u2013\u2014\-]{4,})/);
+    const parts = source.split(/([_\u2013\u2014-]{4,})/);
     for (const part of parts) {
       if (!part) continue;
-      if (/^[_\u2013\u2014\-]{4,}$/.test(part)) {
+      if (/^[_\u2013\u2014-]{4,}$/.test(part)) {
         const extras = marksFromState(state)?.filter((m) => m.type !== "underline") ?? [];
         inline.push(fillBlankNode(part.length, extras));
         continue;
@@ -619,10 +619,10 @@ export function enhanceDocxHtmlForPrint(html: string): string {
     .replace(/<style[\s\S]*?<\/style>/gi, "");
 
   body = body.replace(
-    /<(p|div|h[1-6]|li)(\b[^>]*)?>\s*([_\u2013\u2014\-]{4,})\s*<\/\1>/gi,
+    /<(p|div|h[1-6]|li)(\b[^>]*)?>\s*([_\u2013\u2014-]{4,})\s*<\/\1>/gi,
     '<hr class="signature-line" />',
   );
-  body = body.replace(/([_\u2013\u2014\-]{8,})/g, '<span class="signature-fill"></span>');
+  body = body.replace(/([_\u2013\u2014-]{8,})/g, '<span class="signature-fill"></span>');
 
   body = body.replace(
     /^(?:\s)*<(p|h1|h2)(\b[^>]*)?>([\s\S]*?)<\/\1>/i,

@@ -1336,12 +1336,13 @@ function StepEdit({
   }, [editor]);
 
   useEffect(() => {
+    const saveQueue = saveQueueRef.current;
     return () => {
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
       }
       const json = latestDocRef.current;
-      void saveQueueRef.current.run(async () => {
+      void saveQueue.run(async () => {
         await persistEditor(json);
       });
     };

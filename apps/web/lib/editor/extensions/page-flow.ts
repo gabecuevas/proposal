@@ -104,10 +104,6 @@ export function createFlowBreakElement(heightPx: number): HTMLElement {
   return el;
 }
 
-function currentBreakPositions(set: DecorationSet): number[] {
-  return set.find().map((decoration) => decoration.from);
-}
-
 function readPageMetrics(view: EditorView): {
   pageHeight: number;
   margin: number;

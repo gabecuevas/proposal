@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import process from "node:process";
 
 function loadRootEnv() {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");

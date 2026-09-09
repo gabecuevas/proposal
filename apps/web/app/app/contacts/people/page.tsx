@@ -351,6 +351,8 @@ export default function PeoplePage() {
     }
     openedFromQueryRef.current = openId;
     openPerson(person);
+    // Intentionally omit openPerson: open once when the deep-link id appears in the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- openPerson is a stable page action
   }, [people, searchParams]);
 
   function openNew() {
@@ -844,7 +846,7 @@ export default function PeoplePage() {
         ],
       },
     ],
-    [commitAddress, commitCompanyAssociation, commitIndustry, commitLinkedIn, commitWebsite, companies, currentUserName, editor, ensureCompanyOption, linkedCompany, selected, selectedId, savePerson],
+    [commitAddress, commitCompanyAssociation, commitIndustry, commitLinkedIn, commitWebsite, currentUserName, editor, ensureCompanyOption, linkedCompany, selected, selectedId, savePerson],
   );
 
   return (
