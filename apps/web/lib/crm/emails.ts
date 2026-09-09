@@ -129,16 +129,24 @@ export async function listCrmEmails(
 }
 
 export async function countUnreadInbox(workspaceId: string): Promise<number> {
-  return prisma.crmEmailMessage.count({
-    where: {
-      workspace_id: workspaceId,
-      folder: "INBOX",
-      is_read: false,
-    },
-  });
+  try {
+    return await prisma.crmEmailMessage.count({
+      where: {
+        workspace_id: workspaceId,
+        folder: "INBOX",
+        is_read: false,
+      },
+    });
+  } catch {
+    // Avoid breaking Contacts sidebar counts if the email schema client is stale.
+    return 0;
+  }
 }
 
 export async function listEmailAccounts(workspaceId: string) {
+  if (!prisma.crmEmailAccount) {
+    throw new Error("Email sync storage is restarting. Refresh the page and try again.");
+  }
   return prisma.crmEmailAccount.findMany({
     where: { workspace_id: workspaceId },
     orderBy: [{ is_default: "desc" }, { created_at: "asc" }],
@@ -146,6 +154,9 @@ export async function listEmailAccounts(workspaceId: string) {
 }
 
 export async function countEmailAccounts(workspaceId: string): Promise<number> {
+  if (!prisma.crmEmailAccount) {
+    throw new Error("Email sync storage is restarting. Refresh the page and try again.");
+  }
   return prisma.crmEmailAccount.count({ where: { workspace_id: workspaceId } });
 }
 

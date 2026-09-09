@@ -10,13 +10,18 @@ import {
 } from "@/lib/crm/emails";
 
 export async function GET(request: NextRequest) {
-  const auth = await getRequestAuthContext(request);
-  const accounts = await listEmailAccounts(auth.workspaceId);
-  return jsonWithRequestId(request, {
-    providerDefault: "GOOGLE",
-    personalLimit: PERSONAL_EMAIL_ACCOUNT_LIMIT,
-    accounts: accounts.map(serializeEmailAccount),
-  });
+  try {
+    const auth = await getRequestAuthContext(request);
+    const accounts = await listEmailAccounts(auth.workspaceId);
+    return jsonWithRequestId(request, {
+      providerDefault: "GOOGLE",
+      personalLimit: PERSONAL_EMAIL_ACCOUNT_LIMIT,
+      accounts: accounts.map(serializeEmailAccount),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to load email accounts";
+    return jsonWithRequestId(request, { error: message, accounts: [] }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {

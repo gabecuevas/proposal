@@ -64,10 +64,10 @@ export default function EmailSyncSettingsPage() {
     setLoadError(null);
     try {
       const response = await fetch("/api/crm/email-accounts");
-      if (!response.ok) {
-        throw new Error("Failed to load email accounts");
-      }
-      const payload = (await response.json()) as { accounts?: CrmEmailAccountDto[] };
+      const payload = (await response.json().catch(() => ({}))) as {
+        accounts?: CrmEmailAccountDto[];
+        error?: string;
+      };
       const next = payload.accounts ?? [];
       setAccounts(next);
       setSelectedId((current) => {
@@ -76,8 +76,15 @@ export default function EmailSyncSettingsPage() {
         }
         return next[0]?.id ?? null;
       });
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Failed to load email accounts");
+      // Only surface an error when the request failed AND we have nothing to show.
+      // Empty workspaces should stay quiet — no accounts is the normal first-visit state.
+      if (!response.ok && next.length === 0) {
+        setLoadError(payload.error || "Could not load email accounts. Refresh to try again.");
+      }
+    } catch {
+      setAccounts([]);
+      setSelectedId(null);
+      setLoadError("Could not load email accounts. Refresh to try again.");
     } finally {
       setLoading(false);
     }
@@ -104,7 +111,6 @@ export default function EmailSyncSettingsPage() {
   return (
     <>
       <SheetPage
-        error={loadError ?? undefined}
         toolbar={
           <div className="w-full space-y-3">
             <div>
@@ -113,6 +119,18 @@ export default function EmailSyncSettingsPage() {
                 Connect Google, Office 365, Exchange, or IMAP so mail syncs into Contacts → Inbox.
               </p>
             </div>
+            {loadError ? (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                <p>{loadError}</p>
+                <button
+                  type="button"
+                  onClick={() => void loadAccounts()}
+                  className="shrink-0 rounded-md border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium hover:bg-amber-100"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : null}
             <div className="flex flex-wrap gap-1 border-b border-border">
               {TABS.map((item) => (
                 <button
