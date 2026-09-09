@@ -207,6 +207,87 @@ export async function createEmailAccount(workspaceId: string, input: CreateEmail
   });
 }
 
+export type ActivateGoogleEmailAccountInput = {
+  email: string;
+  userId: string;
+  senderName?: string | null;
+  accountId?: string | null;
+  accessTokenEncrypted: string;
+  refreshTokenEncrypted: string | null;
+  expiresAt: Date | null;
+  scope: string | null;
+};
+
+/** Create or update a Google mailbox after a successful OAuth consent. */
+export async function activateGoogleEmailAccount(
+  workspaceId: string,
+  input: ActivateGoogleEmailAccountInput,
+) {
+  if (!prisma.crmEmailAccount) {
+    throw new Error("Email sync storage is restarting. Refresh the page and try again.");
+  }
+
+  const email = input.email.trim().toLowerCase();
+  const existing = input.accountId
+    ? await prisma.crmEmailAccount.findFirst({
+        where: { id: input.accountId, workspace_id: workspaceId },
+      })
+    : await prisma.crmEmailAccount.findUnique({
+        where: {
+          workspace_id_email: {
+            workspace_id: workspaceId,
+            email,
+          },
+        },
+      });
+
+  if (existing && existing.provider !== "GOOGLE") {
+    throw new Error("That address is already connected with a different provider.");
+  }
+
+  if (existing) {
+    return prisma.crmEmailAccount.update({
+      where: { id: existing.id },
+      data: {
+        email,
+        user_id: input.userId,
+        sender_name: input.senderName ?? existing.sender_name,
+        provider: "GOOGLE",
+        sync_status: "ACTIVE",
+        credentials_configured: true,
+        oauth_access_token: input.accessTokenEncrypted,
+        oauth_refresh_token: input.refreshTokenEncrypted ?? existing.oauth_refresh_token,
+        oauth_expires_at: input.expiresAt,
+        oauth_scope: input.scope,
+        last_synced_at: new Date(),
+      },
+    });
+  }
+
+  const existingCount = await countEmailAccounts(workspaceId);
+  if (existingCount >= PERSONAL_EMAIL_ACCOUNT_LIMIT) {
+    throw new Error(`Personal email account limit reached (${PERSONAL_EMAIL_ACCOUNT_LIMIT}).`);
+  }
+
+  return prisma.crmEmailAccount.create({
+    data: {
+      workspace_id: workspaceId,
+      user_id: input.userId,
+      email,
+      sender_name: input.senderName ?? null,
+      provider: "GOOGLE",
+      is_default: existingCount === 0,
+      sync_status: "ACTIVE",
+      credentials_configured: true,
+      oauth_access_token: input.accessTokenEncrypted,
+      oauth_refresh_token: input.refreshTokenEncrypted,
+      oauth_expires_at: input.expiresAt,
+      oauth_scope: input.scope,
+      last_synced_at: new Date(),
+    },
+  });
+}
+
 export function providerDisplayName(provider: EmailSyncProviderId): string {
   switch (provider) {
     case "GOOGLE":

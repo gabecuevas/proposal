@@ -777,6 +777,10 @@ model CrmEmailAccount {
   smtp_host               String?
   smtp_port               Int?
   credentials_configured  Boolean              @default(false)
+  oauth_access_token      String?
+  oauth_refresh_token     String?
+  oauth_expires_at        DateTime?
+  oauth_scope             String?
   created_at              DateTime             @default(now())
   updated_at              DateTime             @updatedAt
 

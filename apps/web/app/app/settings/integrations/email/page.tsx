@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@repo/ui/utils";
 import { EmailAccountConnectWizard } from "@/components/crm/email-account-connect-wizard";
 import { SheetPage } from "@/components/ui/sheet-table";
@@ -48,16 +49,45 @@ function providerAvatarClass(provider: EmailSyncProviderId): string {
   }
 }
 
+function oauthErrorMessage(code: string | null): string | null {
+  switch (code) {
+    case "google_not_configured":
+      return "Google OAuth isn’t configured yet. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to your .env, then restart the app.";
+    case "google_denied":
+      return "Google authorization was cancelled. Try again when you’re ready to allow SendDox access.";
+    case "google_state_mismatch":
+      return "The Google sign-in session expired. Start the connection again.";
+    case "google_email_mismatch":
+      return "You signed into a different Google account than the email you entered. Try again with the matching account.";
+    case "google_connect_failed":
+      return "Google authorization didn’t complete. Try Connect with Google again.";
+    case "account_limit":
+      return "You’ve reached the personal email account limit (3).";
+    case "provider_conflict":
+      return "That address is already connected with a different provider.";
+    case "invalid_email":
+      return "Enter a valid email address before connecting Google.";
+    default:
+      return code ? "Could not complete email authorization." : null;
+  }
+}
+
 export default function EmailSyncSettingsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<TabId>("account");
   const [accounts, setAccounts] = useState<CrmEmailAccountDto[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [banner, setBanner] = useState<{ tone: "success" | "error" | "warning"; message: string } | null>(
+    null,
+  );
   const [wizardOpen, setWizardOpen] = useState(false);
   const [senderName, setSenderName] = useState("");
   const [isDefault, setIsDefault] = useState(true);
   const [syncStart, setSyncStart] = useState("3days");
+  const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
 
   const loadAccounts = useCallback(async () => {
     setLoading(true);
@@ -76,8 +106,6 @@ export default function EmailSyncSettingsPage() {
         }
         return next[0]?.id ?? null;
       });
-      // Only surface an error when the request failed AND we have nothing to show.
-      // Empty workspaces should stay quiet — no accounts is the normal first-visit state.
       if (!response.ok && next.length === 0) {
         setLoadError(payload.error || "Could not load email accounts. Refresh to try again.");
       }
@@ -94,6 +122,55 @@ export default function EmailSyncSettingsPage() {
     void loadAccounts();
   }, [loadAccounts]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadGoogleStatus() {
+      try {
+        const response = await fetch("/api/crm/email-accounts/google/status");
+        const payload = (await response.json().catch(() => ({}))) as { configured?: boolean };
+        if (!cancelled) {
+          setGoogleConfigured(Boolean(payload.configured));
+        }
+      } catch {
+        if (!cancelled) {
+          setGoogleConfigured(false);
+        }
+      }
+    }
+    void loadGoogleStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const connected = searchParams.get("connected");
+    const accountId = searchParams.get("accountId");
+    const error = searchParams.get("error");
+    if (!connected && !error) {
+      return;
+    }
+    if (connected === "1") {
+      setBanner({
+        tone: "success",
+        message: "Google authorization succeeded. Sync is active for this mailbox.",
+      });
+      if (accountId) {
+        setSelectedId(accountId);
+      }
+      void loadAccounts();
+    } else if (error) {
+      const message = oauthErrorMessage(error);
+      if (message) {
+        setBanner({
+          tone: error === "google_not_configured" ? "warning" : "error",
+          message,
+        });
+      }
+    }
+    router.replace("/app/settings/integrations/email");
+  }, [loadAccounts, router, searchParams]);
+
   const selected = accounts.find((account) => account.id === selectedId) ?? null;
 
   useEffect(() => {
@@ -108,6 +185,14 @@ export default function EmailSyncSettingsPage() {
 
   const atPersonalLimit = accounts.length >= PERSONAL_EMAIL_ACCOUNT_LIMIT;
 
+  function startGoogleAuthorize(account: CrmEmailAccountDto) {
+    const params = new URLSearchParams({
+      email: account.email,
+      accountId: account.id,
+    });
+    window.location.assign(`/api/crm/email-accounts/google/start?${params.toString()}`);
+  }
+
   return (
     <>
       <SheetPage
@@ -119,6 +204,34 @@ export default function EmailSyncSettingsPage() {
                 Connect Google, Office 365, Exchange, or IMAP so mail syncs into Contacts → Inbox.
               </p>
             </div>
+            {banner ? (
+              <div
+                className={cn(
+                  "flex items-start justify-between gap-3 rounded-md border px-3 py-2 text-sm",
+                  banner.tone === "success" && "border-emerald-200 bg-emerald-50 text-emerald-950",
+                  banner.tone === "warning" && "border-amber-200 bg-amber-50 text-amber-950",
+                  banner.tone === "error" && "border-red-200 bg-red-50 text-red-900",
+                )}
+              >
+                <p>{banner.message}</p>
+                <button
+                  type="button"
+                  onClick={() => setBanner(null)}
+                  className="shrink-0 text-xs font-medium underline-offset-2 hover:underline"
+                >
+                  Dismiss
+                </button>
+              </div>
+            ) : null}
+            {googleConfigured === false && !banner ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                Google sign-in for Email Sync needs <code className="text-xs">GOOGLE_CLIENT_ID</code> and{" "}
+                <code className="text-xs">GOOGLE_CLIENT_SECRET</code> in your monorepo{" "}
+                <code className="text-xs">.env</code>. Add the redirect URI{" "}
+                <code className="text-xs">/api/crm/email-accounts/google/callback</code> in Google Cloud,
+                then restart the app.
+              </div>
+            ) : null}
             {loadError ? (
               <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
                 <p>{loadError}</p>
@@ -291,8 +404,30 @@ export default function EmailSyncSettingsPage() {
                         ? "Mail from this account appears in Contacts → Inbox."
                         : selected.provider === "IMAP"
                           ? "IMAP settings are saved. Live mailbox sync will activate with the sync worker."
-                          : `OAuth for ${providerDisplayName(selected.provider)} is registered. Complete provider authorization when prompted to activate sync.`}
+                          : selected.provider === "GOOGLE"
+                            ? "Google hasn’t authorized SendDox yet. Click Connect with Google to open the consent screen and activate sync."
+                            : `${providerDisplayName(selected.provider)} OAuth isn’t available yet. Use Google or Other (IMAP).`}
                     </p>
+
+                    {selected.provider === "GOOGLE" && selected.syncStatus !== "ACTIVE" ? (
+                      <button
+                        type="button"
+                        onClick={() => startGoogleAuthorize(selected)}
+                        className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-95"
+                      >
+                        Connect with Google
+                      </button>
+                    ) : null}
+
+                    {selected.provider === "GOOGLE" && selected.syncStatus === "ACTIVE" ? (
+                      <button
+                        type="button"
+                        onClick={() => startGoogleAuthorize(selected)}
+                        className="rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50"
+                      >
+                        Reconnect Google
+                      </button>
+                    ) : null}
 
                     <label className="block space-y-1.5">
                       <span className="text-sm font-medium text-foreground">Sender name</span>

@@ -312,8 +312,9 @@ export function EmailAccountConnectWizard({
             <div className="space-y-4">
               <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950">
                 <p>
-                  You&apos;ll sign in with {providerLabel(oauthProvider)} using OAuth. We never store
-                  your provider password.
+                  {oauthProvider === "GOOGLE"
+                    ? "Google will ask you to allow SendDox to send and receive mail for this address. We never store your Google password."
+                    : `${providerLabel(oauthProvider)} OAuth will be available soon. Google is ready to connect now.`}
                 </p>
               </div>
               <div className="rounded-md border border-border bg-slate-50 px-3 py-3 text-sm">
@@ -346,17 +347,26 @@ export function EmailAccountConnectWizard({
                   </button>
                   <button
                     type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      void submitAccount({
-                        email,
-                        provider: oauthProvider,
-                        authMethod: "oauth",
-                      })
-                    }
+                    disabled={busy || oauthProvider !== "GOOGLE"}
+                    onClick={() => {
+                      if (oauthProvider !== "GOOGLE") {
+                        setError("Only Google OAuth is available right now. Choose Google or Other (IMAP).");
+                        return;
+                      }
+                      setBusy(true);
+                      setError(null);
+                      // Full-page redirect into Google consent (popup-free, reliable with cookies).
+                      window.location.assign(
+                        `/api/crm/email-accounts/google/start?email=${encodeURIComponent(email)}`,
+                      );
+                    }}
                     className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-95 disabled:opacity-60"
                   >
-                    {busy ? "Connecting…" : `Connect ${providerLabel(oauthProvider)}`}
+                    {busy
+                      ? "Opening Google…"
+                      : oauthProvider === "GOOGLE"
+                        ? "Continue with Google"
+                        : `${providerLabel(oauthProvider)} coming soon`}
                   </button>
                 </div>
               </div>
