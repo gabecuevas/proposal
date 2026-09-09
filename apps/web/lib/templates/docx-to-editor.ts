@@ -587,7 +587,16 @@ const mammothOptions = {
   styleMap: MAMMOTH_STYLE_MAP,
   includeDefaultStyleMap: true,
   ignoreEmptyParagraphs: false,
-  transformDocument: mammoth.transforms.paragraph(transformDocxParagraph),
+  // mammoth exposes `transforms` at runtime; the published typings omit it.
+  transformDocument: (
+    mammoth as typeof mammoth & {
+      transforms: {
+        paragraph: (
+          transform: (paragraph: Parameters<typeof transformDocxParagraph>[0]) => unknown,
+        ) => (element: unknown) => unknown;
+      };
+    }
+  ).transforms.paragraph(transformDocxParagraph),
 };
 
 export async function convertDocxBufferToEditorDoc(buffer: Buffer): Promise<EditorDoc> {
@@ -622,12 +631,12 @@ export function enhanceDocxHtmlForPrint(html: string): string {
       if (!text || text.length > 120) return full;
       if (/text-align\s*:\s*center/i.test(attrs)) return full;
       const withStyle = /style=/i.test(attrs)
-        ? attrs.replace(/style=(["'])(.*?)\1/i, (_m, q, style) => {
+        ? attrs.replace(/style=(["'])(.*?)\1/i, (_m: string, q: string, style: string) => {
             return `style=${q}${String(style).replace(/;?\s*$/, "")}; text-align: center${q}`;
           })
         : `${attrs} style="text-align: center"`;
       const withClass = /class=/i.test(withStyle)
-        ? withStyle.replace(/class=(["'])(.*?)\1/i, (_m, q, cls) => `class=${q}${cls} doc-title${q}`)
+        ? withStyle.replace(/class=(["'])(.*?)\1/i, (_m: string, q: string, cls: string) => `class=${q}${cls} doc-title${q}`)
         : `${withStyle} class="doc-title"`;
       return `<${tag}${withClass}>${inner}</${tag}>`;
     },
