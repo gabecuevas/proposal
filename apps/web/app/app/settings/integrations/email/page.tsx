@@ -88,6 +88,8 @@ export default function EmailSyncSettingsPage() {
   const [isDefault, setIsDefault] = useState(true);
   const [syncStart, setSyncStart] = useState("3days");
   const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
   const loadAccounts = useCallback(async () => {
     setLoading(true);
@@ -193,6 +195,35 @@ export default function EmailSyncSettingsPage() {
     window.location.assign(`/api/crm/email-accounts/google/start?${params.toString()}`);
   }
 
+  async function disconnectSelectedAccount() {
+    if (!selected) {
+      return;
+    }
+    setDisconnecting(true);
+    setBanner(null);
+    try {
+      const response = await fetch(`/api/crm/email-accounts/${selected.id}`, { method: "DELETE" });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error || "Could not disconnect email sync.");
+      }
+      setConfirmDisconnect(false);
+      setSelectedId(null);
+      setBanner({
+        tone: "success",
+        message: `Disconnected ${selected.email}. You can connect it again anytime.`,
+      });
+      await loadAccounts();
+    } catch (err) {
+      setBanner({
+        tone: "error",
+        message: err instanceof Error ? err.message : "Could not disconnect email sync.",
+      });
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
   return (
     <>
       <SheetPage
@@ -294,7 +325,10 @@ export default function EmailSyncSettingsPage() {
                       <li key={account.id}>
                         <button
                           type="button"
-                          onClick={() => setSelectedId(account.id)}
+                          onClick={() => {
+                            setSelectedId(account.id);
+                            setConfirmDisconnect(false);
+                          }}
                           className={cn(
                             "flex w-full items-start gap-2 rounded-md border px-2.5 py-2 text-left transition-colors",
                             active
@@ -499,11 +533,49 @@ export default function EmailSyncSettingsPage() {
                     </button>
                   </section>
 
-                  <section className="space-y-2 border-t border-border pt-5">
+                  <section className="space-y-3 border-t border-border pt-5">
                     <h2 className="text-sm font-semibold text-foreground">Advanced settings</h2>
-                    <p className="text-sm text-muted">
-                      Available after mailbox sync is fully activated for this account.
-                    </p>
+                    <div className="max-w-xl rounded-md border border-border bg-slate-50/70 px-4 py-4">
+                      <p className="text-sm font-medium text-foreground">Disconnect Email Sync</p>
+                      <p className="mt-1 text-sm text-muted">
+                        Removes this mailbox from SendDox and clears stored Google/IMAP credentials.
+                        Synced message history in Inbox may remain until cleaned up separately.
+                      </p>
+                      {!confirmDisconnect ? (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDisconnect(true)}
+                          className="mt-3 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                        >
+                          Disconnect Email Sync
+                        </button>
+                      ) : (
+                        <div className="mt-3 space-y-3 rounded-md border border-red-200 bg-red-50 px-3 py-3">
+                          <p className="text-sm text-red-950">
+                            Disconnect <span className="font-medium">{selected.email}</span>? This stops
+                            syncing with SendDox until you connect again.
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={disconnecting}
+                              onClick={() => void disconnectSelectedAccount()}
+                              className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                            >
+                              {disconnecting ? "Disconnecting…" : "Yes, disconnect"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={disconnecting}
+                              onClick={() => setConfirmDisconnect(false)}
+                              className="rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50 disabled:opacity-60"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </section>
                 </>
               )}

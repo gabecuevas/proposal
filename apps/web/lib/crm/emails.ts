@@ -288,6 +288,37 @@ export async function activateGoogleEmailAccount(
   });
 }
 
+/** Remove an email account and clear OAuth credentials from this workspace. */
+export async function disconnectEmailAccount(workspaceId: string, accountId: string) {
+  if (!prisma.crmEmailAccount) {
+    throw new Error("Email sync storage is restarting. Refresh the page and try again.");
+  }
+
+  const account = await prisma.crmEmailAccount.findFirst({
+    where: { id: accountId, workspace_id: workspaceId },
+  });
+  if (!account) {
+    throw new Error("Email account not found.");
+  }
+
+  await prisma.crmEmailAccount.delete({ where: { id: account.id } });
+
+  if (account.is_default) {
+    const nextDefault = await prisma.crmEmailAccount.findFirst({
+      where: { workspace_id: workspaceId },
+      orderBy: { created_at: "asc" },
+    });
+    if (nextDefault) {
+      await prisma.crmEmailAccount.update({
+        where: { id: nextDefault.id },
+        data: { is_default: true },
+      });
+    }
+  }
+
+  return { id: account.id, email: account.email };
+}
+
 export function providerDisplayName(provider: EmailSyncProviderId): string {
   switch (provider) {
     case "GOOGLE":
