@@ -47,6 +47,8 @@ export type DrawerSection = {
   label: string;
   fields: DrawerField[];
   emptyLabel?: string;
+  /** Optional custom body rendered after fields (e.g. company People list). */
+  content?: ReactNode;
 };
 
 export type DrawerHistoryItem = {
@@ -108,6 +110,7 @@ export type DrawerIconId =
   | "title"
   | "pin"
   | "web"
+  | "linkedin"
   | "industry"
   | "people"
   | "calendar";
@@ -163,6 +166,14 @@ function DrawerIcon({ id }: { id: DrawerIconId }) {
       <svg className={common} viewBox="0 0 24 24" fill="none" aria-hidden>
         <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.5" />
         <path d="M4 12h16M12 4c2.5 2.8 3.8 5.6 3.8 8S14.5 17.2 12 20C9.5 17.2 8.2 14.4 8.2 12S9.5 6.8 12 4z" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
+    );
+  }
+  if (id === "linkedin") {
+    return (
+      <svg className={common} viewBox="0 0 24 24" fill="none" aria-hidden>
+        <rect x="3.5" y="3.5" width="17" height="17" rx="2" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M8 10.5V16.5M8 8v.01M11.5 16.5v-3.6c0-1.3.8-2.1 1.9-2.1 1.2 0 1.9.8 1.9 2.1v3.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     );
   }
@@ -916,11 +927,14 @@ export function CrmRecordDrawer({
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-3.5 py-2">
             {sections.map((section) => {
+              const hasFields = section.fields.length > 0;
+              const hasContent = Boolean(section.content);
               const body = (
                 <div>
-                  {section.fields.map((field) => (
-                    <FieldRow key={field.id} field={field} />
-                  ))}
+                  {hasFields
+                    ? section.fields.map((field) => <FieldRow key={field.id} field={field} />)
+                    : null}
+                  {section.content}
                 </div>
               );
               if (isPerson) {
@@ -928,9 +942,9 @@ export function CrmRecordDrawer({
                   <CollapsibleSection
                     key={section.id}
                     label={section.label}
-                    empty={section.fields.length === 0}
+                    empty={!hasFields && !hasContent}
                   >
-                    {section.fields.length > 0 ? body : null}
+                    {hasFields || hasContent ? body : null}
                   </CollapsibleSection>
                 );
               }

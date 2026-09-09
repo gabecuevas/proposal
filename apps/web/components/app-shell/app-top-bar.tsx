@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { cn } from "@repo/ui/utils";
+import { SendDoxLogo } from "@/components/brand/senddox-logo";
 import {
   IconBell,
   IconContacts,
@@ -72,9 +73,10 @@ export function AppTopBar({
 
         <Link
           href="/app"
-          className="font-app-serif shrink-0 text-lg font-semibold tracking-tight text-foreground"
+          aria-label="SendDox home"
+          className="flex shrink-0 items-center rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         >
-          SendDox
+          <SendDoxLogo className="h-5 sm:h-[21.6px]" title="" />
         </Link>
       </div>
 

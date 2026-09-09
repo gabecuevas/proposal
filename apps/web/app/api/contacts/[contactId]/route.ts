@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { errorResponse } from "@/lib/api/response";
 import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
-import { updateContact } from "@/lib/contacts/store";
+import { ContactDuplicateError, deleteContact, updateContact } from "@/lib/contacts/store";
 import { firstContactDetailsError } from "@/lib/crm/contact-field-validation";
 
 type Params = { params: Promise<{ contactId: string }> };
@@ -49,9 +49,42 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       message: validationMessage,
     });
   }
-  const contact = await updateContact(contactId, auth.workspaceId, payload, { actorUserId: auth.userId });
-  if (!contact) {
-    return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+  try {
+    const contact = await updateContact(contactId, auth.workspaceId, payload, { actorUserId: auth.userId });
+    if (!contact) {
+      return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+    }
+    return NextResponse.json({ contact });
+  } catch (error) {
+    if (error instanceof ContactDuplicateError) {
+      return errorResponse(request, {
+        status: 409,
+        code: "contact_duplicate",
+        message: error.message,
+      });
+    }
+    throw error;
   }
-  return NextResponse.json({ contact });
+}
+
+export async function DELETE(request: NextRequest, { params }: Params) {
+  const auth = await getRequestAuthContext(request);
+  assertRole(auth, "MEMBER");
+  const { contactId } = await params;
+  const result = await deleteContact(contactId, auth.workspaceId);
+  if (!result.ok && result.reason === "not_found") {
+    return errorResponse(request, {
+      status: 404,
+      code: "not_found",
+      message: "Contact not found",
+    });
+  }
+  if (!result.ok && result.reason === "active_documents") {
+    return errorResponse(request, {
+      status: 409,
+      code: "contact_active_documents",
+      message: "Unable to Delete Contacts with Active Documents",
+    });
+  }
+  return NextResponse.json({ ok: true });
 }

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { SendDoxLogo } from "@/components/brand/senddox-logo";
 
 const links = [
   { href: "/", label: "Home" },
@@ -30,8 +31,12 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-white/85 backdrop-blur">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-4">
-        <Link href="/" className="text-lg font-semibold tracking-tight text-[#28206f]">
-          SendDox
+        <Link
+          href="/"
+          aria-label="SendDox home"
+          className="flex items-center rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+        >
+          <SendDoxLogo className="h-[25.2px]" title="" />
         </Link>
         <nav className="hidden flex-wrap items-center gap-4 text-sm text-muted md:flex">
           {links.map((link) => (

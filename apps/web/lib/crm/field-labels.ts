@@ -42,6 +42,7 @@ export const LEAD_FIELD_LABELS: Record<string, string> = {
 export const COMPANY_FIELD_LABELS: Record<string, string> = {
   name: "Company",
   website: "Website",
+  linkedin: "LinkedIn",
   phone: "Phone",
   email: "Email",
   industry: "Industry",

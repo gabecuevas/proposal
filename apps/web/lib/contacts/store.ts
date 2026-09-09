@@ -157,15 +157,107 @@ function toFullName(firstName: string, lastName: string): string {
   return `${firstName} ${lastName}`.trim();
 }
 
+export class ContactDuplicateError extends Error {
+  constructor(message = "Email / Contact already exists") {
+    super(message);
+    this.name = "ContactDuplicateError";
+  }
+}
+
+export class ContactActiveDocumentError extends Error {
+  constructor(message = "Unable to Delete Contacts with Active Documents") {
+    super(message);
+    this.name = "ContactActiveDocumentError";
+  }
+}
+
+/** Statuses in In Progress, Completed, Viewed, Unviewed, or Drafts. */
+export const CONTACT_ACTIVE_DOCUMENT_STATUSES = [
+  "DRAFTED",
+  "SENT",
+  "VIEWED",
+  "COMMENTED",
+  "SIGNED",
+  "PAID",
+] as const;
+
+function isPrimaryRecipientOnDocument(
+  contactId: string,
+  doc: { contact_id: string | null; recipients_json: unknown },
+): boolean {
+  if (doc.contact_id === contactId) {
+    return true;
+  }
+  if (!Array.isArray(doc.recipients_json) || doc.recipients_json.length === 0) {
+    return false;
+  }
+  const recipients = doc.recipients_json.filter(
+    (item): item is Record<string, unknown> => Boolean(item) && typeof item === "object",
+  );
+  const byOrder = recipients.find((item) => Number(item.signing_order) === 1);
+  const primary = byOrder ?? recipients[0];
+  return primary?.contact_id === contactId || primary?.id === contactId;
+}
+
+export async function contactIsPrimaryOnActiveDocument(
+  workspaceId: string,
+  contactId: string,
+): Promise<boolean> {
+  const direct = await prisma.document.findFirst({
+    where: {
+      workspace_id: workspaceId,
+      contact_id: contactId,
+      status: { in: [...CONTACT_ACTIVE_DOCUMENT_STATUSES] },
+    },
+    select: { id: true },
+  });
+  if (direct) {
+    return true;
+  }
+
+  const candidates = await prisma.document.findMany({
+    where: {
+      workspace_id: workspaceId,
+      status: { in: [...CONTACT_ACTIVE_DOCUMENT_STATUSES] },
+    },
+    select: { contact_id: true, recipients_json: true },
+    take: 1000,
+  });
+  return candidates.some((doc) => isPrimaryRecipientOnDocument(contactId, doc));
+}
+
+export async function findContactByEmail(
+  workspaceId: string,
+  email: string,
+): Promise<{ id: string; full_name: string; email: string } | null> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return prisma.contact.findFirst({
+    where: { workspace_id: workspaceId, email: normalized },
+    select: { id: true, full_name: true, email: true },
+  });
+}
+
 export async function listContacts(
   workspaceId: string,
-  options?: { limit?: number; before?: Date; query?: string; tag?: string },
+  options?: {
+    limit?: number;
+    before?: Date;
+    query?: string;
+    tag?: string;
+    companyId?: string;
+    orderByCreatedAsc?: boolean;
+  },
 ): Promise<ContactRecord[]> {
   const query = options?.query?.trim();
   const tag = options?.tag?.trim();
+  const companyId = options?.companyId?.trim();
   const rows = await prisma.contact.findMany({
     where: {
       workspace_id: workspaceId,
+      company_id: companyId || undefined,
       updated_at: options?.before ? { lt: options.before } : undefined,
       OR: query
         ? [
@@ -176,7 +268,9 @@ export async function listContacts(
         : undefined,
       tags: tag ? { array_contains: [tag] } : undefined,
     },
-    orderBy: [{ updated_at: "desc" }, { id: "desc" }],
+    orderBy: options?.orderByCreatedAsc
+      ? [{ created_at: "asc" }, { id: "asc" }]
+      : [{ updated_at: "desc" }, { id: "desc" }],
     take: options?.limit ?? 50,
     include: { owner: { select: { name: true, email: true } } },
   });
@@ -209,6 +303,10 @@ export async function createContact(input: {
   const firstName = input.first_name.trim();
   const lastName = input.last_name.trim();
   const email = input.email.trim().toLowerCase();
+  const duplicate = await findContactByEmail(input.workspaceId, email);
+  if (duplicate) {
+    throw new ContactDuplicateError();
+  }
   const row = await prisma.contact.create({
     data: {
       workspace_id: input.workspaceId,
@@ -243,6 +341,25 @@ export async function createContact(input: {
     record: { contactId: row.id },
     summary: "Person created",
   });
+
+  const linkedCompanyId = input.company_id?.trim() || null;
+  if (linkedCompanyId) {
+    try {
+      const company = await prisma.company.findFirst({
+        where: { id: linkedCompanyId, workspace_id: input.workspaceId },
+        select: { id: true, primary_contact_id: true },
+      });
+      if (company && !company.primary_contact_id) {
+        await prisma.company.update({
+          where: { id: company.id },
+          data: { primary_contact_id: row.id },
+        });
+      }
+    } catch {
+      // Person create already succeeded; primary assignment is best-effort.
+    }
+  }
+
   return parseContact(row as ContactRow);
 }
 
@@ -282,13 +399,21 @@ export async function updateContact(
 
   const nextFirstName = input.first_name?.trim() ?? existing.first_name;
   const nextLastName = input.last_name?.trim() ?? existing.last_name;
+  const nextEmail =
+    input.email !== undefined ? input.email.trim().toLowerCase() : existing.email;
+  if (nextEmail !== existing.email) {
+    const duplicate = await findContactByEmail(workspaceId, nextEmail);
+    if (duplicate && duplicate.id !== contactId) {
+      throw new ContactDuplicateError();
+    }
+  }
   const row = await prisma.contact.update({
     where: { id: contactId },
     data: {
       first_name: nextFirstName,
       last_name: nextLastName,
       full_name: toFullName(nextFirstName, nextLastName),
-      email: input.email?.trim().toLowerCase() ?? existing.email,
+      email: nextEmail,
       phone: input.phone !== undefined ? input.phone.trim() || null : existing.phone,
       company_name:
         input.company_name !== undefined ? input.company_name.trim() || null : existing.company_name,
@@ -333,6 +458,31 @@ export async function updateContact(
   }
 
   return parseContact(row as ContactRow);
+}
+
+export async function deleteContact(
+  contactId: string,
+  workspaceId: string,
+): Promise<{ ok: true } | { ok: false; reason: "not_found" | "active_documents" }> {
+  const existing = await prisma.contact.findFirst({
+    where: { id: contactId, workspace_id: workspaceId },
+    select: { id: true },
+  });
+  if (!existing) {
+    return { ok: false, reason: "not_found" };
+  }
+  if (await contactIsPrimaryOnActiveDocument(workspaceId, contactId)) {
+    return { ok: false, reason: "active_documents" };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.company.updateMany({
+      where: { workspace_id: workspaceId, primary_contact_id: contactId },
+      data: { primary_contact_id: null },
+    });
+    await tx.contact.delete({ where: { id: contactId } });
+  });
+  return { ok: true };
 }
 
 export async function countContacts(workspaceId: string): Promise<number> {

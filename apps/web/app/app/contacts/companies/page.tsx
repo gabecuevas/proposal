@@ -5,6 +5,10 @@ import { useSearchParams } from "next/navigation";
 import { CrmDataGrid, type CrmGridColumn } from "@/components/crm/data-grid";
 import { CrmRecordDrawer, type DrawerSection } from "@/components/crm/record-drawer";
 import {
+  CompanyPeopleSection,
+  type CompanyPerson,
+} from "@/components/crm/company-people-section";
+import {
   validateEmail,
   validatePhone,
   validateWebsite,
@@ -18,6 +22,7 @@ type Company = {
   id: string;
   name: string;
   website: string | null;
+  linkedin: string | null;
   phone: string | null;
   email: string | null;
   industry: string | null;
@@ -28,6 +33,7 @@ type Company = {
   country: string | null;
   notes: string | null;
   people_count: number;
+  primary_contact_id: string | null;
   added_by_name: string | null;
   created_at: string;
   updated_at: string;
@@ -36,6 +42,7 @@ type Company = {
 type Editor = {
   name: string;
   website: string;
+  linkedin: string;
   phone: string;
   email: string;
   industry: string;
@@ -58,6 +65,7 @@ function editorAddress(editor: Editor): AddressValues {
 const emptyEditor = (): Editor => ({
   name: "",
   website: "",
+  linkedin: "",
   phone: "",
   email: "",
   industry: "",
@@ -168,6 +176,7 @@ export default function CompaniesPage() {
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const [currentUserName, setCurrentUserName] = useState("");
+  const [companyPeople, setCompanyPeople] = useState<CompanyPerson[]>([]);
 
   const load = useCallback(async () => {
     const params = new URLSearchParams({ limit: "200" });
@@ -181,9 +190,26 @@ export default function CompaniesPage() {
     setCompanies(payload.companies);
   }, [query]);
 
+  const loadCompanyPeople = useCallback(async (companyId: string) => {
+    const params = new URLSearchParams({ limit: "100", companyId });
+    const payload = await fetchJson<{ contacts: CompanyPerson[] }>(`/api/contacts?${params.toString()}`);
+    if (!payload) {
+      return;
+    }
+    setCompanyPeople(payload.contacts);
+  }, []);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!selectedId || !drawerOpen) {
+      setCompanyPeople([]);
+      return;
+    }
+    void loadCompanyPeople(selectedId);
+  }, [selectedId, drawerOpen, loadCompanyPeople]);
 
   useEffect(() => {
     let cancelled = false;
@@ -225,6 +251,7 @@ export default function CompaniesPage() {
     setEditor({
       name: company.name,
       website: company.website ?? "",
+      linkedin: company.linkedin ?? "",
       phone: company.phone ?? "",
       email: company.email ?? "",
       industry: company.industry ?? "",
@@ -265,24 +292,34 @@ export default function CompaniesPage() {
     setError("");
     setStatus("");
     if (selectedId) {
-      const response = await fetch(`/api/companies/${selectedId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
+      try {
+        const response = await fetch(`/api/companies/${selectedId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as {
+            error?: { message?: string };
+            message?: string;
+          } | null;
+          setError(payload?.error?.message || payload?.message || "Failed to save company");
+          return false;
+        }
+        setStatus("Saved.");
+        await load();
+        return true;
+      } catch {
         setError("Failed to save company");
-        return;
+        return false;
       }
-      setStatus("Saved.");
-      await load();
-      return;
     }
 
     const merged = {
       ...editor,
       ...(typeof body.name === "string" ? { name: body.name } : {}),
       ...(typeof body.website === "string" ? { website: normalizeWebsite(body.website) } : {}),
+      ...(typeof body.linkedin === "string" ? { linkedin: normalizeWebsite(body.linkedin) } : {}),
       ...(typeof body.phone === "string" ? { phone: body.phone } : {}),
       ...(typeof body.email === "string" ? { email: body.email } : {}),
       ...(typeof body.industry === "string" ? { industry: body.industry } : {}),
@@ -294,33 +331,44 @@ export default function CompaniesPage() {
     };
 
     if (!merged.name.trim()) {
-      return;
+      return false;
     }
 
-    const response = await fetch("/api/companies", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: merged.name,
-        website: merged.website || undefined,
-        phone: merged.phone || undefined,
-        email: merged.email || undefined,
-        industry: merged.industry || undefined,
-        address_line_1: merged.address_line_1 || undefined,
-        city: merged.city || undefined,
-        state: merged.state || undefined,
-        postal_code: merged.postal_code || undefined,
-        notes: merged.notes || undefined,
-      }),
-    });
-    if (!response.ok) {
+    try {
+      const response = await fetch("/api/companies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: merged.name,
+          website: merged.website || undefined,
+          linkedin: merged.linkedin || undefined,
+          phone: merged.phone || undefined,
+          email: merged.email || undefined,
+          industry: merged.industry || undefined,
+          address_line_1: merged.address_line_1 || undefined,
+          city: merged.city || undefined,
+          state: merged.state || undefined,
+          postal_code: merged.postal_code || undefined,
+          notes: merged.notes || undefined,
+        }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+          message?: string;
+        } | null;
+        setError(payload?.error?.message || payload?.message || "Failed to save company");
+        return false;
+      }
+      const payload = (await response.json()) as { company: Company };
+      setSelectedId(payload.company.id);
+      setStatus("Saved.");
+      await load();
+      return true;
+    } catch {
       setError("Failed to save company");
-      return;
+      return false;
     }
-    const payload = (await response.json()) as { company: Company };
-    setSelectedId(payload.company.id);
-    setStatus("Saved.");
-    await load();
     },
     [selectedId, editor, load],
   );
@@ -329,6 +377,7 @@ export default function CompaniesPage() {
     return {
       name: current.name,
       website: current.website ? normalizeWebsite(current.website) : undefined,
+      linkedin: current.linkedin ? normalizeWebsite(current.linkedin) : undefined,
       phone: current.phone || undefined,
       email: current.email || undefined,
       industry: current.industry || undefined,
@@ -412,6 +461,165 @@ export default function CompaniesPage() {
     [saveCompany],
   );
 
+  const commitLinkedIn = useCallback(
+    async (value: string) => {
+      const linkedin = normalizeWebsite(value);
+      const previous = editor.linkedin;
+      setEditor((current) => ({ ...current, linkedin }));
+      const ok = await saveCompany({ linkedin: linkedin || null });
+      if (!ok) {
+        setEditor((current) => ({ ...current, linkedin: previous }));
+      }
+    },
+    [editor.linkedin, saveCompany],
+  );
+
+  const setPrimaryContact = useCallback(
+    async (contactId: string) => {
+      if (!selectedId) {
+        return;
+      }
+      const response = await fetch(`/api/companies/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ primary_contact_id: contactId }),
+      });
+      if (!response.ok) {
+        setError("Failed to update primary contact");
+        return;
+      }
+      await load();
+    },
+    [selectedId, load],
+  );
+
+  const addCompanyPerson = useCallback(
+    async (draft: {
+      first_name: string;
+      last_name: string;
+      email: string;
+      phone: string;
+      title: string;
+    }) => {
+      if (!selectedId) {
+        return "Save the company before adding people";
+      }
+      setError("");
+      try {
+        const response = await fetch("/api/contacts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            first_name: draft.first_name,
+            last_name: draft.last_name,
+            email: draft.email,
+            phone: draft.phone || undefined,
+            title: draft.title || undefined,
+            company_id: selectedId,
+            company_name: editor.name.trim() || undefined,
+          }),
+        });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as {
+            error?: { message?: string };
+            message?: string;
+          } | null;
+          const message =
+            payload?.error?.message || payload?.message || "Failed to add person";
+          setError(message);
+          return message;
+        }
+        setStatus("Person added.");
+        await Promise.all([load(), loadCompanyPeople(selectedId)]);
+        return null;
+      } catch {
+        const message = "Failed to add person";
+        setError(message);
+        return message;
+      }
+    },
+    [selectedId, editor.name, load, loadCompanyPeople],
+  );
+
+  const updateCompanyPerson = useCallback(
+    async (
+      contactId: string,
+      draft: {
+        first_name: string;
+        last_name: string;
+        email: string;
+        phone: string;
+        title: string;
+      },
+    ) => {
+      setError("");
+      try {
+        const response = await fetch(`/api/contacts/${contactId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            first_name: draft.first_name,
+            last_name: draft.last_name,
+            email: draft.email,
+            phone: draft.phone || null,
+            title: draft.title || null,
+            company_id: selectedId || undefined,
+            company_name: editor.name.trim() || undefined,
+          }),
+        });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as {
+            error?: { message?: string };
+            message?: string;
+          } | null;
+          const message =
+            payload?.error?.message || payload?.message || "Failed to update person";
+          setError(message);
+          return message;
+        }
+        setStatus("Person updated.");
+        if (selectedId) {
+          await loadCompanyPeople(selectedId);
+        }
+        return null;
+      } catch {
+        const message = "Failed to update person";
+        setError(message);
+        return message;
+      }
+    },
+    [selectedId, editor.name, loadCompanyPeople],
+  );
+
+  const deleteCompanyPerson = useCallback(
+    async (contactId: string) => {
+      setError("");
+      try {
+        const response = await fetch(`/api/contacts/${contactId}`, { method: "DELETE" });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as {
+            error?: { message?: string };
+            message?: string;
+          } | null;
+          const message =
+            payload?.error?.message ||
+            payload?.message ||
+            "Unable to Delete Contacts with Active Documents";
+          setError(message);
+          return message;
+        }
+        setStatus("Person deleted.");
+        await Promise.all([load(), selectedId ? loadCompanyPeople(selectedId) : Promise.resolve()]);
+        return null;
+      } catch {
+        const message = "Failed to delete person";
+        setError(message);
+        return message;
+      }
+    },
+    [selectedId, load, loadCompanyPeople],
+  );
+
   const sections: DrawerSection[] = useMemo(
     () => [
       {
@@ -490,6 +698,17 @@ export default function CompaniesPage() {
             onCommit: (value) => void commitWebsite(value),
           },
           {
+            id: "org_linkedin",
+            icon: "linkedin",
+            label: "LinkedIn",
+            type: "website",
+            value: editor.linkedin,
+            placeholder: "linkedin.com/company/…",
+            onChange: (value) => setEditor((current) => ({ ...current, linkedin: value })),
+            validate: (value) => validateWebsite(value),
+            onCommit: (value) => void commitLinkedIn(value),
+          },
+          {
             id: "org_industry",
             icon: "industry",
             label: "Industry",
@@ -500,6 +719,23 @@ export default function CompaniesPage() {
             onCommit: (value) => void saveCompany({ industry: value }),
           },
         ],
+      },
+      {
+        id: "people",
+        label: "People",
+        fields: [],
+        content: (
+          <CompanyPeopleSection
+            people={companyPeople}
+            primaryContactId={selected?.primary_contact_id ?? null}
+            disabled={!selectedId}
+            disabledReason="Save the company first to add people."
+            onSetPrimary={(contactId) => void setPrimaryContact(contactId)}
+            onAddPerson={addCompanyPerson}
+            onUpdatePerson={updateCompanyPerson}
+            onDeletePerson={deleteCompanyPerson}
+          />
+        ),
       },
       {
         id: "details",
@@ -530,7 +766,7 @@ export default function CompaniesPage() {
             icon: "people",
             label: "People",
             showLabel: true,
-            value: selected ? String(selected.people_count) : "",
+            value: selected ? String(selected.people_count) : String(companyPeople.length || ""),
             placeholder: "People",
             readOnly: true,
             onChange: () => undefined,
@@ -538,7 +774,21 @@ export default function CompaniesPage() {
         ],
       },
     ],
-    [commitAddress, commitWebsite, currentUserName, editor, selected, selectedId, saveCompany],
+    [
+      addCompanyPerson,
+      commitAddress,
+      commitLinkedIn,
+      commitWebsite,
+      companyPeople,
+      currentUserName,
+      deleteCompanyPerson,
+      editor,
+      saveCompany,
+      selected,
+      selectedId,
+      setPrimaryContact,
+      updateCompanyPerson,
+    ],
   );
 
   return (

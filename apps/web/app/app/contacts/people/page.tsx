@@ -806,6 +806,32 @@ export default function PeoplePage() {
           label: selectedId ? "Save" : "Save person",
           saving,
           onSave: () => void savePersonRecord(),
+          menuActions: selectedId
+            ? [
+                {
+                  id: "delete",
+                  label: "Delete",
+                  onSelect: () => {
+                    void (async () => {
+                      setError("");
+                      const response = await fetch(`/api/contacts/${selectedId}`, { method: "DELETE" });
+                      if (!response.ok) {
+                        const payload = (await response.json().catch(() => null)) as {
+                          error?: { message?: string };
+                        } | null;
+                        setError(
+                          payload?.error?.message || "Unable to Delete Contacts with Active Documents",
+                        );
+                        return;
+                      }
+                      setDrawerOpen(false);
+                      setSelectedId("");
+                      await load();
+                    })();
+                  },
+                },
+              ]
+            : undefined,
         }}
       />
     </div>

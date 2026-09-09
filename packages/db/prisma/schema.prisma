@@ -366,6 +366,7 @@ model Company {
   owner_user_id  String?
   name           String
   website        String?
+  linkedin       String?
   phone          String?
   email          String?
   address_line_1 String?
@@ -377,6 +378,7 @@ model Company {
   industry       String?
   notes          String?
   tags           Json
+  primary_contact_id String?
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
@@ -389,6 +391,7 @@ model Company {
 
   @@index([workspace_id, updated_at])
   @@index([workspace_id, name])
+  @@index([workspace_id, primary_contact_id])
 }
 
 model Lead {

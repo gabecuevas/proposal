@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
 type CreateCompanyBody = {
   name?: string;
   website?: string;
+  linkedin?: string;
   phone?: string;
   email?: string;
   address_line_1?: string;
@@ -52,6 +53,7 @@ export async function POST(request: NextRequest) {
   const company = await createCompany(auth.workspaceId, auth.userId, {
     name: body.name,
     website: body.website,
+    linkedin: body.linkedin,
     phone: body.phone,
     email: body.email,
     address_line_1: body.address_line_1,

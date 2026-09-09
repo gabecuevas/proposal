@@ -9,6 +9,7 @@ export type CompanyRecord = {
   owner_user_id: string | null;
   name: string;
   website: string | null;
+  linkedin: string | null;
   phone: string | null;
   email: string | null;
   address_line_1: string | null;
@@ -21,6 +22,7 @@ export type CompanyRecord = {
   notes: string | null;
   tags: string[];
   people_count: number;
+  primary_contact_id: string | null;
   added_by_name: string | null;
   created_at: string;
   updated_at: string;
@@ -29,6 +31,7 @@ export type CompanyRecord = {
 type CompanyInput = {
   name: string;
   website?: string;
+  linkedin?: string;
   phone?: string;
   email?: string;
   address_line_1?: string;
@@ -40,6 +43,7 @@ type CompanyInput = {
   industry?: string;
   notes?: string;
   tags?: string[];
+  primary_contact_id?: string | null;
 };
 
 function asTags(value: unknown): string[] {
@@ -53,6 +57,7 @@ function parseCompany(
     owner_user_id: string | null;
     name: string;
     website: string | null;
+    linkedin?: string | null;
     phone: string | null;
     email: string | null;
     address_line_1: string | null;
@@ -64,6 +69,7 @@ function parseCompany(
     industry: string | null;
     notes: string | null;
     tags: unknown;
+    primary_contact_id?: string | null;
     created_at: Date;
     updated_at: Date;
     _count?: { people: number };
@@ -76,6 +82,7 @@ function parseCompany(
     owner_user_id: row.owner_user_id,
     name: row.name,
     website: row.website,
+    linkedin: row.linkedin ?? null,
     phone: row.phone,
     email: row.email,
     address_line_1: row.address_line_1,
@@ -88,6 +95,7 @@ function parseCompany(
     notes: row.notes,
     tags: asTags(row.tags),
     people_count: row._count?.people ?? 0,
+    primary_contact_id: row.primary_contact_id ?? null,
     added_by_name: userDisplayName(row.owner),
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
@@ -102,6 +110,7 @@ function optionalText(value: string | undefined): string | null {
 function companySnapshot(row: {
   name: string;
   website: string | null;
+  linkedin: string | null;
   phone: string | null;
   email: string | null;
   address_line_1: string | null;
@@ -116,6 +125,7 @@ function companySnapshot(row: {
   return {
     name: row.name,
     website: row.website,
+    linkedin: row.linkedin ?? null,
     phone: row.phone,
     email: row.email,
     address_line_1: row.address_line_1,
@@ -169,6 +179,7 @@ export async function createCompany(
       owner_user_id: ownerUserId,
       name: input.name.trim(),
       website: optionalText(input.website),
+      linkedin: optionalText(input.linkedin),
       phone: optionalText(input.phone),
       email: optionalText(input.email)?.toLowerCase() ?? null,
       address_line_1: optionalText(input.address_line_1),
@@ -209,6 +220,8 @@ export async function updateCompany(
     data: {
       name: input.name?.trim() ?? existing.name,
       website: input.website !== undefined ? optionalText(input.website) : existing.website,
+      linkedin:
+        input.linkedin !== undefined ? optionalText(input.linkedin) : (existing.linkedin ?? null),
       phone: input.phone !== undefined ? optionalText(input.phone) : existing.phone,
       email: input.email !== undefined ? optionalText(input.email)?.toLowerCase() ?? null : existing.email,
       address_line_1:
@@ -222,6 +235,8 @@ export async function updateCompany(
       industry: input.industry !== undefined ? optionalText(input.industry) : existing.industry,
       notes: input.notes !== undefined ? optionalText(input.notes) : existing.notes,
       tags: input.tags ?? (Array.isArray(existing.tags) ? existing.tags : []),
+      primary_contact_id:
+        input.primary_contact_id !== undefined ? input.primary_contact_id : existing.primary_contact_id,
     },
     include: companyInclude,
   });

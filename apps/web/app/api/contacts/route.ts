@@ -3,7 +3,7 @@ import { getNextCursorFromTimestampPage, parseCursorPagination } from "@/lib/api
 import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
 import { assertRole } from "@/lib/auth/request-context";
 import { requireRequestAuth } from "@/lib/auth/require-request-auth";
-import { createContact, listContacts } from "@/lib/contacts/store";
+import { createContact, listContacts, ContactDuplicateError } from "@/lib/contacts/store";
 import { firstContactDetailsError } from "@/lib/crm/contact-field-validation";
 
 export async function GET(request: NextRequest) {
@@ -15,13 +15,20 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const q = url.searchParams.get("q") ?? undefined;
   const tag = url.searchParams.get("tag") ?? undefined;
+  const companyId = url.searchParams.get("companyId") ?? undefined;
   const contacts = await listContacts(auth.workspaceId, {
     limit: pagination.limit + 1,
     before: pagination.before,
     query: q,
     tag,
+    companyId,
+    orderByCreatedAsc: Boolean(companyId),
   });
-  const page = getNextCursorFromTimestampPage(contacts, pagination.limit, (item) => item.updated_at);
+  const page = getNextCursorFromTimestampPage(
+    contacts,
+    pagination.limit,
+    (item) => (companyId ? item.created_at : item.updated_at),
+  );
   return jsonWithRequestId(request, { contacts: page.items, nextCursor: page.nextCursor });
 }
 
@@ -95,11 +102,18 @@ export async function POST(request: NextRequest) {
       source: body.source,
     });
     return jsonWithRequestId(request, { contact }, { status: 201 });
-  } catch {
+  } catch (error) {
+    if (error instanceof ContactDuplicateError) {
+      return errorResponse(request, {
+        status: 409,
+        code: "contact_duplicate",
+        message: error.message,
+      });
+    }
     return errorResponse(request, {
       status: 500,
       code: "contact_create_failed",
-      message: "Failed to create contact",
+      message: error instanceof Error ? error.message : "Failed to create contact",
     });
   }
 }
