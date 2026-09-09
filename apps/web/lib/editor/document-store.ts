@@ -22,6 +22,7 @@ import { extractSigningFields } from "./signer-field-attrs";
 import { normalizeEditorDoc } from "./stable";
 import { resolveTemplateVariables } from "./variables";
 import { getContentBlocksByIds } from "./content-block-store";
+import { recordDocumentSentInCrm } from "@/lib/crm/document-sent-crm";
 import { applyTitleToDoc } from "@/lib/ui/document-title";
 import {
   collectContentBlockIds,
@@ -45,7 +46,14 @@ export type DocumentRecord = {
   editor_json: EditorDoc;
   variables_json: VariableContext;
   pricing_json: PricingModel;
-  recipients_json: Array<{ id: string; email: string; name: string; role: "signer" | "approver" | "viewer" }>;
+  recipients_json: Array<{
+    id: string;
+    email: string;
+    name: string;
+    role: "signer" | "approver" | "viewer";
+    company_name?: string | null;
+    contact_id?: string | null;
+  }>;
   doc_hash: string | null;
   finalized_pdf_key: string | null;
   status: string;
@@ -68,7 +76,22 @@ type DocumentStatus =
   | "SIGNED"
   | "PAID"
   | "EXPIRED"
-  | "VOID";
+  | "VOID"
+  | "TRASHED";
+
+const MANUAL_STATUS_TARGETS = [
+  "DRAFTED",
+  "SIGNED",
+  "VOID",
+  "EXPIRED",
+  "TRASHED",
+] as const satisfies readonly DocumentStatus[];
+
+export type ManualDocumentStatus = (typeof MANUAL_STATUS_TARGETS)[number];
+
+export function isManualDocumentStatus(value: string): value is ManualDocumentStatus {
+  return (MANUAL_STATUS_TARGETS as readonly string[]).includes(value);
+}
 
 export type DocumentActivityRecord = {
   id: string;
@@ -172,6 +195,8 @@ function parseDocument(row: {
         email: string;
         name: string;
         role: "signer" | "approver" | "viewer";
+        company_name?: string | null;
+        contact_id?: string | null;
       }>) ?? [],
     doc_hash: row.doc_hash,
     finalized_pdf_key: row.finalized_pdf_key,
@@ -243,6 +268,7 @@ export type CreateDocumentFromTemplateRecipient = {
   name: string;
   email: string;
   contactId?: string | null;
+  companyName?: string | null;
 };
 
 export async function createDocumentFromTemplate(
@@ -275,10 +301,21 @@ export async function createDocumentFromTemplate(
       name: item.name?.trim() || "",
       email: item.email?.trim() || "",
       contactId: item.contactId?.trim() || null,
+      companyName: item.companyName?.trim() || null,
     }))
     .filter((item) => item.name && item.email);
   const hasProvidedRecipient = providedList.length > 0;
   const primary = providedList[0];
+
+  const contactIds = [...new Set(providedList.map((item) => item.contactId).filter(Boolean))] as string[];
+  const crmContacts =
+    contactIds.length > 0
+      ? await prisma.contact.findMany({
+          where: { workspace_id: workspaceId, id: { in: contactIds } },
+          include: { company: { select: { name: true } } },
+        })
+      : [];
+  const crmById = new Map(crmContacts.map((contact) => [contact.id, contact]));
 
   const recipientMap: Record<string, string> = {};
   let recipients: Array<{
@@ -288,6 +325,8 @@ export async function createDocumentFromTemplate(
     name: string;
     role: "signer";
     signing_order: number;
+    company_name: string | null;
+    contact_id: string | null;
   }>;
 
   if (hasProvidedRecipient && primary) {
@@ -306,14 +345,19 @@ export async function createDocumentFromTemplate(
         recipientMap[key] = primaryId;
       }
     }
-    recipients = providedList.map((item, index) => ({
-      id: index === 0 ? primaryId : randomUUID(),
-      key: index === 0 ? (keysToMap[0] ?? "recipient-primary") : `recipient-${index + 1}`,
-      email: item.email,
-      name: item.name,
-      role: "signer" as const,
-      signing_order: index + 1,
-    }));
+    recipients = providedList.map((item, index) => {
+      const crm = item.contactId ? crmById.get(item.contactId) : null;
+      return {
+        id: index === 0 ? primaryId : randomUUID(),
+        key: index === 0 ? (keysToMap[0] ?? "recipient-primary") : `recipient-${index + 1}`,
+        email: crm?.email || item.email,
+        name: crm?.full_name || item.name,
+        role: "signer" as const,
+        signing_order: index + 1,
+        company_name: crm?.company?.name ?? crm?.company_name ?? item.companyName ?? null,
+        contact_id: item.contactId,
+      };
+    });
   } else {
     for (const key of recipientKeys) {
       recipientMap[key] = key === "sender-self" ? "sender-self" : `${key}-${randomUUID()}`;
@@ -329,6 +373,8 @@ export async function createDocumentFromTemplate(
           .replaceAll(/\b\w/g, (letter) => letter.toUpperCase()),
         role: "signer" as const,
         signing_order: index + 1,
+        company_name: null,
+        contact_id: null,
       }));
     if (recipients.length === 0) {
       const id = randomUUID();
@@ -341,6 +387,8 @@ export async function createDocumentFromTemplate(
           name: "Primary Signer",
           role: "signer",
           signing_order: 1,
+          company_name: null,
+          contact_id: null,
         },
       ];
     }
@@ -354,12 +402,15 @@ export async function createDocumentFromTemplate(
   const contactId = primary?.contactId || null;
 
   if (contactId) {
-    const contact = await prisma.contact.findFirst({
-      where: { id: contactId, workspace_id: workspaceId },
-      select: { id: true },
-    });
+    const contact = crmById.get(contactId) ?? null;
     if (!contact) {
-      throw new Error("Contact not found");
+      const existing = await prisma.contact.findFirst({
+        where: { id: contactId, workspace_id: workspaceId },
+        select: { id: true },
+      });
+      if (!existing) {
+        throw new Error("Contact not found");
+      }
     }
   }
 
@@ -426,7 +477,50 @@ export async function listDocuments(
     take: options?.limit ?? 50,
   });
 
-  return rows.map(parseDocument);
+  const documents = rows.map(parseDocument);
+  const lookupIds = new Set<string>();
+  for (const document of documents) {
+    if (document.contact_id) {
+      lookupIds.add(document.contact_id);
+    }
+    for (const recipient of document.recipients_json) {
+      if (recipient.contact_id) {
+        lookupIds.add(recipient.contact_id);
+      } else if (recipient.id) {
+        lookupIds.add(recipient.id);
+      }
+    }
+  }
+
+  if (lookupIds.size === 0) {
+    return documents;
+  }
+
+  const contacts = await prisma.contact.findMany({
+    where: { workspace_id: workspaceId, id: { in: [...lookupIds] } },
+    include: { company: { select: { name: true } } },
+  });
+  const byId = new Map(contacts.map((contact) => [contact.id, contact]));
+
+  return documents.map((document) => {
+    const recipients = document.recipients_json.map((recipient, index) => {
+      const crm =
+        (recipient.contact_id ? byId.get(recipient.contact_id) : undefined) ??
+        byId.get(recipient.id) ??
+        (index === 0 && document.contact_id ? byId.get(document.contact_id) : undefined);
+      if (!crm) {
+        return recipient;
+      }
+      return {
+        ...recipient,
+        name: crm.full_name || recipient.name,
+        email: crm.email || recipient.email,
+        company_name: crm.company?.name ?? crm.company_name ?? recipient.company_name ?? null,
+        contact_id: recipient.contact_id ?? crm.id,
+      };
+    });
+    return { ...document, recipients_json: recipients };
+  });
 }
 
 export async function createBlankDocument(input: {
@@ -695,7 +789,14 @@ export async function updateDocumentDraft(
     editor_json?: EditorDoc;
     variables_json?: VariableContext;
     pricing_json?: PricingModel;
-    recipients_json?: Array<{ id: string; email: string; name: string; role: "signer" | "approver" | "viewer" }>;
+    recipients_json?: Array<{
+      id: string;
+      email: string;
+      name: string;
+      role: "signer" | "approver" | "viewer";
+      company_name?: string | null;
+      contact_id?: string | null;
+    }>;
     contact_id?: string | null;
     /** When set, reject the write if another save landed first. */
     expectedUpdatedAt?: string;
@@ -747,6 +848,35 @@ export async function updateDocumentDraft(
     where: { id: documentId, workspace_id: workspaceId },
   });
   return row ? parseDocument(row) : null;
+}
+
+export async function updateDocumentStatus(
+  documentId: string,
+  workspaceId: string,
+  status: ManualDocumentStatus,
+): Promise<DocumentRecord | null> {
+  const existing = await getDocument(documentId, workspaceId);
+  if (!existing) {
+    return null;
+  }
+  const updated = await prisma.document.updateMany({
+    where: { id: documentId, workspace_id: workspaceId },
+    data: { status },
+  });
+  if (updated.count === 0) {
+    return null;
+  }
+  return getDocument(documentId, workspaceId);
+}
+
+export async function deleteDocument(
+  documentId: string,
+  workspaceId: string,
+): Promise<boolean> {
+  const result = await prisma.document.deleteMany({
+    where: { id: documentId, workspace_id: workspaceId },
+  });
+  return result.count > 0;
 }
 
 export async function sendDocument(
@@ -845,6 +975,20 @@ export async function sendDocument(
       },
     });
   });
+
+  try {
+    await recordDocumentSentInCrm({
+      workspaceId,
+      actorUserId,
+      documentId,
+      editorJson: existing.editor_json,
+      contactId: existing.contact_id,
+      recipients: existing.recipients_json,
+      sentAt,
+    });
+  } catch {
+    // Document send already succeeded; CRM note failures should not roll it back.
+  }
 
   return getDocument(documentId, workspaceId);
 }

@@ -8,7 +8,7 @@ import { FieldOverlay } from "../extensions/field-overlay";
 import { FlowGaps } from "../extensions/flow-gaps";
 import { SignerField } from "../extensions/signer-field";
 import { TextBox } from "../extensions/text-box";
-import { insertSignerFieldBlock, topLeftPct } from "../insert-signer-field";
+import { insertSignerFieldAtPoint, insertSignerFieldBlock, topLeftPct } from "../insert-signer-field";
 
 function createEditor(content: object) {
   return new Editor({
@@ -115,5 +115,64 @@ describe("insertSignerFieldBlock over Text Blocks", () => {
     expect(json.content?.filter((n) => n.type === "textBox")).toHaveLength(1);
     expect(json.content?.find((n) => n.type === "textBox")?.content).toHaveLength(1);
     expect(json.content?.find((n) => n.type === "fieldOverlay")?.content).toHaveLength(3);
+  });
+});
+
+describe("insertSignerFieldAtPoint ignores page-thumb clones", () => {
+  let editor: Editor;
+
+  afterEach(() => {
+    editor?.destroy();
+    document.body.innerHTML = "";
+  });
+
+  it("places against the live paper even when a thumb overlay appears first in the DOM", () => {
+    const thumb = document.createElement("div");
+    thumb.className = "creator-page-thumb";
+    thumb.setAttribute("data-creator-thumb", "true");
+    thumb.setAttribute("data-field-overlay", "");
+    Object.defineProperty(thumb, "getBoundingClientRect", {
+      value: () => ({ left: 0, top: 0, width: 80, height: 100, right: 80, bottom: 100, x: 0, y: 0, toJSON: () => ({}) }),
+    });
+    document.body.appendChild(thumb);
+
+    const paper = document.createElement("div");
+    paper.setAttribute("data-creator-paper", "");
+    paper.style.setProperty("--creator-page-height", "1056px");
+    paper.style.setProperty("--creator-page-gap", "0px");
+    Object.defineProperty(paper, "getBoundingClientRect", {
+      value: () => ({
+        left: 200,
+        top: 100,
+        width: 816,
+        height: 2112,
+        right: 1016,
+        bottom: 2212,
+        x: 200,
+        y: 100,
+        toJSON: () => ({}),
+      }),
+    });
+    document.body.appendChild(paper);
+
+    editor = createEditor({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Hello" }] }],
+    });
+    paper.appendChild(editor.view.dom);
+
+    const ok = insertSignerFieldAtPoint(editor, {
+      recipientId: "r1",
+      type: "text",
+      clientX: 200 + 816 * 0.4,
+      clientY: 100 + 1056 + 200,
+    });
+    expect(ok).toBe(true);
+
+    const field = editor.getJSON().content?.find((n) => n.type === "fieldOverlay")?.content?.[0];
+    expect(field?.attrs?.type).toBe("text");
+    expect(field?.attrs?.page).toBe(1);
+    expect(Number(field?.attrs?.yPct)).toBeGreaterThan(0.1);
+    expect(Number(field?.attrs?.yPct)).toBeLessThan(0.35);
   });
 });

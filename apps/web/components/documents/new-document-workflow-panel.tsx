@@ -1,9 +1,10 @@
 "use client";
 
 import { useEditor } from "@tiptap/react";
+import type { Editor } from "@tiptap/core";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CreatorCanvas } from "@/components/editor/creator/creator-canvas";
 import { CreatorFieldsSidebar } from "@/components/editor/creator/creator-fields-sidebar";
 import { SignerRecipientProvider, withSenderRecipient } from "@/components/editor/signer-field-context";
@@ -14,6 +15,7 @@ import { insertSignerFieldAtPoint, insertSignerFieldBlock } from "@/lib/editor/i
 import { migrateSignerFieldsDoc } from "@/lib/editor/migrate-signer-fields";
 import { pageSizeFromDoc, type PageSizeId } from "@/lib/editor/page-geometry";
 import { AUTOSAVE_DELAY_MS } from "@/lib/editor/autosave";
+import { SaveQueue } from "@/lib/editor/save-queue";
 import {
   extractSigningFields,
   summarizeSigningFields,
@@ -22,6 +24,7 @@ import {
 import type { EditorDoc } from "@/lib/editor/types";
 import { resolveCompanyAssociation } from "@/lib/crm/resolve-company-association";
 import { assetUrl } from "@/lib/storage/asset-url";
+import { applyDocumentMetaToDoc, applyTitleToDoc, documentDueDateFromEditorJson } from "@/lib/ui/document-title";
 import { pageCountFromEditor, templateThumbnailKey } from "@/lib/ui/template-meta";
 
 type StepId = 1 | 2 | 3 | 4;
@@ -46,6 +49,7 @@ type SelectedRecipient = {
   id: string;
   name: string;
   email: string;
+  companyName?: string | null;
   contactId?: string | null;
 };
 
@@ -53,7 +57,13 @@ type DocumentPayload = {
   id: string;
   status: string;
   editor_json: EditorDoc;
-  recipients_json: Array<{ id: string; name: string; email: string; role: string }>;
+  recipients_json: Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    company_name?: string | null;
+  }>;
 };
 
 const STEPS: { id: StepId; label: string }[] = [
@@ -75,6 +85,7 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
   const [templateQuery, setTemplateQuery] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | "blank" | null>(null);
   const [title, setTitle] = useState("");
+  const [dueDate, setDueDate] = useState("");
   const [recipients, setRecipients] = useState<SelectedRecipient[]>([]);
   const [contactQuery, setContactQuery] = useState("");
   const [contacts, setContacts] = useState<ContactItem[]>([]);
@@ -104,6 +115,7 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
     setStep(1);
     setSelectedTemplateId(null);
     setTitle("");
+    setDueDate("");
     setRecipients([]);
     setDocumentId(null);
     setDocument(null);
@@ -217,7 +229,12 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
     });
   }, [document]);
 
-  function addRecipient(contact: { id?: string; name: string; email: string }) {
+  function addRecipient(contact: {
+    id?: string;
+    name: string;
+    email: string;
+    companyName?: string | null;
+  }) {
     setRecipients((current) => {
       if (current.some((item) => item.email.toLowerCase() === contact.email.toLowerCase())) {
         return current;
@@ -228,6 +245,7 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
           id: contact.id ?? `temp-${crypto.randomUUID()}`,
           name: contact.name,
           email: contact.email,
+          companyName: contact.companyName ?? null,
           contactId: contact.id ?? null,
         },
       ];
@@ -270,10 +288,15 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
       const data = (await response.json()) as { contact?: ContactItem };
       const contact = data.contact;
       if (contact) {
-        addRecipient({ id: contact.id, name: contact.full_name, email: contact.email });
+        addRecipient({
+          id: contact.id,
+          name: contact.full_name,
+          email: contact.email,
+          companyName: contact.company_name ?? company.company_name,
+        });
         setRecentContacts((current) => [contact, ...current.filter((c) => c.id !== contact.id)].slice(0, 20));
       } else {
-        addRecipient({ name, email: newEmail.trim() });
+        addRecipient({ name, email: newEmail.trim(), companyName: company.company_name });
       }
       setShowNewContact(false);
       setNewFirst("");
@@ -285,6 +308,71 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
       setError(err instanceof Error ? err.message : "Could not create contact");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function persistDraftDetails(options?: {
+    editorJson?: EditorDoc;
+    nextTitle?: string;
+    nextDueDate?: string;
+    nextRecipients?: SelectedRecipient[];
+  }) {
+    if (!documentId) {
+      return false;
+    }
+    const nextTitle = options?.nextTitle ?? title;
+    const nextDueDate = options?.nextDueDate ?? dueDate;
+    const nextRecipients = options?.nextRecipients ?? recipients;
+    const editorJson = options?.editorJson ?? document?.editor_json;
+    if (!editorJson) {
+      return false;
+    }
+    const recipientsJson = nextRecipients.map((item, index) => ({
+      id: item.contactId || item.id || crypto.randomUUID(),
+      name: item.name,
+      email: item.email,
+      company_name: item.companyName ?? null,
+      contact_id: item.contactId ?? null,
+      role: "signer" as const,
+      signing_order: index + 1,
+    }));
+    const response = await fetch(`/api/documents/${documentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        editor_json: applyDocumentMetaToDoc(editorJson, {
+          title: nextTitle.trim(),
+          dueDate: nextDueDate.trim() || null,
+        }),
+        recipients_json: recipientsJson,
+        contact_id: nextRecipients[0]?.contactId ?? null,
+      }),
+    });
+    if (!response.ok) {
+      return false;
+    }
+    const data = (await response.json()) as { document?: DocumentPayload };
+    if (data.document) {
+      setDocument(data.document);
+    }
+    setSaveStatus("Draft saved");
+    return true;
+  }
+
+  async function resolveSenderMeta(): Promise<{ senderName: string; senderUserId: string | null }> {
+    try {
+      const response = await fetch("/api/auth/session");
+      if (!response.ok) {
+        return { senderName: "", senderUserId: null };
+      }
+      const data = (await response.json()) as {
+        user?: { name?: string; email?: string; userId?: string; id?: string };
+      };
+      const senderName = data.user?.name?.trim() || data.user?.email?.trim() || "";
+      const senderUserId = data.user?.userId ?? data.user?.id ?? null;
+      return { senderName, senderUserId };
+    } catch {
+      return { senderName: "", senderUserId: null };
     }
   }
 
@@ -304,6 +392,27 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
     setBusy(true);
     setError("");
     try {
+      if (documentId && document) {
+        const ok = await persistDraftDetails();
+        if (!ok) {
+          throw new Error("Could not save draft details");
+        }
+        setSelectedRecipientId((current) => current || document.recipients_json[0]?.id || recipients[0]?.id || "");
+        setStep(3);
+        return;
+      }
+
+      const sender = await resolveSenderMeta();
+      const recipientsJson = recipients.map((item, index) => ({
+        id: item.contactId || item.id || crypto.randomUUID(),
+        name: item.name,
+        email: item.email,
+        company_name: item.companyName ?? null,
+        contact_id: item.contactId ?? null,
+        role: "signer" as const,
+        signing_order: index + 1,
+      }));
+
       let created: DocumentPayload | null = null;
       if (selectedTemplateId === "blank") {
         const response = await fetch("/api/documents", {
@@ -318,21 +427,16 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
         if (!data.document) {
           throw new Error("Unexpected response");
         }
-        const recipientsJson = recipients.map((item, index) => ({
-          id: item.contactId || item.id || crypto.randomUUID(),
-          name: item.name,
-          email: item.email,
-          role: "signer" as const,
-          signing_order: index + 1,
-        }));
         const patch = await fetch(`/api/documents/${data.document.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            editor_json: {
-              ...data.document.editor_json,
-              attrs: { ...(data.document.editor_json.attrs ?? {}), title: title.trim() },
-            },
+            editor_json: applyDocumentMetaToDoc(data.document.editor_json, {
+              title: title.trim(),
+              dueDate: dueDate.trim() || null,
+              senderName: sender.senderName || null,
+              senderUserId: sender.senderUserId,
+            }),
             recipients_json: recipientsJson,
             contact_id: recipients[0]?.contactId ?? null,
           }),
@@ -356,6 +460,7 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
               name: item.name,
               email: item.email,
               contactId: item.contactId ?? null,
+              companyName: item.companyName ?? null,
             })),
           }),
         });
@@ -365,6 +470,26 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
         }
         const data = (await response.json()) as { document?: DocumentPayload };
         created = data.document ?? null;
+        if (created) {
+          const patch = await fetch(`/api/documents/${created.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              editor_json: applyDocumentMetaToDoc(created.editor_json, {
+                title: title.trim(),
+                dueDate: dueDate.trim() || null,
+                senderName: sender.senderName || null,
+                senderUserId: sender.senderUserId,
+              }),
+              recipients_json: recipientsJson,
+              contact_id: recipients[0]?.contactId ?? null,
+            }),
+          });
+          if (patch.ok) {
+            const patched = (await patch.json()) as { document?: DocumentPayload };
+            created = patched.document ?? created;
+          }
+        }
       }
       if (!created) {
         throw new Error("Unexpected response");
@@ -380,6 +505,13 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function flushAndClose() {
+    if (documentId && document) {
+      await persistDraftDetails();
+    }
+    onClose();
   }
 
   async function reloadDocument() {
@@ -428,7 +560,7 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
         aria-modal="true"
         aria-labelledby="new-document-workflow-title"
       >
-        <header className="flex shrink-0 items-center justify-between gap-4 border-b border-border bg-surface px-4 py-3">
+        <header className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-border bg-surface px-4 py-3">
           <div className="min-w-0">
             <h2 id="new-document-workflow-title" className="text-sm font-semibold text-foreground">
               New Document
@@ -437,7 +569,7 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
               {title.trim() || selectedTemplate?.name || "Create and deliver a proposal"}
             </p>
           </div>
-          <nav className="flex flex-wrap items-center gap-1" aria-label="Workflow steps">
+          <nav className="flex flex-wrap items-center justify-center gap-1" aria-label="Workflow steps">
             {STEPS.map((item, index) => {
               const active = step === item.id;
               const done = step > item.id;
@@ -465,26 +597,26 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
               );
             })}
           </nav>
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center justify-end gap-3">
             {saveStatus ? (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
+              <span className="inline-flex items-center gap-1 truncate text-xs font-medium text-emerald-700">
                 <span aria-hidden>✓</span>
                 {saveStatus}
               </span>
             ) : null}
             <button
               type="button"
-              onClick={onClose}
-              className="rounded-md px-2 py-1 text-sm text-primary hover:bg-primary/10"
+              onClick={() => void flushAndClose()}
+              className="shrink-0 rounded-md px-2 py-1 text-sm text-primary hover:bg-primary/10"
             >
               Close
             </button>
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-auto bg-[#f4f6f9] p-4 md:p-6">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f4f6f9] p-4 md:p-6">
           {error ? (
-            <p className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p className="mb-3 shrink-0 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {error}
             </p>
           ) : null}
@@ -514,6 +646,8 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
             <StepRecipients
               title={title}
               onTitleChange={setTitle}
+              dueDate={dueDate}
+              onDueDateChange={setDueDate}
               contactQuery={contactQuery}
               onContactQueryChange={setContactQuery}
               contacts={contacts}
@@ -543,15 +677,21 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
           {step === 3 && documentId && document ? (
             <StepEdit
               documentId={documentId}
+              title={title}
               initialDoc={document.editor_json}
               recipients={document.recipients_json}
               selectedRecipientId={selectedRecipientId}
               onSelectRecipient={setSelectedRecipientId}
               onSaved={(status) => setSaveStatus(status)}
               onDocumentChange={(doc) => setDocument((current) => (current ? { ...current, editor_json: doc } : current))}
-              onBack={() => setStep(2)}
-              onNext={() => {
-                void reloadDocument();
+              onBack={() => {
+                if (document) {
+                  setDueDate(documentDueDateFromEditorJson(document.editor_json));
+                }
+                setStep(2);
+              }}
+              onNext={async () => {
+                await reloadDocument();
                 setStep(4);
               }}
             />
@@ -606,7 +746,7 @@ function StepPickTemplate({
     "inline-flex h-8 w-8 items-center justify-center rounded text-sm font-medium transition-colors";
 
   return (
-    <div className="flex w-full flex-col gap-4">
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-auto">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold text-foreground">1. Pick Template</h3>
@@ -679,12 +819,30 @@ function StepPickTemplate({
             </thead>
             <tbody>
               <tr
-                className={`cursor-pointer border-t border-border ${
-                  selectedId === "blank" ? "bg-primary/5" : "hover:bg-slate-50"
+                className={`cursor-pointer border-t border-border transition-colors ${
+                  selectedId === "blank"
+                    ? "bg-primary/10 ring-1 ring-inset ring-primary/30"
+                    : "hover:bg-slate-50"
                 }`}
                 onClick={() => onSelect("blank")}
               >
-                <td className="px-3 py-2.5 font-medium text-foreground">Blank document</td>
+                <td className="px-3 py-2.5 font-medium text-foreground">
+                  <div className="flex items-center gap-3">
+                    <span>Blank document</span>
+                    {selectedId === "blank" ? (
+                      <button
+                        type="button"
+                        className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-95"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onNext();
+                        }}
+                      >
+                        Use Template
+                      </button>
+                    ) : null}
+                  </div>
+                </td>
                 <td className="px-3 py-2.5 text-muted">1</td>
                 <td className="px-3 py-2.5 text-muted" />
               </tr>
@@ -694,12 +852,28 @@ function StepPickTemplate({
                 return (
                   <tr
                     key={template.id}
-                    className={`cursor-pointer border-t border-border ${
-                      selected ? "bg-primary/5" : "hover:bg-slate-50"
+                    className={`cursor-pointer border-t border-border transition-colors ${
+                      selected ? "bg-primary/10 ring-1 ring-inset ring-primary/30" : "hover:bg-slate-50"
                     }`}
                     onClick={() => onSelect(template.id)}
                   >
-                    <td className="px-3 py-2.5 font-medium text-foreground">{template.name}</td>
+                    <td className="px-3 py-2.5 font-medium text-foreground">
+                      <div className="flex items-center gap-3">
+                        <span>{template.name}</span>
+                        {selected ? (
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-95"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onNext();
+                            }}
+                          >
+                            Use Template
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
                     <td className="px-3 py-2.5 text-muted">{pages}</td>
                     <td className="px-3 py-2.5 text-muted">
                       {new Intl.DateTimeFormat(undefined, {
@@ -716,28 +890,54 @@ function StepPickTemplate({
         </div>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-3">
-          <button
-            type="button"
+          <div
+            role="button"
+            tabIndex={0}
             onClick={() => onSelect("blank")}
-            className={`flex flex-col overflow-hidden rounded-lg border bg-surface text-left shadow-sm ${
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect("blank");
+              }
+            }}
+            className={`flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-surface text-left shadow-sm ${
               selectedId === "blank" ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/40"
             }`}
           >
             <div className="flex aspect-[4/5] items-center justify-center bg-slate-100 text-sm text-muted">Blank</div>
             <div className="border-t border-border p-2.5">
               <p className="truncate text-sm font-semibold text-foreground">Blank document</p>
+              {selectedId === "blank" ? (
+                <button
+                  type="button"
+                  className="mt-2 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground hover:opacity-95"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onNext();
+                  }}
+                >
+                  Use Template
+                </button>
+              ) : null}
             </div>
-          </button>
+          </div>
           {templates.map((template) => {
             const thumb = templateThumbnailKey(template.editor_json);
             const pages = pageCountFromEditor(template.editor_json);
             const selected = selectedId === template.id;
             return (
-              <button
+              <div
                 key={template.id}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelect(template.id)}
-                className={`flex flex-col overflow-hidden rounded-lg border bg-surface text-left shadow-sm ${
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelect(template.id);
+                  }
+                }}
+                className={`flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-surface text-left shadow-sm ${
                   selected ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/40"
                 }`}
               >
@@ -751,18 +951,31 @@ function StepPickTemplate({
                 </div>
                 <div className="border-t border-border p-2.5">
                   <p className="truncate text-sm font-semibold text-foreground">{template.name}</p>
+                  {selected ? (
+                    <button
+                      type="button"
+                      className="mt-2 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground hover:opacity-95"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onNext();
+                      }}
+                    >
+                      Use Template
+                    </button>
+                  ) : null}
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
       )}
 
-      <div className="flex justify-end">
+      <div className="mt-auto flex shrink-0 justify-end pt-2">
         <button
           type="button"
+          disabled={!selectedId}
           onClick={onNext}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-95"
+          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Next Step
         </button>
@@ -774,6 +987,8 @@ function StepPickTemplate({
 function StepRecipients({
   title,
   onTitleChange,
+  dueDate,
+  onDueDateChange,
   contactQuery,
   onContactQueryChange,
   contacts,
@@ -800,12 +1015,19 @@ function StepRecipients({
 }: {
   title: string;
   onTitleChange: (value: string) => void;
+  dueDate: string;
+  onDueDateChange: (value: string) => void;
   contactQuery: string;
   onContactQueryChange: (value: string) => void;
   contacts: ContactItem[];
   recentContacts: ContactItem[];
   recipients: SelectedRecipient[];
-  onAddRecipient: (contact: { id?: string; name: string; email: string }) => void;
+  onAddRecipient: (contact: {
+    id?: string;
+    name: string;
+    email: string;
+    companyName?: string | null;
+  }) => void;
   onRemoveRecipient: (id: string) => void;
   showNewContact: boolean;
   onToggleNewContact: () => void;
@@ -827,21 +1049,35 @@ function StepRecipients({
   const tableContacts = contactQuery.trim() ? contacts : recentContacts;
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-5">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-1 flex-col gap-5 overflow-auto">
       <div>
         <h3 className="text-base font-semibold text-foreground">2. Document info & recipients</h3>
-        <p className="text-sm text-muted">Name the document and add signers from CRM People.</p>
+        <p className="text-sm text-muted">
+          Name the document and add at least one signer from CRM People. A draft is saved only after a
+          recipient is added.
+        </p>
       </div>
 
-      <label className="block text-xs font-medium text-muted">
-        Document title
-        <input
-          value={title}
-          onChange={(event) => onTitleChange(event.target.value)}
-          className="mt-1 h-10 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-primary/40"
-          placeholder="e.g. Master Services Agreement"
-        />
-      </label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block text-xs font-medium text-muted sm:col-span-2">
+          Document title
+          <input
+            value={title}
+            onChange={(event) => onTitleChange(event.target.value)}
+            className="mt-1 h-10 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-primary/40"
+            placeholder="e.g. Master Services Agreement"
+          />
+        </label>
+        <label className="block text-xs font-medium text-muted">
+          Due date
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(event) => onDueDateChange(event.target.value)}
+            className="mt-1 h-10 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-primary/40"
+          />
+        </label>
+      </div>
 
       <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -942,6 +1178,7 @@ function StepRecipients({
                             id: contact.id,
                             name: contact.full_name,
                             email: contact.email,
+                            companyName: contact.company_name,
                           })
                         }
                       >
@@ -957,7 +1194,10 @@ function StepRecipients({
       </div>
 
       <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
-        <h4 className="text-sm font-semibold text-foreground">Recipients</h4>
+        <h4 className="text-sm font-semibold text-foreground">
+          Recipients <span className="text-red-600">*</span>
+        </h4>
+        <p className="mt-1 text-xs text-muted">Required — add at least one recipient to continue and save a draft.</p>
         {recipients.length === 0 ? (
           <p className="mt-2 text-sm text-muted">Selected contacts will appear here as signers.</p>
         ) : (
@@ -970,7 +1210,9 @@ function StepRecipients({
                 </div>
                 <button
                   type="button"
-                  className="text-xs text-muted hover:text-red-600"
+                  className="text-xs text-muted hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={recipients.length <= 1}
+                  title={recipients.length <= 1 ? "At least one recipient is required" : "Remove"}
                   onClick={() => onRemoveRecipient(recipient.id)}
                 >
                   Remove
@@ -981,7 +1223,7 @@ function StepRecipients({
         )}
       </div>
 
-      <div className="flex justify-between">
+      <div className="mt-auto flex shrink-0 justify-between pt-2">
         <button
           type="button"
           onClick={onBack}
@@ -991,9 +1233,10 @@ function StepRecipients({
         </button>
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || recipients.length === 0}
           onClick={onNext}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-95 disabled:opacity-60"
+          title={recipients.length === 0 ? "Add at least one recipient" : undefined}
         >
           {busy ? "Creating draft…" : "Next Step"}
         </button>
@@ -1004,6 +1247,7 @@ function StepRecipients({
 
 function StepEdit({
   documentId,
+  title,
   initialDoc,
   recipients,
   selectedRecipientId,
@@ -1014,6 +1258,7 @@ function StepEdit({
   onNext,
 }: {
   documentId: string;
+  title: string;
   initialDoc: EditorDoc;
   recipients: Array<{ id: string; name: string; email: string; role: string }>;
   selectedRecipientId: string;
@@ -1021,10 +1266,48 @@ function StepEdit({
   onSaved: (status: string) => void;
   onDocumentChange: (doc: EditorDoc) => void;
   onBack: () => void;
-  onNext: () => void;
+  onNext: () => void | Promise<void>;
 }) {
   const [pageSize] = useState<PageSizeId>(() => pageSizeFromDoc(initialDoc));
-  const saveTimer = useMemo(() => ({ id: 0 as ReturnType<typeof setTimeout> | 0 }), []);
+  const saveQueueRef = useRef(new SaveQueue());
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | 0>(0);
+  const latestDocRef = useRef<EditorDoc>(initialDoc);
+  const editorRef = useRef<Editor | null>(null);
+  const titleRef = useRef(title);
+  titleRef.current = title;
+
+  const persistEditor = useCallback(
+    async (json?: EditorDoc) => {
+      const ed = editorRef.current;
+      if (ed && !ed.isDestroyed && typeof ed.commands.refreshPageFlow === "function") {
+        ed.commands.refreshPageFlow();
+      }
+      const source =
+        ed && !ed.isDestroyed ? (ed.getJSON() as EditorDoc) : (json ?? latestDocRef.current);
+      const payload = applyTitleToDoc(source, titleRef.current);
+      latestDocRef.current = payload;
+      const response = await fetch(`/api/documents/${documentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ editor_json: payload }),
+      });
+      if (response.ok) {
+        onSaved("Draft saved");
+        onDocumentChange(payload);
+      }
+    },
+    [documentId, onDocumentChange, onSaved],
+  );
+
+  const flushPendingSave = useCallback(async () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = 0;
+    }
+    await saveQueueRef.current.run(async () => {
+      await persistEditor(latestDocRef.current);
+    });
+  }, [persistEditor]);
 
   const editor = useEditor({
     extensions: editorExtensions,
@@ -1034,41 +1317,45 @@ function StepEdit({
     onCreate: ({ editor: instance }) => scheduleFocusDocumentStart(instance),
     onUpdate: ({ editor: instance }) => {
       const json = instance.getJSON() as EditorDoc;
+      latestDocRef.current = json;
       onDocumentChange(json);
-      if (saveTimer.id) {
-        clearTimeout(saveTimer.id);
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
       }
-      saveTimer.id = setTimeout(() => {
-        void (async () => {
-          const response = await fetch(`/api/documents/${documentId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ editor_json: json }),
-          });
-          if (response.ok) {
-            onSaved("Draft saved");
-          }
-        })();
+      saveTimerRef.current = setTimeout(() => {
+        saveTimerRef.current = 0;
+        void saveQueueRef.current.run(async () => {
+          await persistEditor(latestDocRef.current);
+        });
       }, AUTOSAVE_DELAY_MS);
     },
   });
 
   useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
+
+  useEffect(() => {
     return () => {
-      if (saveTimer.id) {
-        clearTimeout(saveTimer.id);
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
       }
+      const json = latestDocRef.current;
+      void saveQueueRef.current.run(async () => {
+        await persistEditor(json);
+      });
     };
-  }, [saveTimer]);
+  }, [persistEditor]);
 
   const insertField = useCallback(
     (type: SignerFieldEditorType) => {
-      if (!editor || !selectedRecipientId) {
+      const recipientId = selectedRecipientId || recipients[0]?.id;
+      if (!editor || !recipientId) {
         return;
       }
-      insertSignerFieldBlock(editor, { recipientId: selectedRecipientId, type });
+      insertSignerFieldBlock(editor, { recipientId, type });
     },
-    [editor, selectedRecipientId],
+    [editor, recipients, selectedRecipientId],
   );
 
   const recipientOptions = withSenderRecipient(
@@ -1081,41 +1368,47 @@ function StepEdit({
   );
 
   return (
-    <div className="flex h-[min(70vh,720px)] min-h-[28rem] flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-3 overflow-hidden">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-base font-semibold text-foreground">3. Edit document</h3>
           <p className="text-sm text-muted">
             Draft is saved as you edit. You can close anytime and resume later.
           </p>
         </div>
-        <Link href={`/app/documents/${documentId}`} className="text-sm font-medium text-primary hover:underline">
+        <Link
+          href={`/app/documents/${documentId}`}
+          className="text-sm font-medium text-primary hover:underline"
+          onClick={() => {
+            void flushPendingSave();
+          }}
+        >
           Open full editor
         </Link>
       </div>
 
       <SignerRecipientProvider recipients={recipientOptions}>
         <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-surface">
-          <div className="min-h-0 min-w-0 flex-1 overflow-auto bg-slate-200/70 p-4">
-            {editor ? (
-              <CreatorCanvas
-                editor={editor}
-                pageSize={pageSize}
-                documentId={documentId}
-                onDropField={(type, clientX, clientY) => {
-                  if (!selectedRecipientId) {
-                    return;
-                  }
-                  insertSignerFieldAtPoint(editor, {
-                    recipientId: selectedRecipientId,
-                    type: type as SignerFieldEditorType,
-                    clientX,
-                    clientY,
-                  });
-                }}
-              />
-            ) : null}
-          </div>
+          {editor ? (
+            <CreatorCanvas
+              editor={editor}
+              pageSize={pageSize}
+              documentId={documentId}
+              documentName={title}
+              onDropField={(type, clientX, clientY) => {
+                const recipientId = selectedRecipientId || recipientOptions[0]?.id;
+                if (!recipientId) {
+                  return;
+                }
+                insertSignerFieldAtPoint(editor, {
+                  recipientId,
+                  type: type as SignerFieldEditorType,
+                  clientX,
+                  clientY,
+                });
+              }}
+            />
+          ) : null}
           <CreatorFieldsSidebar
             editor={editor}
             recipients={recipientOptions}
@@ -1128,17 +1421,21 @@ function StepEdit({
         </div>
       </SignerRecipientProvider>
 
-      <div className="flex justify-between">
+      <div className="mt-auto flex shrink-0 justify-between pt-2">
         <button
           type="button"
-          onClick={onBack}
+          onClick={() => {
+            void flushPendingSave().then(() => onBack());
+          }}
           className="rounded-md border border-primary/30 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/10"
         >
           Back
         </button>
         <button
           type="button"
-          onClick={onNext}
+          onClick={() => {
+            void flushPendingSave().then(() => onNext());
+          }}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-95"
         >
           Next: Deliver
@@ -1180,110 +1477,112 @@ function StepDeliver({
   onDeliverMyself: () => void;
 }) {
   return (
-    <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-      <div className="space-y-3">
-        <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-foreground">Required Actions</h3>
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-              {requiredActions.length}
-            </span>
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-1 flex-col overflow-auto">
+      <div className="grid min-h-full flex-1 gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+        <div className="space-y-3">
+          <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground">Required Actions</h3>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                {requiredActions.length}
+              </span>
+            </div>
+            {requiredActions.length === 0 ? (
+              <p className="text-sm text-muted">No fillable fields on this document yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {requiredActions.map((action) => (
+                  <li key={action.id} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="text-foreground">{action.label}</span>
+                    <span className="text-muted">{action.assignee}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-3 text-xs text-muted">
+              Sender: {fieldSummary.sender} · Recipients: {fieldSummary.recipients}
+            </p>
           </div>
-          {requiredActions.length === 0 ? (
-            <p className="text-sm text-muted">No fillable fields on this document yet.</p>
-          ) : (
+
+          <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+            <h3 className="mb-3 text-sm font-semibold text-foreground">Enable Acceptance</h3>
             <ul className="space-y-2">
-              {requiredActions.map((action) => (
-                <li key={action.id} className="flex items-center justify-between gap-2 text-sm">
-                  <span className="text-foreground">{action.label}</span>
-                  <span className="text-muted">{action.assignee}</span>
+              {document.recipients_json.map((recipient) => (
+                <li key={recipient.id} className="flex items-start gap-2 rounded-lg border border-border px-3 py-2">
+                  <input type="checkbox" defaultChecked className="mt-1 accent-[var(--primary)]" readOnly />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{recipient.name}</p>
+                    <p className="text-xs text-muted">{recipient.email}</p>
+                  </div>
                 </li>
               ))}
             </ul>
-          )}
-          <p className="mt-3 text-xs text-muted">
-            Sender: {fieldSummary.sender} · Recipients: {fieldSummary.recipients}
-          </p>
-        </div>
+          </div>
 
-        <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">Enable Acceptance</h3>
-          <ul className="space-y-2">
-            {document.recipients_json.map((recipient) => (
-              <li key={recipient.id} className="flex items-start gap-2 rounded-lg border border-border px-3 py-2">
-                <input type="checkbox" defaultChecked className="mt-1 accent-[var(--primary)]" readOnly />
-                <div>
-                  <p className="text-sm font-medium text-foreground">{recipient.name}</p>
-                  <p className="text-xs text-muted">{recipient.email}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-foreground">Proposal Expiration</h3>
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted">Off</span>
+          <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground">Proposal Expiration</h3>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Off</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
-        <h3 className="text-sm font-semibold text-foreground">Delivery Message</h3>
-        <p className="mt-1 text-xs text-muted">{title || "Untitled document"}</p>
+        <div className="flex min-h-0 flex-col rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <h3 className="text-sm font-semibold text-foreground">Delivery Message</h3>
+          <p className="mt-1 text-xs text-muted">{title || "Untitled document"}</p>
 
-        <label className="mt-4 block text-xs font-medium text-muted">
-          Subject
-          <input
-            value={deliverySubject}
-            onChange={(event) => onSubjectChange(event.target.value)}
-            className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary/40"
-          />
-        </label>
+          <label className="mt-4 block text-xs font-medium text-muted">
+            Subject
+            <input
+              value={deliverySubject}
+              onChange={(event) => onSubjectChange(event.target.value)}
+              className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary/40"
+            />
+          </label>
 
-        <label className="mt-3 block text-xs font-medium text-muted">
-          Delivery Message
-          <textarea
-            value={deliveryMessage}
-            onChange={(event) => onMessageChange(event.target.value)}
-            rows={12}
-            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm leading-relaxed outline-none focus:border-primary/40"
-          />
-        </label>
+          <label className="mt-3 block min-h-0 flex-1 text-xs font-medium text-muted">
+            Delivery Message
+            <textarea
+              value={deliveryMessage}
+              onChange={(event) => onMessageChange(event.target.value)}
+              rows={12}
+              className="mt-1 min-h-[12rem] h-[calc(100%-1.25rem)] w-full rounded-md border border-border bg-background px-3 py-2 text-sm leading-relaxed outline-none focus:border-primary/40"
+            />
+          </label>
 
-        <label className="mt-3 flex items-center gap-2 text-sm text-foreground">
-          <input
-            type="checkbox"
-            checked={saveDefaultMessage}
-            onChange={(event) => onSaveDefaultMessageChange(event.target.checked)}
-          />
-          Save as my default message
-        </label>
+          <label className="mt-3 flex items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={saveDefaultMessage}
+              onChange={(event) => onSaveDefaultMessageChange(event.target.checked)}
+            />
+            Save as my default message
+          </label>
 
-        <div className="mt-4 space-y-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onDeliver}
-            className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-95 disabled:opacity-60"
-          >
-            ✈ Deliver
-          </button>
-          <button
-            type="button"
-            onClick={onDeliverMyself}
-            className="w-full rounded-md border border-primary bg-surface px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10"
-          >
-            I&apos;ll deliver it myself
-          </button>
-          <button
-            type="button"
-            onClick={onBack}
-            className="w-full py-2 text-sm font-medium text-primary hover:bg-primary/10"
-          >
-            Back to edit
-          </button>
+          <div className="mt-auto space-y-2 pt-4">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onDeliver}
+              className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-95 disabled:opacity-60"
+            >
+              ✈ Deliver
+            </button>
+            <button
+              type="button"
+              onClick={onDeliverMyself}
+              className="w-full rounded-md border border-primary bg-surface px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10"
+            >
+              I&apos;ll deliver it myself
+            </button>
+            <button
+              type="button"
+              onClick={onBack}
+              className="w-full py-2 text-sm font-medium text-primary hover:bg-primary/10"
+            >
+              Back to edit
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -44,3 +44,21 @@ export function formatRelativeContact(iso: string): string {
   }
   return formatRelativeTime(iso);
 }
+
+/** Calendar date for list columns (Created / Due). */
+export function formatShortDate(iso: string | null | undefined): string {
+  if (!iso?.trim()) {
+    return "—";
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    // Already a YYYY-MM-DD value from <input type="date">
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
+    if (match) {
+      const local = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+      return local.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    }
+    return iso.trim();
+  }
+  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}

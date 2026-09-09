@@ -6,6 +6,7 @@ type RecipientBody = {
   name?: string;
   email?: string;
   contactId?: string | null;
+  companyName?: string | null;
 };
 
 type FromTemplateBody = {
@@ -26,6 +27,7 @@ function normalizeRecipients(payload: FromTemplateBody) {
       name: item.name?.trim() ?? "",
       email: item.email?.trim() ?? "",
       contactId: item.contactId ?? null,
+      companyName: item.companyName ?? null,
     }))
     .filter((item) => item.name && item.email);
 }

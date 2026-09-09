@@ -669,6 +669,7 @@ enum DocumentStatus {
   PAID
   EXPIRED
   VOID
+  TRASHED
 }
 
 enum RecipientRole {

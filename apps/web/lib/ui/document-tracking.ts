@@ -42,7 +42,7 @@ export const STATUSES_BY_TAB: Record<DocumentTrackingTab, readonly string[]> = {
   draft: ["DRAFTED"],
   archived: ["EXPIRED"],
   pending: [],
-  trash: [],
+  trash: ["TRASHED"],
 };
 
 const TAB_BY_COUNT_KEY: Record<DocumentCountKey, DocumentTrackingTab> = {
@@ -136,6 +136,9 @@ export function documentStatusDisplayLabel(status: string): string {
   }
   if (value === "EXPIRED") {
     return "Expired";
+  }
+  if (value === "TRASHED") {
+    return "Trash";
   }
   return value.charAt(0) + value.slice(1).toLowerCase();
 }

@@ -13,6 +13,7 @@ const validStatuses = [
   "PAID",
   "EXPIRED",
   "VOID",
+  "TRASHED",
 ] as const;
 type DocumentStatus = (typeof validStatuses)[number];
 

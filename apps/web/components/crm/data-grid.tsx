@@ -310,17 +310,17 @@ export function CrmDataGrid<T>({
                           type="button"
                           onClick={() => toggleSort(column)}
                           className={cn(
-                            "flex h-10 w-full items-center gap-1.5 px-3 text-left hover:bg-slate-100/80",
+                            "flex h-10 w-full items-center gap-1.5 whitespace-nowrap px-3 text-left hover:bg-slate-100/80",
                             column.align === "right" && "justify-end",
                           )}
                         >
-                          <span className="truncate">{column.label}</span>
+                          <span className="truncate whitespace-nowrap">{column.label}</span>
                           <SortMark dir={dir} />
                         </button>
                       ) : (
                         <span
                           className={cn(
-                            "flex h-10 items-center px-3",
+                            "flex h-10 items-center whitespace-nowrap px-3",
                             column.align === "right" && "justify-end",
                           )}
                         >

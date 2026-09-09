@@ -161,6 +161,7 @@ export function CreatorPageNav({
               >
                 <span
                   className="creator-page-thumb pointer-events-none absolute left-0 top-0 origin-top-left"
+                  data-creator-thumb="true"
                   style={{
                     ...thumbVars,
                     width: spec.widthPx,

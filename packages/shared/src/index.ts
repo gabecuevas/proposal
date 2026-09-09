@@ -12,6 +12,7 @@ export const documentLifecycleSchema = z.enum([
   "PAID",
   "EXPIRED",
   "VOID",
+  "TRASHED",
 ]);
 
 export type DocumentLifecycle = z.infer<typeof documentLifecycleSchema>;

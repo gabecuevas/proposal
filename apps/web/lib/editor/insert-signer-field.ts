@@ -79,7 +79,9 @@ function insertFieldIntoContainer(
     tr = tr.insert(editor.state.doc.content.size, overlayNode);
   }
 
-  editor.view.dispatch(tr.scrollIntoView());
+  // Avoid scrollIntoView: workflow and nested scrollers can jump the viewport
+  // to a different page after a drop.
+  editor.view.dispatch(tr);
   return true;
 }
 
@@ -105,6 +107,25 @@ function newFieldAttrs(
   );
 }
 
+function liveEditorRoot(editor: Editor): HTMLElement {
+  return editor.view.dom;
+}
+
+function livePaperElement(editor: Editor): HTMLElement | null {
+  const root = liveEditorRoot(editor);
+  return (root.closest(CREATOR_PAPER_SELECTOR) as HTMLElement | null) ?? null;
+}
+
+function isLiveEditorElement(editor: Editor, el: Element | null): el is HTMLElement {
+  if (!(el instanceof HTMLElement)) {
+    return false;
+  }
+  if (el.closest("[data-creator-thumb], .creator-page-thumb")) {
+    return false;
+  }
+  return liveEditorRoot(editor).contains(el) || livePaperElement(editor)?.contains(el) === true;
+}
+
 /** Prefer the caret / viewport so click-insert lands on the text the user is looking at. */
 function placementNearSelection(
   editor: Editor,
@@ -113,7 +134,7 @@ function placementNearSelection(
   if (typeof document === "undefined") {
     return null;
   }
-  const paper = document.querySelector(CREATOR_PAPER_SELECTOR) as HTMLElement | null;
+  const paper = livePaperElement(editor);
   if (!paper) {
     return null;
   }
@@ -214,7 +235,7 @@ export function insertSignerFieldAtPoint(
 ): boolean {
   exitTextBoxEditing(editor);
   const size = defaultSizeForType(input.type);
-  const canvasEl = canvasElementAtPoint(input.clientX, input.clientY);
+  const canvasEl = canvasElementAtPoint(editor, input.clientX, input.clientY);
 
   if (canvasEl) {
     const rect = canvasEl.getBoundingClientRect();
@@ -229,12 +250,21 @@ export function insertSignerFieldAtPoint(
           newFieldAttrs(input, { xPct, yPct, page: 0 }, target.node.childCount),
         );
       }
-      return insertSignerFieldBlock(editor, { ...input, xPct, yPct });
+      // Stay on the hit canvas's coordinates; never re-resolve via selection
+      // (that remaps % from page N onto a different page's canvas).
+      const fallback = findTargetCanvas(editor);
+      if (fallback) {
+        return insertFieldIntoContainer(
+          editor,
+          fallback,
+          newFieldAttrs(input, { xPct, yPct, page: 0 }, fallback.node.childCount),
+        );
+      }
     }
   }
 
   // Prefer the live overlay box so drop % matches CSS positioning; fall back to paper.
-  const origin = placementOriginElement();
+  const origin = placementOriginElement(editor);
   if (!origin) {
     return insertSignerFieldBlock(editor, input);
   }
@@ -275,33 +305,33 @@ function elementsAtPoint(clientX: number, clientY: number): Element[] {
   return hit ? [hit] : [];
 }
 
-function canvasElementAtPoint(clientX: number, clientY: number): HTMLElement | null {
+function canvasElementAtPoint(editor: Editor, clientX: number, clientY: number): HTMLElement | null {
   for (const el of elementsAtPoint(clientX, clientY)) {
     if (!(el instanceof Element)) {
       continue;
     }
     const canvas = el.closest("[data-field-canvas]");
-    if (canvas instanceof HTMLElement) {
+    if (isLiveEditorElement(editor, canvas)) {
       return canvas;
     }
   }
   return null;
 }
 
-function placementOriginElement(): HTMLElement | null {
-  const overlay = document.querySelector(".ProseMirror [data-field-overlay], [data-field-overlay]") as HTMLElement | null;
-  if (overlay && overlay.getBoundingClientRect().width > 0) {
+function placementOriginElement(editor: Editor): HTMLElement | null {
+  const root = liveEditorRoot(editor);
+  const overlay = root.querySelector("[data-field-overlay]");
+  if (isLiveEditorElement(editor, overlay) && overlay.getBoundingClientRect().width > 0) {
     return overlay;
   }
-  return document.querySelector(CREATOR_PAPER_SELECTOR) as HTMLElement | null;
+  return livePaperElement(editor);
 }
 
 function canvasFromElement(editor: Editor, canvasEl: HTMLElement): NodeTarget | null {
   const canvases = findNodes(editor, "fieldCanvas");
-  const index = Array.from(document.querySelectorAll(".ProseMirror [data-field-canvas]")).indexOf(
-    canvasEl,
-  );
-  return canvases[index] ?? null;
+  const root = liveEditorRoot(editor);
+  const index = Array.from(root.querySelectorAll("[data-field-canvas]")).indexOf(canvasEl);
+  return index >= 0 ? (canvases[index] ?? null) : null;
 }
 
 /**

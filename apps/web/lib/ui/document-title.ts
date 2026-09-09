@@ -14,8 +14,8 @@ function textFromNode(node: unknown): string {
   return "";
 }
 
-function titleFromAttrs(doc: EditorDoc | null | undefined): string {
-  const value = doc?.attrs?.title;
+function attrString(doc: EditorDoc | null | undefined, key: string): string {
+  const value = doc?.attrs?.[key];
   return typeof value === "string" ? value.trim() : "";
 }
 
@@ -28,7 +28,7 @@ function clipTitle(value: string): string {
  * Otherwise use the first non-empty line of content.
  */
 export function documentTitleFromEditorJson(doc: EditorDoc | null | undefined, fallbackId?: string): string {
-  const named = titleFromAttrs(doc);
+  const named = attrString(doc, "title");
   if (named) {
     return clipTitle(named);
   }
@@ -46,15 +46,67 @@ export function documentTitleFromEditorJson(doc: EditorDoc | null | undefined, f
   return "Untitled document";
 }
 
+export function documentDueDateFromEditorJson(doc: EditorDoc | null | undefined): string {
+  return attrString(doc, "due_date");
+}
+
+export function documentSenderFromEditorJson(doc: EditorDoc | null | undefined): string {
+  return attrString(doc, "sender_name");
+}
+
+/** Persist gallery/header metadata without changing body content. */
+export function applyDocumentMetaToDoc(
+  doc: EditorDoc,
+  meta: {
+    title?: string;
+    dueDate?: string | null;
+    senderName?: string | null;
+    senderUserId?: string | null;
+  },
+): EditorDoc {
+  const next = structuredClone(doc);
+  next.attrs = { ...next.attrs };
+
+  if (meta.title !== undefined) {
+    const trimmed = meta.title.trim();
+    if (trimmed) {
+      next.attrs.title = trimmed;
+    } else {
+      delete next.attrs.title;
+    }
+  }
+
+  if (meta.dueDate !== undefined) {
+    const trimmed = meta.dueDate?.trim() ?? "";
+    if (trimmed) {
+      next.attrs.due_date = trimmed;
+    } else {
+      delete next.attrs.due_date;
+    }
+  }
+
+  if (meta.senderName !== undefined) {
+    const trimmed = meta.senderName?.trim() ?? "";
+    if (trimmed) {
+      next.attrs.sender_name = trimmed;
+    } else {
+      delete next.attrs.sender_name;
+    }
+  }
+
+  if (meta.senderUserId !== undefined) {
+    const trimmed = meta.senderUserId?.trim() ?? "";
+    if (trimmed) {
+      next.attrs.sender_user_id = trimmed;
+    } else {
+      delete next.attrs.sender_user_id;
+    }
+  }
+
+  return next;
+}
+
 /** Persist the gallery/header title without changing body content. */
 export function applyTitleToDoc(doc: EditorDoc, title: string): EditorDoc {
-  const next = structuredClone(doc);
-  const trimmed = title.trim();
-  next.attrs = { ...next.attrs };
-  if (trimmed) {
-    next.attrs.title = trimmed;
-  } else {
-    delete next.attrs.title;
-  }
-  return next;
+  return applyDocumentMetaToDoc(doc, { title });
 }

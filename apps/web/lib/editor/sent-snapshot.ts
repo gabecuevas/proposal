@@ -10,6 +10,8 @@ export type DocumentRecipientJson = {
   name: string;
   role: "signer" | "approver" | "viewer";
   signing_order?: number;
+  company_name?: string | null;
+  contact_id?: string | null;
 };
 
 export type ContentBlockPin = {

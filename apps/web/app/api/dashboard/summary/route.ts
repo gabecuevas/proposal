@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { jsonWithRequestId } from "@/lib/api/response";
 import { getRequestAuthContext } from "@/lib/auth/request-context";
 
-const defaultStatuses = ["DRAFTED", "SENT", "VIEWED", "COMMENTED", "SIGNED", "PAID", "EXPIRED", "VOID"] as const;
+const defaultStatuses = ["DRAFTED", "SENT", "VIEWED", "COMMENTED", "SIGNED", "PAID", "EXPIRED", "VOID", "TRASHED"] as const;
 
 export async function GET(request: NextRequest) {
   const auth = await getRequestAuthContext(request);

@@ -1,6 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
-import { getDocument, SentDocumentImmutableError, updateDocumentDraft } from "@/lib/editor/document-store";
+import {
+  deleteDocument,
+  getDocument,
+  isManualDocumentStatus,
+  SentDocumentImmutableError,
+  updateDocumentDraft,
+  updateDocumentStatus,
+} from "@/lib/editor/document-store";
 import { StaleDocumentWriteError } from "@/lib/editor/save-queue";
 import type { EditorDoc, PricingModel, VariableContext } from "@/lib/editor/types";
 
@@ -28,7 +35,25 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     recipients_json?: Array<{ id: string; email: string; name: string; role: "signer" | "approver" | "viewer" }>;
     contact_id?: string | null;
     expectedUpdatedAt?: string;
+    status?: string;
   };
+
+  if (typeof payload.status === "string") {
+    if (!isManualDocumentStatus(payload.status)) {
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
+    try {
+      const document = await updateDocumentStatus(documentId, auth.workspaceId, payload.status);
+      if (!document) {
+        return NextResponse.json({ error: "Document not found" }, { status: 404 });
+      }
+      return NextResponse.json({ document });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update status";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
+
   try {
     const document = await updateDocumentDraft(documentId, auth.workspaceId, payload);
     if (!document) {
@@ -48,4 +73,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
     return NextResponse.json({ error: message }, { status: 400 });
   }
+}
+
+export async function DELETE(request: NextRequest, { params }: Params) {
+  const auth = await getRequestAuthContext(request);
+  assertRole(auth, "MEMBER");
+  const { documentId } = await params;
+  const deleted = await deleteDocument(documentId, auth.workspaceId);
+  if (!deleted) {
+    return NextResponse.json({ error: "Document not found" }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true });
 }
