@@ -1,0 +1,958 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { CrmDataGrid, type CrmGridColumn } from "@/components/crm/data-grid";
+import { CrmRecordDrawer, type DrawerSection } from "@/components/crm/record-drawer";
+import { contactSourceOptions, contactSourceLabel } from "@/lib/crm/contact-sources";
+import { fetchJson } from "@/lib/crm/fetch-with-auth";
+import { splitContactName } from "@/lib/crm/split-contact-name";
+import {
+  firstContactDetailsError,
+  validateEmail,
+  validatePersonName,
+  validateTitle,
+  validateWebsite,
+} from "@/lib/crm/contact-field-validation";
+import { formatGridDate, formatGridDateTime } from "@/lib/ui/datetime";
+import {
+  formatAddressDisplay,
+  type AddressValues,
+} from "@/lib/crm/address";
+import {
+  phonesForEditor,
+  phoneTypeLabel,
+  primaryPhoneNumber,
+  type PhoneEntry,
+} from "@/lib/crm/phones";
+import { normalizeWebsite } from "@/lib/crm/website";
+import {
+  resolveCompanyAssociation,
+  type CompanySearchResult,
+} from "@/lib/crm/resolve-company-association";
+
+type Person = {
+  id: string;
+  full_name: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  phones?: PhoneEntry[];
+  linkedin?: string | null;
+  company_name: string | null;
+  company_id: string | null;
+  title: string | null;
+  address_line_1: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  country: string | null;
+  website: string | null;
+  notes: string | null;
+  tags: string[];
+  source: string | null;
+  added_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type CompanyOption = {
+  id: string;
+  name: string;
+  website?: string | null;
+  city?: string | null;
+  industry?: string | null;
+};
+
+type Editor = {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  phones: PhoneEntry[];
+  linkedin: string;
+  title: string;
+  company_id: string;
+  company_name: string;
+  address_line_1: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  website: string;
+  industry: string;
+  notes: string;
+  source: string;
+};
+
+function editorAddress(editor: Editor): AddressValues {
+  return {
+    address_line_1: editor.address_line_1,
+    city: editor.city,
+    state: editor.state,
+    postal_code: editor.postal_code,
+  };
+}
+
+const emptyEditor = (): Editor => ({
+  first_name: "",
+  last_name: "",
+  email: "",
+  phone: "",
+  phones: phonesForEditor(null, null),
+  linkedin: "",
+  title: "",
+  company_id: "",
+  company_name: "",
+  address_line_1: "",
+  city: "",
+  state: "",
+  postal_code: "",
+  website: "",
+  industry: "",
+  notes: "",
+  source: "",
+});
+
+function ContactLink({ children }: { children: string }) {
+  return <span className="font-medium text-primary">{children}</span>;
+}
+
+function LabeledValue({ value, hint }: { value: string | null | undefined; hint: string }) {
+  if (!value) {
+    return <span />;
+  }
+  return (
+    <span>
+      {value} <span className="text-muted">({hint})</span>
+    </span>
+  );
+}
+
+const PEOPLE_COLUMNS: CrmGridColumn<Person>[] = [
+  {
+    id: "name",
+    label: "Name",
+    required: true,
+    width: 200,
+    sortValue: (person) => person.full_name,
+    cell: (person) => <ContactLink>{person.full_name}</ContactLink>,
+  },
+  {
+    id: "email",
+    label: "Email",
+    width: 240,
+    sortValue: (person) => person.email,
+    cell: (person) => <LabeledValue value={person.email} hint="Work" />,
+  },
+  {
+    id: "company",
+    label: "Company",
+    width: 180,
+    sortValue: (person) => person.company_name,
+    cell: (person) => (person.company_name ? <ContactLink>{person.company_name}</ContactLink> : null),
+  },
+  {
+    id: "phone",
+    label: "Phone",
+    width: 180,
+    sortValue: (person) => person.phone,
+    cell: (person) => {
+      const phones = phonesForEditor(person.phones, person.phone).filter((p) => p.number);
+      const primary = phones[0];
+      return (
+        <LabeledValue
+          value={primary?.number ?? person.phone}
+          hint={primary ? phoneTypeLabel(primary.type) : "Work"}
+        />
+      );
+    },
+  },
+  {
+    id: "owner",
+    label: "Owner",
+    width: 160,
+    sortValue: (person) => person.added_by_name,
+    cell: (person) => person.added_by_name || null,
+  },
+  {
+    id: "created",
+    label: "Date Created",
+    width: 140,
+    sortValue: (person) => person.created_at,
+    cell: (person) => formatGridDate(person.created_at),
+  },
+  {
+    id: "source",
+    label: "Source",
+    width: 140,
+    sortValue: (person) => person.source,
+    cell: (person) => contactSourceLabel(person.source) || null,
+  },
+  {
+    id: "title",
+    label: "Title",
+    defaultVisible: false,
+    width: 160,
+    sortValue: (person) => person.title,
+    cell: (person) => person.title || null,
+  },
+  {
+    id: "city",
+    label: "City",
+    defaultVisible: false,
+    width: 140,
+    sortValue: (person) => person.city,
+    cell: (person) => person.city || null,
+  },
+  {
+    id: "state",
+    label: "State",
+    defaultVisible: false,
+    width: 100,
+    sortValue: (person) => person.state,
+    cell: (person) => person.state || null,
+  },
+  {
+    id: "country",
+    label: "Country",
+    defaultVisible: false,
+    width: 120,
+    sortValue: (person) => person.country,
+    cell: (person) => person.country || null,
+  },
+  {
+    id: "website",
+    label: "Website",
+    defaultVisible: false,
+    width: 180,
+    sortValue: (person) => person.website,
+    cell: (person) => person.website || null,
+  },
+  {
+    id: "tags",
+    label: "Tags",
+    defaultVisible: false,
+    width: 160,
+    sortValue: (person) => person.tags?.join(", "),
+    cell: (person) => (person.tags?.length ? person.tags.join(", ") : null),
+  },
+  {
+    id: "updated",
+    label: "Updated",
+    defaultVisible: false,
+    width: 180,
+    sortValue: (person) => person.updated_at,
+    cell: (person) => formatGridDateTime(person.updated_at),
+  },
+];
+
+export default function PeoplePage() {
+  const searchParams = useSearchParams();
+  const openedFromQueryRef = useRef<string | null>(null);
+  const [people, setPeople] = useState<Person[]>([]);
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState("");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editor, setEditor] = useState<Editor>(emptyEditor);
+  const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [currentUserName, setCurrentUserName] = useState("");
+
+  const load = useCallback(async () => {
+    const params = new URLSearchParams({ limit: "200" });
+    if (query.trim()) {
+      params.set("q", query.trim());
+    }
+    const [peoplePayload, companiesPayload] = await Promise.all([
+      fetchJson<{ contacts: Person[] }>(`/api/contacts?${params.toString()}`),
+      fetchJson<{ companies: CompanyOption[] }>("/api/companies?limit=200"),
+    ]);
+    if (!peoplePayload) {
+      return;
+    }
+    setPeople(peoplePayload.contacts);
+    if (companiesPayload) {
+      setCompanies(companiesPayload.companies);
+    }
+  }, [query]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSession() {
+      const response = await fetch("/api/auth/session");
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as { user?: { email?: string } | null };
+      const email = payload.user?.email ?? "";
+      if (!email || cancelled) {
+        return;
+      }
+      const local = email.split("@")[0] ?? email;
+      const name = local
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+      setCurrentUserName(name || email);
+    }
+    void loadSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selected = people.find((person) => person.id === selectedId);
+  const displayName = `${editor.first_name} ${editor.last_name}`.trim();
+
+  function openPerson(person: Person) {
+    setSelectedId(person.id);
+    const phones = phonesForEditor(person.phones, person.phone);
+    const company = companies.find((item) => item.id === person.company_id);
+    setEditor({
+      first_name: person.first_name,
+      last_name: person.last_name,
+      email: person.email,
+      phone: primaryPhoneNumber(phones) ?? person.phone ?? "",
+      phones,
+      linkedin: person.linkedin ?? "",
+      title: person.title ?? "",
+      company_id: person.company_id ?? "",
+      company_name: person.company_name ?? "",
+      address_line_1: person.address_line_1 ?? "",
+      city: person.city ?? "",
+      state: person.state ?? "",
+      postal_code: person.postal_code ?? "",
+      website: person.website ?? "",
+      industry: company?.industry ?? "",
+      notes: person.notes ?? "",
+      source: person.source ?? "",
+    });
+    setStatus("");
+    setError("");
+    setDrawerOpen(true);
+  }
+
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId || openedFromQueryRef.current === openId || people.length === 0) {
+      return;
+    }
+    const person = people.find((item) => item.id === openId);
+    if (!person) {
+      return;
+    }
+    openedFromQueryRef.current = openId;
+    openPerson(person);
+    // Intentionally omit openPerson: open once when the deep-link id appears in the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- openPerson is a stable page action
+  }, [people, searchParams]);
+
+  function openNew() {
+    setSelectedId("");
+    setEditor(emptyEditor());
+    setStatus("");
+    setError("");
+    setDrawerOpen(true);
+  }
+
+  const savePerson = useCallback(
+    async (body: Record<string, unknown>) => {
+    setError("");
+    setStatus("");
+    if (selectedId) {
+      const response = await fetch(`/api/contacts/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+        setError(payload?.error?.message ?? "Failed to save person");
+        return;
+      }
+      setStatus("Saved.");
+      await load();
+      return;
+    }
+
+    const merged = {
+      ...editor,
+      ...(typeof body.first_name === "string" ? { first_name: body.first_name } : {}),
+      ...(typeof body.last_name === "string" ? { last_name: body.last_name } : {}),
+      ...(typeof body.email === "string" ? { email: body.email } : {}),
+      ...(typeof body.phone === "string" ? { phone: body.phone } : {}),
+      ...(Array.isArray(body.phones) ? { phones: body.phones as PhoneEntry[] } : {}),
+      ...(typeof body.linkedin === "string" ? { linkedin: normalizeWebsite(body.linkedin) } : {}),
+      ...(typeof body.title === "string" ? { title: body.title } : {}),
+      ...(typeof body.address_line_1 === "string" ? { address_line_1: body.address_line_1 } : {}),
+      ...(typeof body.city === "string" ? { city: body.city } : {}),
+      ...(typeof body.state === "string" ? { state: body.state } : {}),
+      ...(typeof body.postal_code === "string" ? { postal_code: body.postal_code } : {}),
+      ...(typeof body.website === "string" ? { website: normalizeWebsite(body.website) } : {}),
+      ...(typeof body.notes === "string" ? { notes: body.notes } : {}),
+      ...(body.source !== undefined ? { source: typeof body.source === "string" ? body.source : "" } : {}),
+      ...(body.company_id !== undefined
+        ? { company_id: typeof body.company_id === "string" ? body.company_id : "" }
+        : {}),
+    };
+
+    const detailsError = firstContactDetailsError({
+      first_name: merged.first_name,
+      last_name: merged.last_name,
+      email: merged.email,
+      phone: merged.phone,
+      title: merged.title,
+      website: merged.website,
+    });
+    if (detailsError) {
+      return;
+    }
+
+    const response = await fetch("/api/contacts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        first_name: merged.first_name,
+        last_name: merged.last_name,
+        email: merged.email,
+        phone: merged.phone || undefined,
+        phones: merged.phones,
+        linkedin: merged.linkedin || undefined,
+        title: merged.title || undefined,
+        address_line_1: merged.address_line_1 || undefined,
+        city: merged.city || undefined,
+        state: merged.state || undefined,
+        postal_code: merged.postal_code || undefined,
+        website: merged.website || undefined,
+        notes: merged.notes || undefined,
+        source: merged.source || undefined,
+        company_id: merged.company_id || null,
+        company_name:
+          companies.find((company) => company.id === merged.company_id)?.name ||
+          merged.company_name ||
+          undefined,
+      }),
+    });
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+      setError(payload?.error?.message ?? "Failed to save person");
+      return;
+    }
+    const payload = (await response.json()) as { contact: Person };
+    setSelectedId(payload.contact.id);
+    setStatus("Saved.");
+    await load();
+    },
+    [selectedId, editor, companies, load],
+  );
+
+  function personPayloadFromEditor(current: Editor): Record<string, unknown> {
+    return {
+      first_name: current.first_name,
+      last_name: current.last_name,
+      email: current.email,
+      phone: current.phone || undefined,
+      phones: current.phones,
+      linkedin: current.linkedin ? normalizeWebsite(current.linkedin) : undefined,
+      title: current.title || undefined,
+      address_line_1: current.address_line_1 || undefined,
+      city: current.city || undefined,
+      state: current.state || undefined,
+      postal_code: current.postal_code || undefined,
+      website: current.website ? normalizeWebsite(current.website) : undefined,
+      notes: current.notes || undefined,
+      source: current.source || undefined,
+      company_id: current.company_id || null,
+      company_name:
+        companies.find((company) => company.id === current.company_id)?.name ||
+        current.company_name ||
+        undefined,
+    };
+  }
+
+  async function savePersonRecord() {
+    const validationError = firstContactDetailsError({
+      first_name: editor.first_name,
+      last_name: editor.last_name,
+      email: editor.email,
+      phone: editor.phone,
+      title: editor.title,
+      website: editor.website,
+    });
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setStatus("");
+    const payload = personPayloadFromEditor(editor);
+    try {
+      if (selectedId) {
+        const response = await fetch(`/api/contacts/${selectedId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+          setError(body?.error?.message ?? "Failed to save person");
+          return;
+        }
+        await load();
+        setDrawerOpen(false);
+        setError("");
+        setStatus("");
+        return;
+      }
+      const response = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+        setError(body?.error?.message ?? "Failed to save person");
+        return;
+      }
+      await load();
+      setDrawerOpen(false);
+      setError("");
+      setStatus("");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const linkedCompany = companies.find((company) => company.id === editor.company_id);
+
+  const ensureCompanyOption = useCallback((company: CompanySearchResult) => {
+    setCompanies((current) =>
+      current.some((item) => item.id === company.id) ? current : [...current, company],
+    );
+  }, []);
+
+  const commitCompanyAssociation = useCallback(
+    async (name: string, companyId: string) => {
+      const resolved = await resolveCompanyAssociation(name, companyId, {
+        industry: editor.industry || undefined,
+      });
+      if (resolved.company) {
+        ensureCompanyOption(resolved.company);
+      }
+      const nextIndustry = resolved.company?.industry ?? editor.industry;
+      setEditor((current) => ({
+        ...current,
+        company_id: resolved.company_id ?? "",
+        company_name: resolved.company_name ?? "",
+        industry: nextIndustry,
+      }));
+      void savePerson({
+        company_id: resolved.company_id,
+        company_name: resolved.company_name,
+      });
+      if (resolved.company_id && editor.industry.trim() && !resolved.company?.industry) {
+        void fetch(`/api/companies/${resolved.company_id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ industry: editor.industry.trim() }),
+        }).then(async (response) => {
+          if (!response.ok) {
+            return;
+          }
+          setCompanies((current) =>
+            current.map((company) =>
+              company.id === resolved.company_id
+                ? { ...company, industry: editor.industry.trim() }
+                : company,
+            ),
+          );
+        });
+      }
+    },
+    [editor.industry, ensureCompanyOption, savePerson],
+  );
+
+  const commitAddress = useCallback(
+    (address: AddressValues) => {
+      setEditor((current) => ({
+        ...current,
+        address_line_1: address.address_line_1,
+        city: address.city,
+        state: address.state,
+        postal_code: address.postal_code,
+      }));
+      void savePerson({
+        address_line_1: address.address_line_1 || null,
+        city: address.city || null,
+        state: address.state || null,
+        postal_code: address.postal_code || null,
+      });
+    },
+    [savePerson],
+  );
+
+  const commitWebsite = useCallback(
+    (value: string) => {
+      const website = normalizeWebsite(value);
+      setEditor((current) => ({ ...current, website }));
+      void savePerson({ website: website || null });
+    },
+    [savePerson],
+  );
+
+  const commitLinkedIn = useCallback(
+    (value: string) => {
+      const linkedin = normalizeWebsite(value);
+      setEditor((current) => ({ ...current, linkedin }));
+      void savePerson({ linkedin: linkedin || null });
+    },
+    [savePerson],
+  );
+
+  const commitIndustry = useCallback(
+    async (value: string) => {
+      const industry = value.trim();
+      setEditor((current) => ({ ...current, industry }));
+      const companyId = editor.company_id;
+      if (!companyId) {
+        return;
+      }
+      const response = await fetch(`/api/companies/${companyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ industry: industry || null }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        setError(payload?.error?.message ?? "Failed to save industry");
+        return;
+      }
+      setCompanies((current) =>
+        current.map((company) =>
+          company.id === companyId ? { ...company, industry: industry || null } : company,
+        ),
+      );
+      setStatus("Saved.");
+    },
+    [editor.company_id],
+  );
+
+  const sections: DrawerSection[] = useMemo(
+    () => [
+      {
+        id: "contact-details",
+        label: "Contact Details",
+        fields: [
+          {
+            id: "first_name",
+            icon: "person",
+            label: "First name",
+            showLabel: true,
+            value: editor.first_name,
+            placeholder: "First name",
+            onChange: (value) => setEditor((current) => ({ ...current, first_name: value })),
+            validate: (value) => validatePersonName(value, "First name"),
+            onCommit: (value) => void savePerson({ first_name: value }),
+          },
+          {
+            id: "last_name",
+            icon: "person",
+            label: "Last name",
+            showLabel: true,
+            value: editor.last_name,
+            placeholder: "Last name",
+            onChange: (value) => setEditor((current) => ({ ...current, last_name: value })),
+            validate: (value) => validatePersonName(value, "Last name"),
+            onCommit: (value) => void savePerson({ last_name: value }),
+          },
+          {
+            id: "email",
+            icon: "mail",
+            label: "Email",
+            showLabel: false,
+            value: editor.email,
+            placeholder: "Add email",
+            hint: "Work",
+            inputType: "email",
+            onChange: (value) => setEditor((current) => ({ ...current, email: value })),
+            validate: (value) => validateEmail(value),
+            onCommit: (value) => void savePerson({ email: value }),
+          },
+          {
+            id: "phone",
+            icon: "phone",
+            label: "Phone",
+            showLabel: false,
+            type: "phones",
+            value: editor.phone,
+            placeholder: "Add phone",
+            phones: editor.phones,
+            onChange: (value) => setEditor((current) => ({ ...current, phone: value })),
+            onPhonesChange: (phones) =>
+              setEditor((current) => ({
+                ...current,
+                phones,
+                phone: primaryPhoneNumber(phones) ?? "",
+              })),
+            onPhonesCommit: (phones) =>
+              void savePerson({
+                phones,
+                phone: primaryPhoneNumber(phones) ?? "",
+              }),
+          },
+          {
+            id: "linkedin",
+            icon: "linkedin",
+            label: "LinkedIn",
+            showLabel: true,
+            type: "website",
+            value: editor.linkedin,
+            placeholder: "linkedin.com/in/…",
+            onChange: (value) => setEditor((current) => ({ ...current, linkedin: value })),
+            validate: (value) => validateWebsite(value),
+            onCommit: (value) => void commitLinkedIn(value),
+          },
+          {
+            id: "title",
+            icon: "title",
+            label: "Title",
+            showLabel: true,
+            value: editor.title,
+            placeholder: "Title",
+            onChange: (value) => setEditor((current) => ({ ...current, title: value })),
+            validate: (value) => validateTitle(value),
+            onCommit: (value) => void savePerson({ title: value }),
+          },
+        ],
+      },
+      {
+        id: "company",
+        label: "Company",
+        fields: [
+          {
+            id: "company",
+            icon: "company",
+            label: "Company",
+            showLabel: false,
+            type: "company-search",
+            value: editor.company_name || linkedCompany?.name || "",
+            companyId: editor.company_id,
+            placeholder: "Company",
+            onChange: (value) => setEditor((current) => ({ ...current, company_name: value })),
+            onCompanySelect: (company) => {
+              if (company) {
+                ensureCompanyOption(company);
+                setEditor((current) => ({
+                  ...current,
+                  company_id: company.id,
+                  company_name: company.name,
+                  industry: company.industry ?? current.industry,
+                }));
+                return;
+              }
+              setEditor((current) => ({ ...current, company_id: "" }));
+            },
+            onCommit: (value) => void commitCompanyAssociation(value, editor.company_id),
+          },
+          {
+            id: "org_address",
+            icon: "pin",
+            label: "Address",
+            type: "address",
+            value: formatAddressDisplay(editorAddress(editor)),
+            placeholder: "Address",
+            address: editorAddress(editor),
+            onChange: () => undefined,
+            onAddressChange: (address) =>
+              setEditor((current) => ({
+                ...current,
+                address_line_1: address.address_line_1,
+                city: address.city,
+                state: address.state,
+                postal_code: address.postal_code,
+              })),
+            onAddressCommit: (address) => void commitAddress(address),
+          },
+          {
+            id: "org_website",
+            icon: "web",
+            label: "Website",
+            type: "website",
+            value: editor.website,
+            placeholder: "www.example.com",
+            onChange: (value) => setEditor((current) => ({ ...current, website: value })),
+            validate: (value) => validateWebsite(value),
+            onCommit: (value) => void commitWebsite(value),
+          },
+          {
+            id: "org_industry",
+            icon: "industry",
+            label: "Industry",
+            showLabel: true,
+            value: editor.industry,
+            placeholder: "Industry",
+            onChange: (value) => setEditor((current) => ({ ...current, industry: value })),
+            onCommit: (value) => void commitIndustry(value),
+          },
+        ],
+      },
+      {
+        id: "details",
+        label: "Details",
+        fields: [
+          {
+            id: "date_added",
+            icon: "calendar",
+            label: "Date added",
+            showLabel: true,
+            value: selected ? formatGridDate(selected.created_at) : "",
+            placeholder: "Adds when created",
+            readOnly: true,
+            onChange: () => undefined,
+          },
+          {
+            id: "added_by",
+            icon: "person",
+            label: "Added by",
+            showLabel: true,
+            value: selected?.added_by_name || (!selectedId ? currentUserName : ""),
+            placeholder: "Adds when created",
+            readOnly: true,
+            onChange: () => undefined,
+          },
+          {
+            id: "source",
+            icon: "source",
+            label: "Source",
+            showLabel: true,
+            type: "select",
+            value: editor.source,
+            placeholder: "Select source",
+            options: contactSourceOptions(editor.source),
+            onChange: (value) => setEditor((current) => ({ ...current, source: value })),
+            onCommit: (value) => void savePerson({ source: value || null }),
+          },
+        ],
+      },
+    ],
+    [commitAddress, commitCompanyAssociation, commitIndustry, commitLinkedIn, commitWebsite, currentUserName, editor, ensureCompanyOption, linkedCompany, selected, selectedId, savePerson],
+  );
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <h1 className="sr-only">People</h1>
+      <CrmDataGrid
+        storageKey="crm-grid-people-v3"
+        columns={PEOPLE_COLUMNS}
+        rows={people}
+        getRowId={(person) => person.id}
+        emptyLabel="No people yet."
+        recordNoun="person"
+        recordNounPlural="people"
+        search={{
+          value: query,
+          placeholder: "Search people…",
+          onChange: setQuery,
+          onSubmit: () => void load(),
+        }}
+        addLabel="+ Add person"
+        onAdd={openNew}
+        onRowOpen={openPerson}
+        error={error && !drawerOpen ? error : undefined}
+      />
+      <CrmRecordDrawer
+        open={drawerOpen}
+        variant="person"
+        recordKey={selectedId ? `${selectedId}-${selected?.updated_at ?? ""}` : "new-person"}
+        title={displayName}
+        titlePlaceholder="Contact name"
+        onTitleChange={(value) => {
+          setEditor((current) => ({
+            ...current,
+            ...splitContactName(value),
+          }));
+        }}
+        onTitleCommit={(value) => {
+          const names = splitContactName(value);
+          const nameError =
+            validatePersonName(names.first_name, "First name") ??
+            validatePersonName(names.last_name, "Last name");
+          if (nameError) {
+            setError(nameError);
+            return;
+          }
+          void savePerson(names);
+        }}
+        onClose={() => {
+          setDrawerOpen(false);
+          setError("");
+        }}
+        sections={sections}
+        notes={editor.notes}
+        onNotesSave={(value) => {
+          setEditor((current) => ({ ...current, notes: value }));
+          void savePerson({ notes: value });
+        }}
+        onNotesChange={(value) => setEditor((current) => ({ ...current, notes: value }))}
+        crmRecord={
+          selectedId
+            ? {
+                type: "contact",
+                id: selectedId,
+                links: {
+                  contactId: selectedId,
+                  contactName: displayName,
+                  companyId: editor.company_id || undefined,
+                  companyName: linkedCompany?.name || editor.company_name || undefined,
+                },
+              }
+            : undefined
+        }
+        error={drawerOpen ? error : undefined}
+        status={status}
+        footerSave={{
+          label: selectedId ? "Save" : "Save person",
+          saving,
+          onSave: () => void savePersonRecord(),
+          menuActions: selectedId
+            ? [
+                {
+                  id: "delete",
+                  label: "Delete",
+                  onSelect: () => {
+                    void (async () => {
+                      setError("");
+                      const response = await fetch(`/api/contacts/${selectedId}`, { method: "DELETE" });
+                      if (!response.ok) {
+                        const payload = (await response.json().catch(() => null)) as {
+                          error?: { message?: string };
+                        } | null;
+                        setError(
+                          payload?.error?.message || "Unable to Delete Contacts with Active Documents",
+                        );
+                        return;
+                      }
+                      setDrawerOpen(false);
+                      setSelectedId("");
+                      await load();
+                    })();
+                  },
+                },
+              ]
+            : undefined,
+        }}
+      />
+    </div>
+  );
+}

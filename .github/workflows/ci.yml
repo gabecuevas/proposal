@@ -82,8 +82,8 @@ jobs:
           HEAD_SHA="${{ github.sha }}"
           CHANGED="$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")"
           echo "${CHANGED}"
-          if echo "${CHANGED}" | rg -q "^packages/db/prisma/schema.prisma$"; then
-            if ! echo "${CHANGED}" | rg -q "^packages/db/prisma/migrations/.+/migration.sql$"; then
+          if echo "${CHANGED}" | grep -Eq '^packages/db/prisma/schema.prisma$'; then
+            if ! echo "${CHANGED}" | grep -Eq '^packages/db/prisma/migrations/.+/migration.sql$'; then
               echo "Schema changed without a migration.sql file."
               exit 1
             fi
@@ -100,6 +100,18 @@ jobs:
 
       - name: Verify local service connectivity
         run: pnpm doctor
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright Chromium
+        working-directory: apps/web
+        run: pnpm exec playwright install chromium --with-deps
 
       - name: Run quality gates
         run: pnpm ci:quality

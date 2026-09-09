@@ -1,10 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { checkRateLimit } from "@/lib/security/rate-limit";
-import { SESSION_COOKIE_NAME } from "@/lib/auth/session";
+import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
 
 const protectedApiPrefixes = [
   "/api/dashboard",
   "/api/contacts",
+  "/api/leads",
+  "/api/companies",
+  "/api/crm",
   "/api/templates",
   "/api/content-blocks",
   "/api/documents",
@@ -143,8 +146,10 @@ export async function middleware(request: NextRequest) {
     return nextWithRequestId(request, requestId);
   }
 
-  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-  if (!token) {
+  const sessionToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  const session = sessionToken ? await verifySessionToken(sessionToken) : null;
+
+  if (!session) {
     const authorization = request.headers.get("authorization");
     if (pathname.startsWith("/api/") && authorization?.startsWith("Bearer pk_live_")) {
       return nextWithRequestId(request, requestId);
@@ -161,6 +166,9 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith("/api/")) {
       const response = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       response.headers.set("x-request-id", requestId);
+      if (sessionToken) {
+        response.cookies.delete(SESSION_COOKIE_NAME);
+      }
       applySecurityHeaders(response, request);
       return response;
     }
@@ -168,6 +176,9 @@ export async function middleware(request: NextRequest) {
     redirectUrl.searchParams.set("next", pathname);
     const response = NextResponse.redirect(redirectUrl);
     response.headers.set("x-request-id", requestId);
+    if (sessionToken) {
+      response.cookies.delete(SESSION_COOKIE_NAME);
+    }
     applySecurityHeaders(response, request);
     return response;
   }

@@ -1,22 +1,35 @@
 import type { NextRequest } from "next/server";
 import { getNextCursorFromTimestampPage, parseCursorPagination } from "@/lib/api/pagination";
 import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
-import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
-import { createContact, listContacts } from "@/lib/contacts/store";
+import { assertRole } from "@/lib/auth/request-context";
+import { requireRequestAuth } from "@/lib/auth/require-request-auth";
+import { createContact, listContacts, ContactDuplicateError } from "@/lib/contacts/store";
+import { firstContactDetailsError } from "@/lib/crm/contact-field-validation";
+import { parsePhones, primaryPhoneNumber, type PhoneEntry } from "@/lib/crm/phones";
 
 export async function GET(request: NextRequest) {
-  const auth = await getRequestAuthContext(request);
+  const auth = await requireRequestAuth(request);
+  if (auth instanceof Response) {
+    return auth;
+  }
   const pagination = parseCursorPagination(request, 50);
   const url = new URL(request.url);
   const q = url.searchParams.get("q") ?? undefined;
   const tag = url.searchParams.get("tag") ?? undefined;
+  const companyId = url.searchParams.get("companyId") ?? undefined;
   const contacts = await listContacts(auth.workspaceId, {
     limit: pagination.limit + 1,
     before: pagination.before,
     query: q,
     tag,
+    companyId,
+    orderByCreatedAsc: Boolean(companyId),
   });
-  const page = getNextCursorFromTimestampPage(contacts, pagination.limit, (item) => item.updated_at);
+  const page = getNextCursorFromTimestampPage(
+    contacts,
+    pagination.limit,
+    (item) => (companyId ? item.created_at : item.updated_at),
+  );
   return jsonWithRequestId(request, { contacts: page.items, nextCursor: page.nextCursor });
 }
 
@@ -25,6 +38,8 @@ type CreateContactBody = {
   last_name?: string;
   email?: string;
   phone?: string;
+  phones?: PhoneEntry[];
+  linkedin?: string;
   company_name?: string;
   title?: string;
   address_line_1?: string;
@@ -38,17 +53,32 @@ type CreateContactBody = {
   custom_fields_json?: Record<string, unknown>;
   tags?: string[];
   color_label?: string;
+  company_id?: string;
+  source?: string;
 };
 
 export async function POST(request: NextRequest) {
-  const auth = await getRequestAuthContext(request);
+  const auth = await requireRequestAuth(request);
+  if (auth instanceof Response) {
+    return auth;
+  }
   assertRole(auth, "MEMBER");
   const body = (await request.json()) as CreateContactBody;
-  if (!body.first_name?.trim() || !body.last_name?.trim() || !body.email?.trim()) {
+  const phones = Array.isArray(body.phones) ? parsePhones(body.phones) : undefined;
+  const phone = phones !== undefined ? (primaryPhoneNumber(phones) ?? "") : body.phone;
+  const validationMessage = firstContactDetailsError({
+    first_name: body.first_name ?? "",
+    last_name: body.last_name ?? "",
+    email: body.email ?? "",
+    phone,
+    title: body.title,
+    website: body.website,
+  });
+  if (validationMessage) {
     return errorResponse(request, {
       status: 400,
       code: "validation_error",
-      message: "first_name, last_name, and email are required",
+      message: validationMessage,
     });
   }
 
@@ -56,10 +86,12 @@ export async function POST(request: NextRequest) {
     const contact = await createContact({
       workspaceId: auth.workspaceId,
       ownerUserId: auth.userId,
-      first_name: body.first_name,
-      last_name: body.last_name,
-      email: body.email,
-      phone: body.phone,
+      first_name: body.first_name!.trim(),
+      last_name: body.last_name!.trim(),
+      email: body.email!.trim(),
+      phone,
+      phones,
+      linkedin: body.linkedin,
       company_name: body.company_name,
       title: body.title,
       address_line_1: body.address_line_1,
@@ -73,13 +105,22 @@ export async function POST(request: NextRequest) {
       custom_fields_json: body.custom_fields_json,
       tags: body.tags,
       color_label: body.color_label,
+      company_id: body.company_id,
+      source: body.source,
     });
     return jsonWithRequestId(request, { contact }, { status: 201 });
-  } catch {
+  } catch (error) {
+    if (error instanceof ContactDuplicateError) {
+      return errorResponse(request, {
+        status: 409,
+        code: "contact_duplicate",
+        message: error.message,
+      });
+    }
     return errorResponse(request, {
       status: 500,
       code: "contact_create_failed",
-      message: "Failed to create contact",
+      message: error instanceof Error ? error.message : "Failed to create contact",
     });
   }
 }

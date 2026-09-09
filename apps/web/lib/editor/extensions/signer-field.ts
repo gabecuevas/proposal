@@ -1,11 +1,22 @@
-import { Node } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
+import { Plugin } from "@tiptap/pm/state";
+
+function isFieldFormControl(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return Boolean(
+    target.closest("input, textarea, select, button, [data-field-settings], [data-assign-pill]"),
+  );
+}
 
 export const SignerField = Node.create({
   name: "signerField",
-  inline: true,
+  // Only valid inside fieldOverlay / fieldCanvas — never a top-level flow block.
+  group: "",
   atom: true,
-  group: "inline",
   selectable: true,
+  draggable: false,
 
   addAttributes() {
     return {
@@ -13,23 +24,51 @@ export const SignerField = Node.create({
       recipientId: { default: "" },
       type: { default: "signature" },
       required: { default: true },
+      label: { default: "" },
+      placeholder: { default: "" },
+      defaultValue: { default: "" },
+      dropdownOptions: { default: "[]" },
+      xPct: { default: 0.04 },
+      yPct: { default: 0.04 },
+      wPct: { default: 0.38 },
+      hPct: { default: 0.09 },
+      page: { default: 0 },
+      multiline: { default: false },
+      validation: { default: "none" },
+      mergeField: { default: "" },
+      maskValue: { default: false },
     };
   },
 
   parseHTML() {
-    return [{ tag: "span[data-signer-field-id]" }];
+    return [{ tag: 'div[data-node-type="signerField"]' }];
   },
 
   renderHTML({ HTMLAttributes }) {
-    const type = String(HTMLAttributes.type ?? "signature");
     return [
-      "span",
-      {
-        ...HTMLAttributes,
-        "data-signer-field-id": HTMLAttributes.fieldId,
-        class: "signer-field rounded border border-primary/40 bg-surface px-2 py-1 text-xs text-primary",
-      },
-      `Signer ${type}`,
+      "div",
+      mergeAttributes(HTMLAttributes, {
+        "data-node-type": "signerField",
+        "data-signer-field-id": String(HTMLAttributes.fieldId ?? ""),
+        class: "signer-field-node",
+      }),
+    ];
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        props: {
+          handleDOMEvents: {
+            mousedown(_view, event) {
+              return isFieldFormControl(event.target);
+            },
+            pointerdown(_view, event) {
+              return isFieldFormControl(event.target);
+            },
+          },
+        },
+      }),
     ];
   },
 });

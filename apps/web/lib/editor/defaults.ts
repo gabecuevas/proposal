@@ -1,18 +1,10 @@
 import type { EditorDoc, PricingModel, VariableRegistry } from "./types";
 
+/** Blank sheet. Tiptap requires at least one block; the empty paragraph is a
+ *  scaffold so hover can show the + insert control, not a starter element. */
 export const defaultEditorDoc: EditorDoc = {
   type: "doc",
-  content: [
-    {
-      type: "heading",
-      attrs: { level: 1 },
-      content: [{ type: "text", text: "Proposal Title" }],
-    },
-    {
-      type: "paragraph",
-      content: [{ type: "text", text: "Start writing your proposal..." }],
-    },
-  ],
+  content: [{ type: "paragraph" }],
 };
 
 export const defaultVariableRegistry: VariableRegistry = {

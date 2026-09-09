@@ -12,7 +12,7 @@ export default function SecurityPage() {
       <p className="text-sm font-semibold uppercase tracking-[0.16em] text-primary">Security</p>
       <h1 className="mt-3 text-4xl font-semibold">Enterprise controls from day one</h1>
       <p className="mt-4 text-muted">
-        DoxySign is designed with operational controls for document governance, secure API usage,
+        SendDox is designed with operational controls for document governance, secure API usage,
         and verifiable auditability.
       </p>
       <ul className="mt-8 space-y-3">

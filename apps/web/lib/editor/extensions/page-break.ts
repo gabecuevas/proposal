@@ -11,6 +11,6 @@ export const PageBreak = Node.create({
   },
 
   renderHTML() {
-    return ["div", { "data-page-break": "true", class: "my-6 border-t border-dashed border-border" }];
+    return ["div", { "data-page-break": "true", "data-node-type": "pageBreak", class: "page-break" }];
   },
 });

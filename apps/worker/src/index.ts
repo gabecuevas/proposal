@@ -39,9 +39,9 @@ async function renderPdfBuffer(html: string): Promise<Buffer> {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle" });
     const pdf = await page.pdf({
-      format: "A4",
       printBackground: true,
       preferCSSPageSize: true,
+      margin: { top: "0", right: "0", bottom: "0", left: "0" },
     });
     return Buffer.from(pdf);
   } finally {
@@ -231,6 +231,46 @@ function createWorkerProbeServer(input: {
           now: new Date().toISOString(),
         }),
       );
+      return;
+    }
+    if (request.method === "POST" && requestUrl.pathname === "/pdf/render") {
+      const expectedSecret = process.env.WORKER_PDF_RENDER_SECRET?.trim();
+      if (expectedSecret) {
+        const auth = request.headers.authorization ?? "";
+        if (auth !== `Bearer ${expectedSecret}`) {
+          response.statusCode = 401;
+          response.setHeader("content-type", "application/json");
+          response.end(JSON.stringify({ error: "Unauthorized" }));
+          return;
+        }
+      }
+      try {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        const raw = Buffer.concat(chunks).toString("utf8");
+        const payload = JSON.parse(raw) as { html?: unknown };
+        if (typeof payload.html !== "string" || !payload.html.trim()) {
+          response.statusCode = 400;
+          response.setHeader("content-type", "application/json");
+          response.end(JSON.stringify({ error: "html is required" }));
+          return;
+        }
+        const pdf = await renderPdfBuffer(payload.html);
+        response.statusCode = 200;
+        response.setHeader("content-type", "application/pdf");
+        response.setHeader("content-length", String(pdf.byteLength));
+        response.end(pdf);
+      } catch (error) {
+        response.statusCode = 500;
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            error: error instanceof Error ? error.message : "PDF render failed",
+          }),
+        );
+      }
       return;
     }
     response.statusCode = 404;

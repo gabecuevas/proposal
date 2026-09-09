@@ -1,7 +1,7 @@
 import { prisma } from "@repo/db";
 import type { InputJsonValue } from "@repo/db";
 import { calculateQuoteTotals } from "../editor/quote";
-import { getDocument } from "../editor/document-store";
+import { getDocument, resolveAuthoritativeContent } from "../editor/document-store";
 import { getPublicAppUrl, getStripeClient } from "./stripe";
 
 export function toMinorUnits(amount: number): number {
@@ -21,13 +21,14 @@ export async function createDocumentCheckoutSession(input: {
     throw new Error("Document must be signed before creating checkout session");
   }
 
-  const totals = calculateQuoteTotals(document.pricing_json);
+  const authoritative = await resolveAuthoritativeContent(document, input.workspaceId);
+  const totals = calculateQuoteTotals(authoritative.pricing_json);
   const amountMinor = toMinorUnits(totals.totalDueNow);
   if (amountMinor <= 0) {
     throw new Error("Document total must be greater than zero");
   }
 
-  const currency = document.pricing_json.currency?.toLowerCase() || "usd";
+  const currency = authoritative.pricing_json.currency?.toLowerCase() || "usd";
   const baseUrl = getPublicAppUrl();
   const stripe = getStripeClient();
   const session = await stripe.checkout.sessions.create({

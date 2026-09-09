@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export default function NewTemplatePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const folderId = searchParams.get("folderId");
   const [status, setStatus] = useState<"idle" | "creating" | "error">("idle");
 
   async function create() {
@@ -12,7 +14,10 @@ export default function NewTemplatePage() {
     const response = await fetch("/api/templates", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Untitled Template" }),
+      body: JSON.stringify({
+        name: "Untitled Template",
+        folder_id: folderId || null,
+      }),
     });
 
     if (!response.ok) {

@@ -1,6 +1,6 @@
-# Proposal Monorepo
+# SendDox Monorepo
 
-Full-stack SaaS proposal/document platform with templates, editor JSON model, signing flow, PDF finalization, API keys, webhooks, and audit endpoints.
+Full-stack SaaS document platform with templates, editor JSON model, signing flow, PDF finalization, API keys, webhooks, and audit endpoints.
 
 ## Monorepo Structure
 

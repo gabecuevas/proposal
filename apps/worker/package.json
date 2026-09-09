@@ -16,7 +16,7 @@
     "@repo/shared": "workspace:*",
     "bullmq": "^5.63.0",
     "playwright": "^1.55.0",
-    "undici": "^7.24.0"
+    "undici": "^8.10.2"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",

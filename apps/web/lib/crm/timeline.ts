@@ -1,0 +1,441 @@
+import { prisma, type CrmTimelineEventType } from "@repo/db";
+import { formatAddressDisplay } from "./address";
+import { userDisplayName } from "./display-name";
+import { coercePhonesHistoryValue, formatPhonesHistory, parsePhones } from "./phones";
+
+export type CrmRecordRef = {
+  contactId?: string | null;
+  leadId?: string | null;
+  companyId?: string | null;
+};
+
+export type TimelineItem = {
+  id: string;
+  event_type: CrmTimelineEventType;
+  summary: string;
+  field_key: string | null;
+  field_label: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  actor_user_id: string | null;
+  actor_name: string | null;
+  activity_id: string | null;
+  created_at: string;
+};
+
+export type FieldChange = {
+  fieldKey: string;
+  fieldLabel: string;
+  oldValue: string;
+  newValue: string;
+  summary: string;
+};
+
+/** Stored as separate DB columns for merge fields; shown as one History entry. */
+export const ADDRESS_FIELD_KEYS = [
+  "address_line_1",
+  "address_line_2",
+  "city",
+  "state",
+  "postal_code",
+  "country",
+] as const;
+
+const ADDRESS_FIELD_KEY_SET = new Set<string>(ADDRESS_FIELD_KEYS);
+const PHONE_FIELD_KEYS = new Set(["phone", "phones"]);
+
+function normalizeValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.join(", ");
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+export function formatFieldChangeSummary(label: string, oldValue: string, newValue: string): string {
+  if (!oldValue && newValue) {
+    return `${label} added`;
+  }
+  if (oldValue && !newValue) {
+    return `${label} removed`;
+  }
+  return `${label} changed`;
+}
+
+function addressFromRecord(record: Record<string, unknown>): string {
+  return formatAddressDisplay({
+    address_line_1: normalizeValue(record.address_line_1),
+    city: normalizeValue(record.city),
+    state: normalizeValue(record.state),
+    postal_code: normalizeValue(record.postal_code),
+  });
+}
+
+function phonesFromRecord(record: Record<string, unknown>): string {
+  const phonesRaw = record.phones;
+  if (typeof phonesRaw === "string" && phonesRaw.trim()) {
+    return coercePhonesHistoryValue(phonesRaw);
+  }
+  if (Array.isArray(phonesRaw) || (phonesRaw && typeof phonesRaw === "object")) {
+    return formatPhonesHistory(parsePhones(phonesRaw, normalizeValue(record.phone) || null));
+  }
+  const phone = normalizeValue(record.phone);
+  return phone ? formatPhonesHistory(parsePhones(null, phone)) : "";
+}
+
+function isAddressFieldKey(fieldKey: string | null | undefined): boolean {
+  return Boolean(fieldKey && (fieldKey === "address" || ADDRESS_FIELD_KEY_SET.has(fieldKey)));
+}
+
+function isPhoneFieldKey(fieldKey: string | null | undefined): boolean {
+  return Boolean(fieldKey && (fieldKey === "phone" || fieldKey === "phones"));
+}
+
+export function diffTrackedFields(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  labels: Record<string, string>,
+): FieldChange[] {
+  const changes: FieldChange[] = [];
+  let addressChanged = false;
+  let phoneChanged = false;
+
+  for (const fieldKey of Object.keys(labels)) {
+    if (!(fieldKey in after)) {
+      continue;
+    }
+    const oldValue = normalizeValue(before[fieldKey]);
+    const newValue = normalizeValue(after[fieldKey]);
+    if (oldValue === newValue) {
+      continue;
+    }
+    if (ADDRESS_FIELD_KEY_SET.has(fieldKey)) {
+      addressChanged = true;
+      continue;
+    }
+    if (PHONE_FIELD_KEYS.has(fieldKey)) {
+      phoneChanged = true;
+      continue;
+    }
+    const fieldLabel = labels[fieldKey] ?? fieldKey;
+    changes.push({
+      fieldKey,
+      fieldLabel,
+      oldValue,
+      newValue,
+      summary: formatFieldChangeSummary(fieldLabel, oldValue, newValue),
+    });
+  }
+
+  if (addressChanged) {
+    const oldValue = addressFromRecord(before);
+    const newValue = addressFromRecord(after);
+    if (oldValue !== newValue) {
+      changes.push({
+        fieldKey: "address",
+        fieldLabel: "Address",
+        oldValue,
+        newValue,
+        summary: formatFieldChangeSummary("Address", oldValue, newValue),
+      });
+    }
+  }
+
+  if (phoneChanged) {
+    const oldValue = phonesFromRecord(before);
+    const newValue = phonesFromRecord(after);
+    if (oldValue !== newValue) {
+      changes.push({
+        fieldKey: "phones",
+        fieldLabel: "Phone",
+        oldValue,
+        newValue,
+        summary: formatFieldChangeSummary("Phone", oldValue, newValue),
+      });
+    }
+  }
+
+  return changes;
+}
+
+type WriteTimelineInput = CrmRecordRef & {
+  workspaceId: string;
+  actorUserId: string;
+  eventType: CrmTimelineEventType;
+  summary: string;
+  fieldKey?: string;
+  fieldLabel?: string;
+  oldValue?: string;
+  newValue?: string;
+  activityId?: string;
+};
+
+export async function writeTimelineEvent(input: WriteTimelineInput): Promise<void> {
+  await prisma.crmTimelineEvent.create({
+    data: {
+      workspace_id: input.workspaceId,
+      actor_user_id: input.actorUserId,
+      contact_id: input.contactId || null,
+      lead_id: input.leadId || null,
+      company_id: input.companyId || null,
+      activity_id: input.activityId || null,
+      event_type: input.eventType,
+      field_key: input.fieldKey || null,
+      field_label: input.fieldLabel || null,
+      old_value: input.oldValue ?? null,
+      new_value: input.newValue ?? null,
+      summary: input.summary,
+    },
+  });
+
+  if (input.contactId) {
+    await prisma.contact.update({
+      where: { id: input.contactId },
+      data: { last_activity_at: new Date() },
+    });
+  }
+}
+
+export async function recordFieldChanges(input: {
+  workspaceId: string;
+  actorUserId: string;
+  record: CrmRecordRef;
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+  labels: Record<string, string>;
+}): Promise<void> {
+  const changes = diffTrackedFields(input.before, input.after, input.labels);
+  if (changes.length === 0) {
+    return;
+  }
+  await prisma.$transaction(
+    changes.map((change) =>
+      prisma.crmTimelineEvent.create({
+        data: {
+          workspace_id: input.workspaceId,
+          actor_user_id: input.actorUserId,
+          contact_id: input.record.contactId || null,
+          lead_id: input.record.leadId || null,
+          company_id: input.record.companyId || null,
+          event_type: change.fieldKey === "notes" ? "NOTE_SAVED" : "FIELD_CHANGED",
+          field_key: change.fieldKey,
+          field_label: change.fieldLabel,
+          old_value: change.oldValue || null,
+          new_value: change.newValue || null,
+          summary: change.summary,
+        },
+      }),
+    ),
+  );
+
+  if (input.record.contactId) {
+    await prisma.contact.update({
+      where: { id: input.record.contactId },
+      data: { last_activity_at: new Date() },
+    });
+  }
+}
+
+export async function recordRecordCreated(input: {
+  workspaceId: string;
+  actorUserId: string;
+  record: CrmRecordRef;
+  summary: string;
+}): Promise<void> {
+  await writeTimelineEvent({
+    workspaceId: input.workspaceId,
+    actorUserId: input.actorUserId,
+    contactId: input.record.contactId,
+    leadId: input.record.leadId,
+    companyId: input.record.companyId,
+    eventType: "RECORD_CREATED",
+    summary: input.summary,
+  });
+}
+
+export async function listTimeline(
+  workspaceId: string,
+  record: CrmRecordRef,
+  options?: { limit?: number },
+): Promise<TimelineItem[]> {
+  const limit = options?.limit ?? 100;
+  const rows = await prisma.crmTimelineEvent.findMany({
+    where: {
+      workspace_id: workspaceId,
+      contact_id: record.contactId || undefined,
+      lead_id: record.leadId || undefined,
+      company_id: record.companyId || undefined,
+    },
+    orderBy: [{ created_at: "desc" }, { id: "desc" }],
+    take: limit,
+    include: {
+      actor: { select: { name: true, email: true } },
+    },
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    event_type: row.event_type,
+    summary: row.summary,
+    field_key: row.field_key,
+    field_label: row.field_label,
+    old_value: row.old_value,
+    new_value: row.new_value,
+    actor_user_id: row.actor_user_id,
+    actor_name: userDisplayName(row.actor),
+    activity_id: row.activity_id,
+    created_at: row.created_at.toISOString(),
+  }));
+}
+
+export function timelineToDrawerHistory(items: TimelineItem[]): Array<{
+  id: string;
+  title: string;
+  at: string;
+  detail?: string;
+  kind?: "note" | "created" | "change" | "activity";
+  actorName?: string;
+  fieldKey?: string | null;
+}> {
+  const consolidated = consolidateAddressTimelineItems(items);
+
+  return consolidated.map((item) => {
+    let kind: "note" | "created" | "change" | "activity" | undefined;
+    if (item.event_type === "RECORD_CREATED") {
+      kind = "created";
+    } else if (item.event_type === "NOTE_SAVED") {
+      kind = "note";
+    } else if (item.event_type === "FIELD_CHANGED") {
+      kind = "change";
+    } else if (
+      item.event_type === "ACTIVITY_CREATED" ||
+      item.event_type === "ACTIVITY_UPDATED" ||
+      item.event_type === "ACTIVITY_COMPLETED" ||
+      item.event_type === "ACTIVITY_DELETED"
+    ) {
+      kind = "activity";
+    }
+
+    const oldValue = isPhoneFieldKey(item.field_key)
+      ? coercePhonesHistoryValue(item.old_value)
+      : item.old_value;
+    const newValue = isPhoneFieldKey(item.field_key)
+      ? coercePhonesHistoryValue(item.new_value)
+      : item.new_value;
+
+    const detail =
+      newValue && item.event_type === "NOTE_SAVED"
+        ? newValue
+        : oldValue || newValue
+          ? oldValue && newValue && oldValue !== newValue
+            ? `${oldValue} → ${newValue}`
+            : newValue || oldValue || undefined
+          : undefined;
+
+    const title =
+      isPhoneFieldKey(item.field_key) && item.summary.includes("Phone numbers")
+        ? item.summary.replace("Phone numbers", "Phone")
+        : item.summary;
+
+    return {
+      id: item.id,
+      title,
+      at: item.created_at,
+      detail: detail || undefined,
+      kind,
+      actorName: item.actor_name ?? undefined,
+      fieldKey: item.field_key,
+    };
+  });
+}
+
+function eventSecond(iso: string): string {
+  return iso.slice(0, 19);
+}
+
+function consolidateAddressTimelineItems(items: TimelineItem[]): TimelineItem[] {
+  const result: TimelineItem[] = [];
+  let index = 0;
+
+  while (index < items.length) {
+    const item = items[index]!;
+    const isAddressChange =
+      item.event_type === "FIELD_CHANGED" && isAddressFieldKey(item.field_key);
+
+    if (!isAddressChange) {
+      result.push(item);
+      index += 1;
+      continue;
+    }
+
+    const group: TimelineItem[] = [item];
+    let cursor = index + 1;
+    while (cursor < items.length) {
+      const next = items[cursor]!;
+      const sameBurst =
+        next.event_type === "FIELD_CHANGED" &&
+        isAddressFieldKey(next.field_key) &&
+        next.actor_user_id === item.actor_user_id &&
+        eventSecond(next.created_at) === eventSecond(item.created_at);
+      if (!sameBurst) {
+        break;
+      }
+      group.push(next);
+      cursor += 1;
+    }
+
+    if (group.length === 1 && item.field_key === "address") {
+      result.push(item);
+    } else {
+      result.push(mergeAddressTimelineGroup(group));
+    }
+    index = cursor;
+  }
+
+  return result;
+}
+
+function mergeAddressTimelineGroup(group: TimelineItem[]): TimelineItem {
+  if (group.length === 1 && group[0]!.field_key === "address") {
+    return group[0]!;
+  }
+
+  const byKey = new Map(group.map((item) => [item.field_key ?? "", item]));
+  const oldParts: Record<string, string> = {};
+  const newParts: Record<string, string> = {};
+  for (const key of ADDRESS_FIELD_KEYS) {
+    const match = byKey.get(key);
+    if (!match) {
+      continue;
+    }
+    oldParts[key] = match.old_value ?? "";
+    newParts[key] = match.new_value ?? "";
+  }
+
+  // Prefer an already-consolidated address event if present in the burst.
+  const consolidated = group.find((item) => item.field_key === "address");
+  const oldValue = consolidated?.old_value ?? addressFromRecord(oldParts);
+  const newValue = consolidated?.new_value ?? addressFromRecord(newParts);
+  const first = group[0]!;
+
+  return {
+    ...first,
+    id: first.id,
+    field_key: "address",
+    field_label: "Address",
+    old_value: oldValue || null,
+    new_value: newValue || null,
+    summary: formatFieldChangeSummary("Address", oldValue, newValue),
+  };
+}

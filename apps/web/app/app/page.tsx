@@ -1,522 +1,325 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { BarChartPanel } from "@/components/dashboard/bar-chart";
+import { WorkspaceTools } from "@/components/dashboard/workspace-tools";
+import { SheetTable, sheetTd, sheetTh, sheetTr } from "@/components/ui/sheet-table";
+import { buildSampleOverview } from "@/lib/dashboard/sample-data";
+import type { DashboardActivityKind, DashboardOverview } from "@/lib/dashboard/types";
 
-type DocumentSummary = {
-  id: string;
-  status: string;
-  created_at: string;
-  updated_at: string;
+const SAMPLE_DISMISSED_KEY = "senddox.dashboard.sampleDismissed";
+
+const emptyOverview: DashboardOverview = {
+  currency: "USD",
+  totals: {
+    inProgress: { count: 0, value: 0 },
+    accepted: { count: 0, value: 0 },
+    declined: { count: 0, value: 0 },
+  },
+  series: { deliveries: [], views: [] },
+  activity: [],
+  teamMemberCount: 0,
 };
 
-type ActivityEvent = {
-  id: string;
-  event_type: string;
-  created_at: string;
+function IconBolt({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z" />
+    </svg>
+  );
+}
+
+function IconCheck({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M4 12.5l5 5L20 6.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconCross({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconSend({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M21 3L2 10.5l7 2.5 2.5 7L21 3z" />
+    </svg>
+  );
+}
+
+function IconEye({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="12" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+function IconActivity({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M4 18a14 14 0 0114 14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" transform="translate(0 -10)" />
+      <path d="M4 13a9 9 0 019 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M4 7a15 15 0 0115 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="5" cy="19" r="1.6" fill="currentColor" />
+    </svg>
+  );
+}
+
+function formatMoney(value: number, currency: string): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatTimestamp(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+const activityBadgeClass: Record<DashboardActivityKind, string> = {
+  View: "bg-sky-100 text-sky-700",
+  Sent: "bg-indigo-100 text-indigo-700",
+  Signed: "bg-emerald-100 text-emerald-700",
+  Paid: "bg-emerald-100 text-emerald-700",
+  Comment: "bg-amber-100 text-amber-800",
+  Approval: "bg-violet-100 text-violet-700",
+  Event: "bg-slate-100 text-slate-600",
 };
 
-type ApprovalSummary = {
-  discountPercent: number;
-  thresholdPercent: number;
-  approvalRequired: boolean;
-  canSend: boolean;
-};
+function IconComment({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M4 5h16v11H10l-4 3v-3H4V5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
-type ApprovalRecord = {
-  id: string;
-  status: "PENDING" | "APPROVED" | "REJECTED";
-  created_at: string;
-  decided_at: string | null;
-  requested_reason: string | null;
-  decided_reason: string | null;
-};
+function IconDot({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <circle cx="12" cy="12" r="4" />
+    </svg>
+  );
+}
 
-type PaymentRecord = {
-  id: string;
-  provider: string;
-  status: string;
-  amount_minor: number;
-  currency: string;
-  checkout_url: string | null;
-  paid_at: string | null;
-  created_at: string;
-};
-
-type DashboardSummary = {
-  counts: Record<string, number>;
-  recentDocuments: DocumentSummary[];
-  recentActivity: Array<{
-    id: string;
-    document_id: string;
-    event_type: string;
-    created_at: string;
-  }>;
-};
+function activityIcon(kind: DashboardActivityKind) {
+  switch (kind) {
+    case "View":
+      return <IconEye className="h-3 w-3" />;
+    case "Sent":
+      return <IconSend className="h-3 w-3" />;
+    case "Signed":
+    case "Paid":
+    case "Approval":
+      return <IconCheck />;
+    case "Comment":
+      return <IconComment />;
+    default:
+      return <IconDot />;
+  }
+}
 
 export default function AppHomePage() {
-  const searchParams = useSearchParams();
-  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
-  const [selectedDocumentId, setSelectedDocumentId] = useState<string>("");
-  const [events, setEvents] = useState<ActivityEvent[]>([]);
-  const [comment, setComment] = useState("");
-  const [approvalSummary, setApprovalSummary] = useState<ApprovalSummary | null>(null);
-  const [latestApproval, setLatestApproval] = useState<ApprovalRecord | null>(null);
-  const [status, setStatus] = useState("");
-  const [error, setError] = useState("");
-  const [payments, setPayments] = useState<PaymentRecord[]>([]);
-  const [creatingProposal, setCreatingProposal] = useState(false);
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [realOverview, setRealOverview] = useState<DashboardOverview | null>(null);
+  const [showSample, setShowSample] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  const statusFilter = searchParams.get("status")?.toUpperCase() ?? "";
-
-  async function reloadDocuments() {
-    const response = await fetch("/api/documents");
-    if (!response.ok) {
-      return;
-    }
-    const payload = (await response.json()) as { documents: DocumentSummary[] };
-    setDocuments(payload.documents);
-    setSelectedDocumentId((current) => current || payload.documents[0]?.id || "");
-  }
-
-  async function reloadSummary() {
-    const response = await fetch("/api/dashboard/summary");
-    if (!response.ok) {
-      return;
-    }
-    const payload = (await response.json()) as DashboardSummary;
-    setSummary(payload);
-  }
-
-  async function reloadActivity(documentId: string) {
-    if (!documentId) {
-      setEvents([]);
-      return;
-    }
-
-    const response = await fetch(`/api/documents/${documentId}/activity`);
-    if (!response.ok) {
-      return;
-    }
-    const payload = (await response.json()) as { events: ActivityEvent[] };
-    setEvents(payload.events);
-  }
-
-  async function sendSelectedDocument() {
-    setStatus("");
-    setError("");
-    if (!selectedDocumentId) {
-      return;
-    }
-    const response = await fetch(`/api/documents/${selectedDocumentId}/send`, { method: "POST" });
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as
-        | { error?: { message?: string } }
-        | null;
-      setError(payload?.error?.message ?? "Failed to send document.");
-      return;
-    }
-    setStatus("Document sent.");
-    await reloadDocuments();
-    await reloadSummary();
-    await reloadActivity(selectedDocumentId);
-    await reloadApproval(selectedDocumentId);
-  }
-
-  async function commentSelectedDocument() {
-    if (!selectedDocumentId || !comment.trim()) {
-      return;
-    }
-    await fetch(`/api/documents/${selectedDocumentId}/comments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: comment.trim() }),
-    });
-    setComment("");
-    await reloadDocuments();
-    await reloadSummary();
-    await reloadActivity(selectedDocumentId);
-  }
-
-  async function reloadApproval(documentId: string) {
-    if (!documentId) {
-      setApprovalSummary(null);
-      setLatestApproval(null);
-      return;
-    }
-    const response = await fetch(`/api/documents/${documentId}/approval`);
-    if (!response.ok) {
-      setApprovalSummary(null);
-      setLatestApproval(null);
-      return;
-    }
-    const payload = (await response.json()) as {
-      summary: ApprovalSummary;
-      approval: ApprovalRecord | null;
-    };
-    setApprovalSummary(payload.summary);
-    setLatestApproval(payload.approval);
-  }
-
-  async function reloadPayments(documentId: string) {
-    if (!documentId) {
-      setPayments([]);
-      return;
-    }
-    const response = await fetch(`/api/documents/${documentId}/payments`);
-    if (!response.ok) {
-      setPayments([]);
-      return;
-    }
-    const payload = (await response.json()) as { payments: PaymentRecord[] };
-    setPayments(payload.payments);
-  }
-
-  async function requestApproval() {
-    setStatus("");
-    setError("");
-    if (!selectedDocumentId) {
-      return;
-    }
-    const reason = window.prompt("Reason for approval request (optional)") ?? "";
-    const response = await fetch(`/api/documents/${selectedDocumentId}/approval`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason }),
-    });
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
-      setError(payload?.error?.message ?? "Failed to request approval.");
-      return;
-    }
-    setStatus("Approval requested.");
-    await reloadSummary();
-    await reloadApproval(selectedDocumentId);
-    await reloadActivity(selectedDocumentId);
-  }
-
-  async function decideApproval(decision: "APPROVED" | "REJECTED") {
-    setStatus("");
-    setError("");
-    if (!selectedDocumentId) {
-      return;
-    }
-    const reason = window.prompt(`Reason for ${decision.toLowerCase()} decision (optional)`) ?? "";
-    const response = await fetch(`/api/documents/${selectedDocumentId}/approval/decision`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ decision, reason }),
-    });
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
-      setError(payload?.error?.message ?? "Failed to update approval.");
-      return;
-    }
-    setStatus(`Approval ${decision.toLowerCase()}.`);
-    await reloadSummary();
-    await reloadApproval(selectedDocumentId);
-    await reloadActivity(selectedDocumentId);
-  }
-
-  async function createCheckoutSession() {
-    setStatus("");
-    setError("");
-    if (!selectedDocumentId) {
-      return;
-    }
-    const response = await fetch(`/api/documents/${selectedDocumentId}/checkout-session`, {
-      method: "POST",
-    });
-    const payload = (await response.json().catch(() => null)) as
-      | { session?: { checkoutUrl?: string }; error?: { message?: string } }
-      | null;
-    if (!response.ok) {
-      setError(payload?.error?.message ?? "Failed to create checkout session.");
-      return;
-    }
-    const checkoutUrl = payload?.session?.checkoutUrl;
-    if (checkoutUrl) {
-      window.open(checkoutUrl, "_blank", "noopener,noreferrer");
-      setStatus("Checkout session created. Opened in new tab.");
-    } else {
-      setStatus("Checkout session created.");
-    }
-    await reloadPayments(selectedDocumentId);
-    await reloadActivity(selectedDocumentId);
-    await reloadDocuments();
-    await reloadSummary();
-  }
-
-  async function createProposalForDemo() {
-    setStatus("");
-    setError("");
-    setCreatingProposal(true);
-
-    try {
-      const templatesResponse = await fetch("/api/templates?limit=1");
-      let templateId = "";
-
-      if (templatesResponse.ok) {
-        const templatesPayload = (await templatesResponse.json()) as {
-          templates?: Array<{ id: string }>;
-        };
-        templateId = templatesPayload.templates?.[0]?.id ?? "";
-      }
-
-      if (!templateId) {
-        const createTemplateResponse = await fetch("/api/templates", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: "First Proposal Template" }),
-        });
-        if (!createTemplateResponse.ok) {
-          const payload = (await createTemplateResponse.json().catch(() => null)) as
-            | { error?: { message?: string } }
-            | null;
-          setError(payload?.error?.message ?? "Could not create template for proposal.");
-          return;
-        }
-        const templatePayload = (await createTemplateResponse.json()) as {
-          template?: { id: string };
-        };
-        templateId = templatePayload.template?.id ?? "";
-      }
-
-      if (!templateId) {
-        setError("No template available to create a proposal.");
-        return;
-      }
-
-      const createDocumentResponse = await fetch("/api/documents/from-template", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ templateId }),
-      });
-      if (!createDocumentResponse.ok) {
-        const payload = (await createDocumentResponse.json().catch(() => null)) as
-          | { error?: { message?: string } }
-          | null;
-        setError(payload?.error?.message ?? "Failed to create proposal.");
-        return;
-      }
-
-      const documentPayload = (await createDocumentResponse.json()) as {
-        document?: { id: string };
-      };
-      const nextDocumentId = documentPayload.document?.id ?? "";
-      if (nextDocumentId) {
-        setSelectedDocumentId(nextDocumentId);
-      }
-
-      setStatus("New proposal created from template.");
-      await reloadDocuments();
-      await reloadSummary();
-      if (nextDocumentId) {
-        await reloadActivity(nextDocumentId);
-        await reloadApproval(nextDocumentId);
-        await reloadPayments(nextDocumentId);
-      }
-    } finally {
-      setCreatingProposal(false);
-    }
-  }
+  const sampleOverview = useMemo(() => (mounted ? buildSampleOverview() : null), [mounted]);
 
   useEffect(() => {
-    void reloadDocuments();
-    void reloadSummary();
+    setMounted(true);
+    setShowSample(window.localStorage.getItem(SAMPLE_DISMISSED_KEY) !== "1");
+
+    let cancelled = false;
+    async function load() {
+      const response = await fetch("/api/dashboard/overview");
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as { overview: DashboardOverview };
+      if (!cancelled) {
+        setRealOverview(payload.overview);
+      }
+    }
+    void load().catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  useEffect(() => {
-    void reloadActivity(selectedDocumentId);
-    void reloadApproval(selectedDocumentId);
-    void reloadPayments(selectedDocumentId);
-  }, [selectedDocumentId]);
+  function dismissSample() {
+    setShowSample(false);
+    window.localStorage.setItem(SAMPLE_DISMISSED_KEY, "1");
+  }
 
-  const filteredDocuments = useMemo(() => {
-    if (!statusFilter) {
-      return documents;
-    }
-    return documents.filter((document) => document.status.toUpperCase() === statusFilter);
-  }, [documents, statusFilter]);
+  function restoreSample() {
+    setShowSample(true);
+    window.localStorage.removeItem(SAMPLE_DISMISSED_KEY);
+  }
+
+  const data = (showSample ? sampleOverview : realOverview) ?? emptyOverview;
+  const { totals, currency } = data;
+
+  const stats = [
+    {
+      key: "inProgress",
+      count: totals.inProgress.count,
+      label: "In Progress",
+      value: totals.inProgress.value,
+      icon: <IconBolt />,
+      tone: "text-amber-600",
+    },
+    {
+      key: "accepted",
+      count: totals.accepted.count,
+      label: "Accepted",
+      value: totals.accepted.value,
+      icon: <IconCheck />,
+      tone: "text-emerald-600",
+    },
+    {
+      key: "declined",
+      count: totals.declined.count,
+      label: "Declined",
+      value: totals.declined.value,
+      icon: <IconCross />,
+      tone: "text-red-600",
+    },
+  ];
 
   return (
-    <main className="grid gap-4 lg:grid-cols-[1fr_340px]">
-      <section>
-        <h1 className="text-3xl font-semibold">Workspace Dashboard</h1>
-        <p className="mt-3 text-muted">Track document lifecycle events and trigger sending.</p>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {Object.entries(summary?.counts ?? {}).map(([statusKey, count]) => (
-            <Link
-              key={statusKey}
-              href={`/app?status=${encodeURIComponent(statusKey)}`}
-              className="rounded-lg border border-border bg-surface p-3 text-sm hover:bg-background"
-            >
-              <p className="text-xs text-muted">{statusKey}</p>
-              <p className="text-xl font-semibold">{count}</p>
-            </Link>
-          ))}
-        </div>
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <div className="rounded-xl border border-border bg-surface p-4">
-            <h2 className="text-sm font-semibold">Recent activity</h2>
-            <div className="mt-2 space-y-2">
-              {(summary?.recentActivity ?? []).slice(0, 5).map((event) => (
-                <div key={event.id} className="rounded border border-border bg-background p-2 text-xs">
-                  <p className="font-medium">{event.event_type}</p>
-                  <p className="text-muted">
-                    {event.document_id} - {new Date(event.created_at).toLocaleString()}
-                  </p>
-                </div>
-              ))}
-              {(summary?.recentActivity?.length ?? 0) === 0 ? (
-                <p className="text-xs text-muted">No workspace activity yet.</p>
-              ) : null}
-            </div>
-          </div>
-          <div className="rounded-xl border border-border bg-surface p-4">
-            <h2 className="text-sm font-semibold">Recent documents</h2>
-            <div className="mt-2 space-y-2">
-              {(summary?.recentDocuments ?? []).slice(0, 5).map((document) => (
-                <button
-                  key={document.id}
-                  onClick={() => setSelectedDocumentId(document.id)}
-                  className="w-full rounded border border-border bg-background p-2 text-left text-xs hover:bg-surface"
-                >
-                  <p className="font-medium">{document.id}</p>
-                  <p className="text-muted">
-                    {document.status} - {new Date(document.updated_at).toLocaleString()}
-                  </p>
-                </button>
-              ))}
-              {(summary?.recentDocuments?.length ?? 0) === 0 ? (
-                <p className="text-xs text-muted">No documents yet.</p>
-              ) : null}
-            </div>
-          </div>
-        </div>
-        <div className="mt-4">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-auto bg-surface">
+      {showSample ? (
+        <div className="flex shrink-0 items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm">
+          <span className="rounded bg-amber-200/70 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-900">
+            Sample Data
+          </span>
+          <p className="min-w-0 flex-1 text-amber-900/90">
+            These figures are illustrative. Close this banner to see your workspace&apos;s real
+            numbers.
+          </p>
           <button
-            onClick={() => void createProposalForDemo()}
-            disabled={creatingProposal}
-            className="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-background disabled:opacity-60"
+            type="button"
+            onClick={dismissSample}
+            className="shrink-0 rounded p-1 text-amber-800 transition-colors hover:bg-amber-100"
+            aria-label="Dismiss sample data"
           >
-            {creatingProposal ? "Creating proposal..." : "Create proposal from template"}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
           </button>
         </div>
-        {status ? <p className="mt-2 text-sm text-green-600">{status}</p> : null}
-        {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
-        <div className="mt-4 space-y-2 rounded-xl border border-border bg-surface p-4">
-          <div className="flex items-center gap-2">
-            <select
-              className="w-full rounded border border-border bg-background px-2 py-2 text-sm"
-              value={selectedDocumentId}
-              onChange={(event) => setSelectedDocumentId(event.target.value)}
-            >
-              <option value="">{statusFilter ? `Select a ${statusFilter} document` : "Select a document"}</option>
-              {filteredDocuments.map((document) => (
-                <option key={document.id} value={document.id}>
-                  {document.id} ({document.status})
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => void reloadDocuments()}
-              className="rounded border border-border px-3 py-2 text-sm hover:bg-background"
-            >
-              Refresh
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => void sendSelectedDocument()}
-              className="rounded bg-primary px-3 py-2 text-sm text-primary-foreground"
-            >
-              Send document
-            </button>
-            <button
-              onClick={() => void createCheckoutSession()}
-              className="rounded border border-border px-3 py-2 text-sm hover:bg-background"
-            >
-              Create checkout
-            </button>
-            <button
-              onClick={() => void requestApproval()}
-              className="rounded border border-border px-3 py-2 text-sm hover:bg-background"
-            >
-              Request approval
-            </button>
-            <button
-              onClick={() => void decideApproval("APPROVED")}
-              className="rounded border border-border px-3 py-2 text-sm hover:bg-background"
-            >
-              Approve
-            </button>
-            <button
-              onClick={() => void decideApproval("REJECTED")}
-              className="rounded border border-border px-3 py-2 text-sm hover:bg-background"
-            >
-              Reject
-            </button>
-          </div>
-          <div className="rounded border border-border bg-background p-2 text-sm">
-            {approvalSummary ? (
-              <>
-                <p>
-                  Discount: {approvalSummary.discountPercent.toFixed(2)}% | Threshold:{" "}
-                  {approvalSummary.thresholdPercent.toFixed(2)}%
-                </p>
-                <p>
-                  Approval required: {approvalSummary.approvalRequired ? "yes" : "no"} | Send eligible:{" "}
-                  {approvalSummary.canSend ? "yes" : "no"}
-                </p>
-              </>
-            ) : (
-              <p className="text-muted">No approval data yet.</p>
-            )}
-            {latestApproval ? (
-              <p className="mt-1 text-xs text-muted">
-                Latest approval: {latestApproval.status} at {new Date(latestApproval.created_at).toLocaleString()}
-              </p>
-            ) : null}
-          </div>
-          <div className="rounded border border-border bg-background p-2 text-sm">
-            <p className="mb-1 font-medium">Payments</p>
-            {payments.length === 0 ? <p className="text-xs text-muted">No payment attempts yet.</p> : null}
-            {payments.map((payment) => (
-              <p key={payment.id} className="text-xs text-muted">
-                {payment.provider} {payment.status} - {(payment.amount_minor / 100).toFixed(2)} {payment.currency} -{" "}
-                {new Date(payment.created_at).toLocaleString()}
-              </p>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              className="w-full rounded border border-border bg-background px-2 py-2 text-sm"
-              value={comment}
-              placeholder="Add internal comment"
-              onChange={(event) => setComment(event.target.value)}
-            />
-            <button
-              onClick={() => void commentSelectedDocument()}
-              className="rounded border border-border px-3 py-2 text-sm hover:bg-background"
-            >
-              Comment
-            </button>
-          </div>
+      ) : (
+        <div className="flex shrink-0 justify-end border-b border-border px-4 py-2">
+          <button
+            type="button"
+            onClick={restoreSample}
+            className="text-xs text-muted underline-offset-4 transition-colors hover:text-foreground hover:underline"
+          >
+            Show sample data
+          </button>
         </div>
-      </section>
-      <aside className="space-y-2 rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-lg font-semibold">Activity Feed</h2>
-        {events.length === 0 ? <p className="text-sm text-muted">No events yet.</p> : null}
-        {events.map((event) => (
-          <div key={event.id} className="rounded border border-border p-2 text-sm">
-            <p className="font-medium">{event.event_type}</p>
-            <p className="text-xs text-muted">{new Date(event.created_at).toLocaleString()}</p>
+      )}
+
+      <div className="grid grid-cols-1 border-b border-border sm:grid-cols-3">
+        {stats.map((stat) => (
+          <div
+            key={stat.key}
+            className="border-b border-border px-3 py-4 text-center last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0"
+          >
+            <p className="text-3xl font-semibold tabular-nums text-foreground">{stat.count}</p>
+            <p className={`mt-1 flex items-center justify-center gap-1.5 text-xs ${stat.tone}`}>
+              {stat.icon}
+              {stat.label}
+            </p>
+            <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">
+              {formatMoney(stat.value, currency)}
+            </p>
           </div>
         ))}
-      </aside>
-    </main>
+      </div>
+
+      <div className="grid border-b border-border lg:grid-cols-2">
+        <BarChartPanel title="Deliveries" icon={<IconSend />} points={data.series.deliveries} />
+        <BarChartPanel title="Views" icon={<IconEye />} points={data.series.views} />
+      </div>
+
+      <section>
+        <header className="flex items-center gap-2 border-b border-border bg-slate-50 px-3 py-2 text-[13px] font-semibold text-foreground">
+          <span className="text-muted" aria-hidden>
+            <IconActivity />
+          </span>
+          Activity
+        </header>
+
+        <SheetTable
+          empty={
+            data.activity.length === 0 ? (
+              <p className="px-4 py-10 text-center text-sm text-muted">No activity yet.</p>
+            ) : null
+          }
+        >
+          {data.activity.length > 0 ? (
+            <thead>
+              <tr>
+                <th className={sheetTh()}>Type</th>
+                <th className={sheetTh()}>When</th>
+                <th className={sheetTh()}>Actor</th>
+                <th className={sheetTh()}>Document</th>
+              </tr>
+            </thead>
+          ) : null}
+          <tbody>
+            {data.activity.map((item) => (
+              <tr key={item.id} className={sheetTr()}>
+                <td className={sheetTd("whitespace-nowrap")}>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${activityBadgeClass[item.kind]}`}
+                  >
+                    {activityIcon(item.kind)}
+                    {item.kind}
+                  </span>
+                </td>
+                <td className={sheetTd("whitespace-nowrap")}>{formatTimestamp(item.occurredAt)}</td>
+                <td className={sheetTd("font-medium text-foreground")}>{item.actor}</td>
+                <td className={sheetTd()}>
+                  {item.documentId ? (
+                    <Link href={`/app/documents/${item.documentId}`} className="text-primary hover:underline">
+                      {item.documentTitle}
+                    </Link>
+                  ) : (
+                    <span>{item.documentTitle}</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </SheetTable>
+      </section>
+
+      <WorkspaceTools />
+    </div>
   );
 }

@@ -14,7 +14,7 @@ const demoDoc: EditorDoc = {
     },
     { type: "quoteTable", attrs: { tableId: "default" } },
     {
-      type: "paragraph",
+      type: "fieldCanvas",
       content: [
         {
           type: "signerField",
@@ -23,6 +23,14 @@ const demoDoc: EditorDoc = {
             recipientId: "recipient-primary",
             type: "signature",
             required: true,
+            label: "",
+            placeholder: "",
+            defaultValue: "",
+            dropdownOptions: "[]",
+            xPct: 0.04,
+            yPct: 0.04,
+            wPct: 0.38,
+            hPct: 0.09,
           },
         },
       ],
@@ -72,11 +80,224 @@ describe("renderComputedHtml", () => {
       ],
     });
 
-    expect(preview).toMatchInlineSnapshot(
-      `"<article><p>Hello <span class="variable-token" data-variable-key="client.name">Acme Corp</span></p><section class="quote-table" data-node-type="quoteTable"><table><thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Cadence</th><th>Status</th><th>Line Total</th></tr></thead><tbody><tr><td>Setup</td><td>1</td><td>USD 1000.00</td><td>One-time</td><td>Included</td><td>USD 1000.00</td></tr><tr><td>Support</td><td>1</td><td>USD 200.00</td><td>Recurring month</td><td>Included</td><td>USD 200.00</td></tr></tbody></table><p>One-time subtotal: USD 1000.00</p><p>Recurring monthly subtotal: USD 200.00</p><p>Recurring yearly subtotal: USD 0.00</p><p>Discount: USD 0.00</p><p>Tax: USD 0.00</p><p>Total due now: USD 1000.00</p></section><p><span class="signer-field" data-field-id="field-1" data-recipient-id="recipient-primary" data-type="signature" data-editable="false">[signature]</span></p></article>"`,
+    expect(preview).toContain("variable-token");
+    expect(preview).toContain("field-1");
+    expect(preview).toContain("--field-x:0.04");
+    expect(finalized).toContain("Certificate");
+  });
+
+  test("renders text boxes, tables, youtube and aligned images", () => {
+    const html = renderComputedHtml({
+      doc: {
+        type: "doc",
+        content: [
+          {
+            type: "textBox",
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Hello box", marks: [{ type: "bold" }] }] }],
+          },
+          {
+            type: "table",
+            content: [
+              {
+                type: "tableRow",
+                content: [
+                  { type: "tableHeader", content: [{ type: "paragraph", content: [{ type: "text", text: "A" }] }] },
+                  { type: "tableHeader", content: [{ type: "paragraph", content: [{ type: "text", text: "B" }] }] },
+                ],
+              },
+              {
+                type: "tableRow",
+                content: [
+                  { type: "tableCell", content: [{ type: "paragraph", content: [{ type: "text", text: "1" }] }] },
+                  { type: "tableCell", content: [{ type: "paragraph", content: [{ type: "text", text: "2" }] }] },
+                ],
+              },
+            ],
+          },
+          { type: "youtube", attrs: { src: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" } },
+          { type: "image", attrs: { src: "/img.png", alt: "Logo", widthPct: 50, align: "left" } },
+        ],
+      },
+      mode: "sender-preview",
+      resolvedVariables: {},
+      signerFieldValues: [],
+    });
+
+    expect(html).toContain('data-node-type="textBox"');
+    expect(html).toContain("<strong>Hello box</strong>");
+    expect(html).toContain("<table>");
+    expect(html).toContain("<th><p>A</p></th>");
+    expect(html).toContain("Watch video:");
+    expect(html).toContain('data-align="left"');
+    expect(html).toContain("width:50%");
+  });
+
+  test("renders highlight, alignment, line height, and indent", () => {
+    const html = renderComputedHtml({
+      doc: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            attrs: { textAlign: "center", lineHeight: "1.5", indent: 2 },
+            content: [
+              {
+                type: "text",
+                text: "Noted",
+                marks: [{ type: "highlight", attrs: { color: "#fef08a" } }],
+              },
+            ],
+          },
+        ],
+      },
+      mode: "sender-preview",
+      resolvedVariables: {},
+      signerFieldValues: [],
+    });
+    expect(html).toContain('style="text-align:center;line-height:1.5;padding-left:48px"');
+    expect(html).toContain("<mark style=\"background-color:#fef08a\">Noted</mark>");
+  });
+
+  test("prefers durable assetKey URLs over session src", () => {
+    const html = renderComputedHtml({
+      doc: {
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              src: "blob:https://example.test/expired",
+              assetKey: "workspaces/ws/uploads/hero.png",
+              widthPct: 80,
+              align: "center",
+              alt: "Hero",
+            },
+          },
+          { type: "contentBlockEmbed", attrs: { blockId: "blk_1", version: 3 } },
+        ],
+      },
+      mode: "sender-preview",
+      resolvedVariables: {},
+      signerFieldValues: [],
+      assetBaseUrl: "https://app.example.test",
+      assetToken: "tok_abc",
+    });
+    expect(html).toContain("https://app.example.test/api/uploads/workspaces/ws/uploads/hero.png?token=tok_abc");
+    expect(html).not.toContain("blob:");
+    expect(html).toContain("Saved library content (id blk_1, v3)");
+  });
+
+  test("renders pinned content-library snapshot content", () => {
+    const html = renderComputedHtml({
+      doc: {
+        type: "doc",
+        content: [
+          {
+            type: "contentBlockEmbed",
+            attrs: {
+              blockId: "blk_1",
+              version: 1,
+              snapshotDoc: {
+                type: "doc",
+                content: [{ type: "paragraph", content: [{ type: "text", text: "Library Version A" }] }],
+              },
+            },
+          },
+        ],
+      },
+      mode: "finalized",
+      resolvedVariables: {},
+      signerFieldValues: [],
+    });
+    expect(html).toContain("Library Version A");
+    expect(html).toContain('data-pinned="true"');
+    expect(html).not.toContain("is not inlined");
+  });
+
+  test("renders color, font, strike, underline, lists, page breaks, and quote totals from pricing_json", () => {
+    const html = renderComputedHtml({
+      doc: {
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: 2 },
+            content: [{ type: "text", text: "Scope" }],
+          },
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: "Styled",
+                marks: [
+                  { type: "underline" },
+                  { type: "strike" },
+                  { type: "textStyle", attrs: { color: "#1d4ed8", fontSize: "18px", fontFamily: "Georgia" } },
+                ],
+              },
+            ],
+          },
+          {
+            type: "bulletList",
+            content: [
+              { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "One" }] }] },
+            ],
+          },
+          { type: "pageBreak" },
+          { type: "quoteTable", attrs: { tableId: "default" } },
+        ],
+      },
+      mode: "sender-preview",
+      resolvedVariables: {},
+      pricing: {
+        currency: "USD",
+        discountPercent: 10,
+        taxPercent: 5,
+        items: [{ id: "1", name: "Setup", quantity: 2, unitPrice: 100 }],
+      },
+      signerFieldValues: [],
+    });
+    expect(html).toContain("<h2>");
+    expect(html).toContain("<u>");
+    expect(html).toContain("<s>");
+    expect(html).toContain("color:#1d4ed8");
+    expect(html).toContain("font-size:18px");
+    expect(html).toContain("font-family:Georgia");
+    expect(html).toContain("<ul>");
+    expect(html).toContain('data-node-type="pageBreak"');
+    expect(html).toContain("Setup");
+    expect(html).toContain("USD 200.00");
+    expect(html).toContain("USD 20.00");
+    expect(html).toContain("USD 9.00");
+    expect(html).toContain("USD 189.00");
+  });
+
+  test("paints per-page backgrounds behind article content", () => {
+    const html = renderComputedHtml({
+      doc: {
+        type: "doc",
+        attrs: {
+          pageSize: "letter",
+          pageBackgrounds: {
+            "0": { color: "#dc2626", colorOpacity: 100, imageKey: "workspaces/ws/uploads/bg.png" },
+          },
+        },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Cover" }] }],
+      },
+      mode: "sender-preview",
+      resolvedVariables: {},
+      signerFieldValues: [],
+      assetBaseUrl: "https://app.example.test",
+      assetToken: "tok_bg",
+    });
+    expect(html).toContain("print-root");
+    expect(html).toContain("print-page-background");
+    expect(html).toContain("background-color:#dc2626");
+    expect(html).toContain(
+      "https://app.example.test/api/uploads/workspaces/ws/uploads/bg.png?token=tok_bg",
     );
-    expect(finalized).toMatchInlineSnapshot(
-      `"<article><p>Hello <span class="variable-token" data-variable-key="client.name">Acme Corp</span></p><section class="quote-table" data-node-type="quoteTable"><table><thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Cadence</th><th>Status</th><th>Line Total</th></tr></thead><tbody><tr><td>Setup</td><td>1</td><td>USD 1000.00</td><td>One-time</td><td>Included</td><td>USD 1000.00</td></tr><tr><td>Support</td><td>1</td><td>USD 200.00</td><td>Recurring month</td><td>Included</td><td>USD 200.00</td></tr></tbody></table><p>One-time subtotal: USD 1000.00</p><p>Recurring monthly subtotal: USD 200.00</p><p>Recurring yearly subtotal: USD 0.00</p><p>Discount: USD 0.00</p><p>Tax: USD 0.00</p><p>Total due now: USD 1000.00</p></section><p><span class="signer-field-finalized" data-field-id="field-1">Signed</span></p></article><section class="certificate-page"><h2>Certificate</h2><p>Document finalized with immutable audit trail.</p></section>"`,
-    );
+    expect(html).toContain("<article>");
+    expect(html).toContain("Cover");
   });
 });

@@ -75,7 +75,7 @@ export default function SignupPage() {
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6">
       <div className="glass-card rounded-2xl p-6 md:p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Start free</p>
-        <h1 className="mt-3 text-3xl font-semibold">Create your DoxySign account</h1>
+        <h1 className="mt-3 text-3xl font-semibold">Create your SendDox account</h1>
         <p className="mt-2 text-muted">Instant workspace bootstrap with owner role access.</p>
         {oauthErrorMessage ? <p className="mt-4 text-sm text-red-600">{oauthErrorMessage}</p> : null}
         <form className="mt-8 space-y-4" onSubmit={onSubmit}>

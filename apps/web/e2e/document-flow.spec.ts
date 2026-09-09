@@ -1,17 +1,16 @@
 import { expect, request as playwrightRequest, test } from "@playwright/test";
+import { signUpOwner } from "./signup";
 
 test.describe("document automation lifecycle", () => {
   test.skip(!process.env.DATABASE_URL, "Set DATABASE_URL to run end-to-end flow.");
 
   test("template -> render -> sign -> finalize", async ({ browser, page }) => {
     const userEmail = `playwright-${Date.now()}@example.com`;
-    await page.goto("/signup");
-    await page.getByPlaceholder("Work email").fill(userEmail);
-    await page.getByPlaceholder("Full name").fill("Playwright User");
-    await page.getByPlaceholder("Workspace name (optional)").fill("Playwright Workspace");
-    await page.getByPlaceholder("Password").fill("playwright-password");
-    await page.getByRole("button", { name: "Get started" }).click();
-    await expect(page).toHaveURL(/\/app/);
+    await signUpOwner(page, {
+      email: userEmail,
+      name: "Playwright User",
+      workspaceName: "Playwright Workspace",
+    });
     const authRequest = await playwrightRequest.newContext({
       storageState: await page.context().storageState(),
     });
@@ -110,6 +109,10 @@ test.describe("document automation lifecycle", () => {
 
     const sendResponse = await authRequest.post(`/api/documents/${documentPayload.document.id}/send`);
     expect(sendResponse.ok()).toBeTruthy();
+    const sendPayload = (await sendResponse.json()) as {
+      document: { sent_version: { snapshot_hash: string } | null };
+    };
+    expect(sendPayload.document.sent_version?.snapshot_hash).toMatch(/^[a-f0-9]{64}$/);
     const signingSessionResponse = await authRequest.post(
       `/api/documents/${documentPayload.document.id}/signing-session`,
       {
@@ -177,7 +180,7 @@ test.describe("document automation lifecycle", () => {
     };
     expect(["VIEWED", "SENT"]).toContain(viewedDocPayload.document.status);
 
-    await recipientPage.getByRole("textbox").fill("Signed by Primary Recipient");
+    await recipientPage.getByPlaceholder("Type full name to sign").fill("Signed by Primary Recipient");
     await recipientPage.getByRole("button", { name: "Save value" }).click();
 
     const financeSigningSessionUrlResponse = await authRequest.post(
@@ -193,7 +196,7 @@ test.describe("document automation lifecycle", () => {
     const financeRecipientContext = await browser.newContext();
     const financeRecipientPage = await financeRecipientContext.newPage();
     await financeRecipientPage.goto(financeSigningSessionUrlPayload.signingUrl);
-    await financeRecipientPage.getByRole("textbox").fill("Finance signer after primary");
+    await financeRecipientPage.getByPlaceholder("Type full name to sign").fill("Finance signer after primary");
     await financeRecipientPage.getByRole("button", { name: "Save value" }).click();
 
     const finalizeResponse = await authRequest.post(`/api/documents/${documentPayload.document.id}/finalize`);

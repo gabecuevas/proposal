@@ -31,7 +31,7 @@ export default function ProductPage() {
       <p className="text-sm font-semibold uppercase tracking-[0.16em] text-primary">Product</p>
       <h1 className="mt-3 text-4xl font-semibold">Built for the full document journey</h1>
       <p className="mt-4 max-w-3xl text-muted">
-        DoxySign unifies document generation, negotiation, approval, signature, and payment in one
+        SendDox unifies document generation, negotiation, approval, signature, and payment in one
         production-ready platform for revenue and operations teams.
       </p>
       <div className="mt-10 grid gap-4 sm:grid-cols-2">
