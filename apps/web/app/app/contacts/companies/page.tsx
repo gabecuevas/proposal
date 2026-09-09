@@ -10,12 +10,16 @@ import {
 } from "@/components/crm/company-people-section";
 import {
   validateEmail,
-  validatePhone,
   validateWebsite,
 } from "@/lib/crm/contact-field-validation";
 import { fetchJson } from "@/lib/crm/fetch-with-auth";
 import { formatGridDate, formatGridDateTime } from "@/lib/ui/datetime";
 import { formatAddressDisplay, type AddressValues } from "@/lib/crm/address";
+import {
+  phonesForEditor,
+  primaryPhoneNumber,
+  type PhoneEntry,
+} from "@/lib/crm/phones";
 import { normalizeWebsite } from "@/lib/crm/website";
 
 type Company = {
@@ -24,6 +28,7 @@ type Company = {
   website: string | null;
   linkedin: string | null;
   phone: string | null;
+  phones?: PhoneEntry[];
   email: string | null;
   industry: string | null;
   address_line_1: string | null;
@@ -44,6 +49,7 @@ type Editor = {
   website: string;
   linkedin: string;
   phone: string;
+  phones: PhoneEntry[];
   email: string;
   industry: string;
   address_line_1: string;
@@ -67,6 +73,7 @@ const emptyEditor = (): Editor => ({
   website: "",
   linkedin: "",
   phone: "",
+  phones: phonesForEditor(null, null),
   email: "",
   industry: "",
   address_line_1: "",
@@ -248,11 +255,13 @@ export default function CompaniesPage() {
 
   function openCompany(company: Company) {
     setSelectedId(company.id);
+    const phones = phonesForEditor(company.phones, company.phone);
     setEditor({
       name: company.name,
       website: company.website ?? "",
       linkedin: company.linkedin ?? "",
-      phone: company.phone ?? "",
+      phone: primaryPhoneNumber(phones) ?? company.phone ?? "",
+      phones,
       email: company.email ?? "",
       industry: company.industry ?? "",
       address_line_1: company.address_line_1 ?? "",
@@ -321,6 +330,7 @@ export default function CompaniesPage() {
       ...(typeof body.website === "string" ? { website: normalizeWebsite(body.website) } : {}),
       ...(typeof body.linkedin === "string" ? { linkedin: normalizeWebsite(body.linkedin) } : {}),
       ...(typeof body.phone === "string" ? { phone: body.phone } : {}),
+      ...(Array.isArray(body.phones) ? { phones: body.phones as PhoneEntry[] } : {}),
       ...(typeof body.email === "string" ? { email: body.email } : {}),
       ...(typeof body.industry === "string" ? { industry: body.industry } : {}),
       ...(typeof body.address_line_1 === "string" ? { address_line_1: body.address_line_1 } : {}),
@@ -343,6 +353,7 @@ export default function CompaniesPage() {
           website: merged.website || undefined,
           linkedin: merged.linkedin || undefined,
           phone: merged.phone || undefined,
+          phones: merged.phones,
           email: merged.email || undefined,
           industry: merged.industry || undefined,
           address_line_1: merged.address_line_1 || undefined,
@@ -379,6 +390,7 @@ export default function CompaniesPage() {
       website: current.website ? normalizeWebsite(current.website) : undefined,
       linkedin: current.linkedin ? normalizeWebsite(current.linkedin) : undefined,
       phone: current.phone || undefined,
+      phones: current.phones,
       email: current.email || undefined,
       industry: current.industry || undefined,
       address_line_1: current.address_line_1 || undefined,
@@ -644,13 +656,22 @@ export default function CompaniesPage() {
             icon: "phone",
             label: "Phone",
             showLabel: false,
+            type: "phones",
             value: editor.phone,
             placeholder: "Add phone",
-            hint: "Work",
-            inputType: "tel",
+            phones: editor.phones,
             onChange: (value) => setEditor((current) => ({ ...current, phone: value })),
-            validate: (value) => validatePhone(value),
-            onCommit: (value) => void saveCompany({ phone: value }),
+            onPhonesChange: (phones) =>
+              setEditor((current) => ({
+                ...current,
+                phones,
+                phone: primaryPhoneNumber(phones) ?? "",
+              })),
+            onPhonesCommit: (phones) =>
+              void saveCompany({
+                phones,
+                phone: primaryPhoneNumber(phones) ?? "",
+              }),
           },
         ],
       },

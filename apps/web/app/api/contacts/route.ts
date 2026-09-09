@@ -5,6 +5,7 @@ import { assertRole } from "@/lib/auth/request-context";
 import { requireRequestAuth } from "@/lib/auth/require-request-auth";
 import { createContact, listContacts, ContactDuplicateError } from "@/lib/contacts/store";
 import { firstContactDetailsError } from "@/lib/crm/contact-field-validation";
+import { parsePhones, primaryPhoneNumber, type PhoneEntry } from "@/lib/crm/phones";
 
 export async function GET(request: NextRequest) {
   const auth = await requireRequestAuth(request);
@@ -37,6 +38,8 @@ type CreateContactBody = {
   last_name?: string;
   email?: string;
   phone?: string;
+  phones?: PhoneEntry[];
+  linkedin?: string;
   company_name?: string;
   title?: string;
   address_line_1?: string;
@@ -61,11 +64,13 @@ export async function POST(request: NextRequest) {
   }
   assertRole(auth, "MEMBER");
   const body = (await request.json()) as CreateContactBody;
+  const phones = Array.isArray(body.phones) ? parsePhones(body.phones) : undefined;
+  const phone = phones !== undefined ? (primaryPhoneNumber(phones) ?? "") : body.phone;
   const validationMessage = firstContactDetailsError({
     first_name: body.first_name ?? "",
     last_name: body.last_name ?? "",
     email: body.email ?? "",
-    phone: body.phone,
+    phone,
     title: body.title,
     website: body.website,
   });
@@ -84,7 +89,9 @@ export async function POST(request: NextRequest) {
       first_name: body.first_name!.trim(),
       last_name: body.last_name!.trim(),
       email: body.email!.trim(),
-      phone: body.phone,
+      phone,
+      phones,
+      linkedin: body.linkedin,
       company_name: body.company_name,
       title: body.title,
       address_line_1: body.address_line_1,

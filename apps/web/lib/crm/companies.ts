@@ -1,6 +1,15 @@
 import { prisma } from "@repo/db";
+import type { InputJsonValue } from "@repo/db";
 import { COMPANY_FIELD_LABELS } from "./field-labels";
 import { userDisplayName } from "./display-name";
+import {
+  parsePhones,
+  phonesToJson,
+  primaryPhoneNumber,
+  syncPhonesWithScalar,
+  formatPhonesHistory,
+  type PhoneEntry,
+} from "./phones";
 import { recordFieldChanges, recordRecordCreated } from "./timeline";
 
 export type CompanyRecord = {
@@ -11,6 +20,7 @@ export type CompanyRecord = {
   website: string | null;
   linkedin: string | null;
   phone: string | null;
+  phones: PhoneEntry[];
   email: string | null;
   address_line_1: string | null;
   address_line_2: string | null;
@@ -33,6 +43,7 @@ type CompanyInput = {
   website?: string;
   linkedin?: string;
   phone?: string;
+  phones?: PhoneEntry[];
   email?: string;
   address_line_1?: string;
   address_line_2?: string;
@@ -59,6 +70,7 @@ function parseCompany(
     website: string | null;
     linkedin?: string | null;
     phone: string | null;
+    phones?: unknown;
     email: string | null;
     address_line_1: string | null;
     address_line_2: string | null;
@@ -84,6 +96,7 @@ function parseCompany(
     website: row.website,
     linkedin: row.linkedin ?? null,
     phone: row.phone,
+    phones: parsePhones(row.phones, row.phone),
     email: row.email,
     address_line_1: row.address_line_1,
     address_line_2: row.address_line_2,
@@ -112,6 +125,7 @@ function companySnapshot(row: {
   website: string | null;
   linkedin: string | null;
   phone: string | null;
+  phones?: unknown;
   email: string | null;
   address_line_1: string | null;
   address_line_2: string | null;
@@ -127,6 +141,7 @@ function companySnapshot(row: {
     website: row.website,
     linkedin: row.linkedin ?? null,
     phone: row.phone,
+    phones: formatPhonesHistory(parsePhones(row.phones, row.phone)),
     email: row.email,
     address_line_1: row.address_line_1,
     address_line_2: row.address_line_2,
@@ -173,6 +188,10 @@ export async function createCompany(
   ownerUserId: string,
   input: CompanyInput,
 ): Promise<CompanyRecord> {
+  const nextPhones = input.phones
+    ? phonesToJson(input.phones)
+    : syncPhonesWithScalar(null, input.phone);
+  const nextPhone = primaryPhoneNumber(nextPhones);
   const row = await prisma.company.create({
     data: {
       workspace_id: workspaceId,
@@ -180,7 +199,8 @@ export async function createCompany(
       name: input.name.trim(),
       website: optionalText(input.website),
       linkedin: optionalText(input.linkedin),
-      phone: optionalText(input.phone),
+      phone: nextPhone,
+      phones: nextPhones as InputJsonValue,
       email: optionalText(input.email)?.toLowerCase() ?? null,
       address_line_1: optionalText(input.address_line_1),
       address_line_2: optionalText(input.address_line_2),
@@ -215,6 +235,12 @@ export async function updateCompany(
   if (!existing) {
     return null;
   }
+  const nextPhones = input.phones
+    ? phonesToJson(input.phones)
+    : input.phone !== undefined
+      ? syncPhonesWithScalar(existing.phones, input.phone)
+      : parsePhones(existing.phones, existing.phone);
+  const nextPhone = primaryPhoneNumber(nextPhones);
   const row = await prisma.company.update({
     where: { id: companyId },
     data: {
@@ -222,7 +248,8 @@ export async function updateCompany(
       website: input.website !== undefined ? optionalText(input.website) : existing.website,
       linkedin:
         input.linkedin !== undefined ? optionalText(input.linkedin) : (existing.linkedin ?? null),
-      phone: input.phone !== undefined ? optionalText(input.phone) : existing.phone,
+      phone: nextPhone,
+      phones: nextPhones as InputJsonValue,
       email: input.email !== undefined ? optionalText(input.email)?.toLowerCase() ?? null : existing.email,
       address_line_1:
         input.address_line_1 !== undefined ? optionalText(input.address_line_1) : existing.address_line_1,

@@ -23,7 +23,7 @@ export async function searchCompanies(query: string, limit = 8): Promise<Company
 export async function resolveCompanyAssociation(
   name: string,
   companyId: string,
-  options?: { phone?: string },
+  options?: { phone?: string; industry?: string },
 ): Promise<{ company_id: string | null; company_name: string | null; company?: CompanySearchResult }> {
   const trimmed = name.trim();
   if (!trimmed) {
@@ -41,12 +41,14 @@ export async function resolveCompanyAssociation(
   }
 
   const phone = options?.phone?.trim();
+  const industry = options?.industry?.trim();
   const createResponse = await fetch("/api/companies", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: trimmed,
       ...(phone ? { phone } : {}),
+      ...(industry ? { industry } : {}),
     }),
   });
   if (createResponse.ok) {

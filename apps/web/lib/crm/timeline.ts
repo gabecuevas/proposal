@@ -1,6 +1,7 @@
 import { prisma, type CrmTimelineEventType } from "@repo/db";
 import { formatAddressDisplay } from "./address";
 import { userDisplayName } from "./display-name";
+import { coercePhonesHistoryValue, formatPhonesHistory, parsePhones } from "./phones";
 
 export type CrmRecordRef = {
   contactId?: string | null;
@@ -41,6 +42,7 @@ export const ADDRESS_FIELD_KEYS = [
 ] as const;
 
 const ADDRESS_FIELD_KEY_SET = new Set<string>(ADDRESS_FIELD_KEYS);
+const PHONE_FIELD_KEYS = new Set(["phone", "phones"]);
 
 function normalizeValue(value: unknown): string {
   if (value === null || value === undefined) {
@@ -80,8 +82,24 @@ function addressFromRecord(record: Record<string, unknown>): string {
   });
 }
 
+function phonesFromRecord(record: Record<string, unknown>): string {
+  const phonesRaw = record.phones;
+  if (typeof phonesRaw === "string" && phonesRaw.trim()) {
+    return coercePhonesHistoryValue(phonesRaw);
+  }
+  if (Array.isArray(phonesRaw) || (phonesRaw && typeof phonesRaw === "object")) {
+    return formatPhonesHistory(parsePhones(phonesRaw, normalizeValue(record.phone) || null));
+  }
+  const phone = normalizeValue(record.phone);
+  return phone ? formatPhonesHistory(parsePhones(null, phone)) : "";
+}
+
 function isAddressFieldKey(fieldKey: string | null | undefined): boolean {
   return Boolean(fieldKey && (fieldKey === "address" || ADDRESS_FIELD_KEY_SET.has(fieldKey)));
+}
+
+function isPhoneFieldKey(fieldKey: string | null | undefined): boolean {
+  return Boolean(fieldKey && (fieldKey === "phone" || fieldKey === "phones"));
 }
 
 export function diffTrackedFields(
@@ -91,6 +109,7 @@ export function diffTrackedFields(
 ): FieldChange[] {
   const changes: FieldChange[] = [];
   let addressChanged = false;
+  let phoneChanged = false;
 
   for (const fieldKey of Object.keys(labels)) {
     if (!(fieldKey in after)) {
@@ -103,6 +122,10 @@ export function diffTrackedFields(
     }
     if (ADDRESS_FIELD_KEY_SET.has(fieldKey)) {
       addressChanged = true;
+      continue;
+    }
+    if (PHONE_FIELD_KEYS.has(fieldKey)) {
+      phoneChanged = true;
       continue;
     }
     const fieldLabel = labels[fieldKey] ?? fieldKey;
@@ -125,6 +148,20 @@ export function diffTrackedFields(
         oldValue,
         newValue,
         summary: formatFieldChangeSummary("Address", oldValue, newValue),
+      });
+    }
+  }
+
+  if (phoneChanged) {
+    const oldValue = phonesFromRecord(before);
+    const newValue = phonesFromRecord(after);
+    if (oldValue !== newValue) {
+      changes.push({
+        fieldKey: "phones",
+        fieldLabel: "Phone",
+        oldValue,
+        newValue,
+        summary: formatFieldChangeSummary("Phone", oldValue, newValue),
       });
     }
   }
@@ -269,6 +306,7 @@ export function timelineToDrawerHistory(items: TimelineItem[]): Array<{
   detail?: string;
   kind?: "note" | "created" | "change" | "activity";
   actorName?: string;
+  fieldKey?: string | null;
 }> {
   const consolidated = consolidateAddressTimelineItems(items);
 
@@ -289,22 +327,35 @@ export function timelineToDrawerHistory(items: TimelineItem[]): Array<{
       kind = "activity";
     }
 
+    const oldValue = isPhoneFieldKey(item.field_key)
+      ? coercePhonesHistoryValue(item.old_value)
+      : item.old_value;
+    const newValue = isPhoneFieldKey(item.field_key)
+      ? coercePhonesHistoryValue(item.new_value)
+      : item.new_value;
+
     const detail =
-      item.new_value && item.event_type === "NOTE_SAVED"
-        ? item.new_value
-        : item.old_value || item.new_value
-          ? item.old_value && item.new_value && item.old_value !== item.new_value
-            ? `${item.old_value} → ${item.new_value}`
-            : item.new_value || item.old_value || undefined
+      newValue && item.event_type === "NOTE_SAVED"
+        ? newValue
+        : oldValue || newValue
+          ? oldValue && newValue && oldValue !== newValue
+            ? `${oldValue} → ${newValue}`
+            : newValue || oldValue || undefined
           : undefined;
+
+    const title =
+      isPhoneFieldKey(item.field_key) && item.summary.includes("Phone numbers")
+        ? item.summary.replace("Phone numbers", "Phone")
+        : item.summary;
 
     return {
       id: item.id,
-      title: item.summary,
+      title,
       at: item.created_at,
       detail: detail || undefined,
       kind,
       actorName: item.actor_name ?? undefined,
+      fieldKey: item.field_key,
     };
   });
 }

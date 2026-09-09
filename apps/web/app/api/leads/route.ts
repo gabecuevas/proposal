@@ -5,6 +5,7 @@ import { requireRequestAuth } from "@/lib/auth/require-request-auth";
 import { leadContactDetailsError } from "@/lib/crm/contact-field-validation";
 import { LEAD_STATUSES, type LeadStatus } from "@/lib/crm/lead-status";
 import { LeadValidationError, createLead, listLeads } from "@/lib/crm/leads";
+import { parsePhones, primaryPhoneNumber, type PhoneEntry } from "@/lib/crm/phones";
 
 export async function GET(request: NextRequest) {
   const auth = await requireRequestAuth(request);
@@ -36,6 +37,8 @@ type CreateLeadBody = {
   last_name?: string;
   email?: string;
   phone?: string;
+  phones?: PhoneEntry[];
+  linkedin?: string;
   company_name?: string;
   contact_title?: string;
   address_line_1?: string;
@@ -57,11 +60,14 @@ export async function POST(request: NextRequest) {
   }
   assertRole(auth, "MEMBER");
   const body = (await request.json()) as CreateLeadBody;
+  const phones = Array.isArray(body.phones) ? parsePhones(body.phones) : undefined;
+  const phone =
+    phones !== undefined ? (primaryPhoneNumber(phones) ?? "") : (body.phone ?? "");
   const validationMessage = leadContactDetailsError({
     first_name: body.first_name ?? "",
     last_name: body.last_name ?? "",
     email: body.email ?? "",
-    phone: body.phone ?? "",
+    phone,
     contact_title: body.contact_title,
     website: body.website,
   });
@@ -85,7 +91,9 @@ export async function POST(request: NextRequest) {
       first_name: body.first_name,
       last_name: body.last_name,
       email: body.email,
-      phone: body.phone,
+      phone,
+      phones,
+      linkedin: body.linkedin,
       company_name: body.company_name,
       contact_title: body.contact_title,
       address_line_1: body.address_line_1,

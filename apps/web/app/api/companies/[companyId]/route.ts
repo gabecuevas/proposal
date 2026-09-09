@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { errorResponse } from "@/lib/api/response";
 import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
 import { updateCompany } from "@/lib/crm/companies";
+import { parsePhones, primaryPhoneNumber } from "@/lib/crm/phones";
 
 type Params = { params: Promise<{ companyId: string }> };
 
@@ -21,6 +22,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     assertRole(auth, "MEMBER");
     const { companyId } = await params;
     const payload = (await request.json()) as Record<string, unknown>;
+    const phones = Array.isArray(payload.phones) ? parsePhones(payload.phones) : undefined;
+    const phone =
+      phones !== undefined
+        ? (primaryPhoneNumber(phones) ?? "")
+        : optionalStringOrNull(payload.phone) ?? undefined;
     const company = await updateCompany(
       companyId,
       auth.workspaceId,
@@ -33,7 +39,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             : typeof payload.linkedin === "string"
               ? payload.linkedin
               : undefined,
-        phone: optionalStringOrNull(payload.phone) ?? undefined,
+        phone,
+        phones,
         email: optionalStringOrNull(payload.email) ?? undefined,
         address_line_1: optionalStringOrNull(payload.address_line_1) ?? undefined,
         address_line_2: optionalStringOrNull(payload.address_line_2) ?? undefined,

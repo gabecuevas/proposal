@@ -3,6 +3,7 @@ import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
 import { assertRole } from "@/lib/auth/request-context";
 import { requireRequestAuth } from "@/lib/auth/require-request-auth";
 import { createCompany, listCompanies } from "@/lib/crm/companies";
+import { parsePhones, primaryPhoneNumber, type PhoneEntry } from "@/lib/crm/phones";
 
 export async function GET(request: NextRequest) {
   const auth = await requireRequestAuth(request);
@@ -24,6 +25,7 @@ type CreateCompanyBody = {
   website?: string;
   linkedin?: string;
   phone?: string;
+  phones?: PhoneEntry[];
   email?: string;
   address_line_1?: string;
   address_line_2?: string;
@@ -50,11 +52,14 @@ export async function POST(request: NextRequest) {
       message: "name is required",
     });
   }
+  const phones = Array.isArray(body.phones) ? parsePhones(body.phones) : undefined;
+  const phone = phones !== undefined ? (primaryPhoneNumber(phones) ?? undefined) : body.phone;
   const company = await createCompany(auth.workspaceId, auth.userId, {
     name: body.name,
     website: body.website,
     linkedin: body.linkedin,
-    phone: body.phone,
+    phone,
+    phones,
     email: body.email,
     address_line_1: body.address_line_1,
     address_line_2: body.address_line_2,

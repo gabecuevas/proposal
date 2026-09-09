@@ -43,6 +43,31 @@ describe("diffTrackedFields address consolidation", () => {
     expect(changes).toHaveLength(1);
     expect(changes[0]?.fieldKey).toBe("email");
   });
+
+  it("emits a single plain-English Phone change for multi-phone updates", () => {
+    const changes = diffTrackedFields(
+      {
+        phone: "8889017977",
+        phones: '[{"id":"a","number":"8889017977","type":"work","primary":true}]',
+      },
+      {
+        phone: "8889017977",
+        phones:
+          '[{"id":"a","number":"8889017977","type":"work","primary":true},{"id":"b","number":"4085551212","type":"mobile","primary":false}]',
+      },
+      CONTACT_FIELD_LABELS,
+    );
+
+    expect(changes).toEqual([
+      {
+        fieldKey: "phones",
+        fieldLabel: "Phone",
+        oldValue: "8889017977 (Work, Primary)",
+        newValue: "8889017977 (Work, Primary), 4085551212 (Mobile)",
+        summary: "Phone changed",
+      },
+    ]);
+  });
 });
 
 describe("timelineToDrawerHistory address consolidation", () => {
@@ -107,5 +132,32 @@ describe("timelineToDrawerHistory address consolidation", () => {
     expect(history).toHaveLength(1);
     expect(history[0]?.title).toBe("Address added");
     expect(history[0]?.detail).toBe("123 Happy Lane, San Jose, CA, 95118");
+  });
+
+  it("formats legacy phone JSON history into plain English", () => {
+    const history = timelineToDrawerHistory([
+      {
+        id: "ph1",
+        event_type: "FIELD_CHANGED",
+        summary: "Phone numbers changed",
+        field_key: "phones",
+        field_label: "Phone numbers",
+        old_value:
+          '[{"id":"a","number":"8889017977","type":"work","primary":true}]',
+        new_value:
+          '[{"id":"a","number":"8889017977","type":"work","primary":true},{"id":"b","number":"4085551212","type":"mobile","primary":false}]',
+        actor_user_id: "u1",
+        actor_name: "Gabe Cuevas",
+        activity_id: null,
+        created_at: "2026-09-09T02:59:00.000Z",
+      },
+    ]);
+
+    expect(history).toHaveLength(1);
+    expect(history[0]?.title).toBe("Phone changed");
+    expect(history[0]?.fieldKey).toBe("phones");
+    expect(history[0]?.detail).toBe(
+      "8889017977 (Work, Primary) → 8889017977 (Work, Primary), 4085551212 (Mobile)",
+    );
   });
 });

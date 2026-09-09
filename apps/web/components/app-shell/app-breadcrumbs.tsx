@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Fragment } from "react";
-import { detailCrumbFor, isNavItemActive, type AppSection } from "./nav-config";
+import { detailCrumbFor, isNavItemActive, sidebarItemsForSection, type AppSection } from "./nav-config";
 
 type AppBreadcrumbsProps = {
   section: AppSection;
@@ -12,9 +12,8 @@ type AppBreadcrumbsProps = {
 };
 
 export function AppBreadcrumbs({ section, pathname, tabParam, hash }: AppBreadcrumbsProps) {
-  const activeItem = section.items.find((item) =>
-    isNavItemActive(item, pathname, tabParam, hash),
-  );
+  const items = sidebarItemsForSection(section, pathname);
+  const activeItem = items.find((item) => isNavItemActive(item, pathname, tabParam, hash));
   const leaf = activeItem?.label ?? detailCrumbFor(pathname);
 
   const trail: Array<{ label: string; href?: string }> = [

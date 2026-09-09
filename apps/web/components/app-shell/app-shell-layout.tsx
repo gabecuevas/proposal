@@ -42,7 +42,8 @@ function AppShellChrome({ children, userEmail, userName, userInitials }: AppShel
   const [hash, setHash] = useState("");
 
   const section = resolveSection(pathname);
-  const tabParam = searchParams.get("tab");
+  // Documents use `?tab=`; Inbox folders use `?folder=` — both drive sidebar active state.
+  const tabParam = searchParams.get("tab") ?? searchParams.get("folder");
   const resolvedInitials = userInitials?.trim() || initialsFromIdentity(userName, userEmail);
 
   const isCompact = useCallback(

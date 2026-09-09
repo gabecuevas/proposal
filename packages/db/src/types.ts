@@ -2,6 +2,10 @@ export type {
   CrmActivityAvailability,
   CrmActivityPriority,
   CrmActivityType,
+  CrmEmailFolder,
+  CrmEmailDirection,
+  CrmEmailSyncProvider,
+  CrmEmailSyncStatus,
   CrmTimelineEventType,
 } from "@prisma/client";
 

@@ -10,6 +10,12 @@ import {
   validateTitle,
 } from "@/lib/crm/contact-field-validation";
 
+import {
+  phoneTypeLabel,
+  phonesForEditor,
+  type PhoneEntry,
+} from "@/lib/crm/phones";
+
 export type CompanyPerson = {
   id: string;
   first_name: string;
@@ -17,6 +23,7 @@ export type CompanyPerson = {
   full_name: string;
   email: string;
   phone: string | null;
+  phones?: PhoneEntry[];
   title: string | null;
 };
 
@@ -412,7 +419,15 @@ export function CompanyPeopleSection({
                       <span className={cn(!person.phone && "text-muted")}>
                         {person.phone || "Add phone"}
                       </span>
-                      {person.phone ? <span className="text-xs text-muted">(Work)</span> : null}
+                      {person.phone ? (
+                        <span className="text-xs text-muted">
+                          (
+                          {phoneTypeLabel(
+                            phonesForEditor(person.phones, person.phone)[0]?.type ?? "work",
+                          )}
+                          )
+                        </span>
+                      ) : null}
                     </div>
                     {person.title ? (
                       <div className="flex items-center gap-2 text-sm text-foreground">

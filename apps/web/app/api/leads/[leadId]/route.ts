@@ -3,6 +3,7 @@ import { errorResponse } from "@/lib/api/response";
 import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
 import { LeadValidationError, updateLead } from "@/lib/crm/leads";
 import { LEAD_STATUSES, type LeadStatus } from "@/lib/crm/lead-status";
+import { parsePhones, primaryPhoneNumber } from "@/lib/crm/phones";
 
 type Params = { params: Promise<{ leadId: string }> };
 
@@ -19,6 +20,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     typeof payload.status === "string" && LEAD_STATUSES.includes(payload.status as LeadStatus)
       ? (payload.status as LeadStatus)
       : undefined;
+  const phones = Array.isArray(payload.phones) ? parsePhones(payload.phones) : undefined;
+  const phone =
+    phones !== undefined ? (primaryPhoneNumber(phones) ?? undefined) : optionalString(payload.phone);
   try {
     const lead = await updateLead(
       leadId,
@@ -41,7 +45,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         first_name: optionalString(payload.first_name),
         last_name: optionalString(payload.last_name),
         email: optionalString(payload.email),
-        phone: optionalString(payload.phone),
+        phone,
+        phones,
+        linkedin: optionalString(payload.linkedin),
         company_name: optionalString(payload.company_name),
         contact_title: optionalString(payload.contact_title),
         address_line_1: optionalString(payload.address_line_1),
@@ -71,6 +77,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         message: error.message,
       });
     }
-    throw error;
+    const message =
+      error instanceof Error
+        ? error.message.split("\n").find((line) => line.trim().length > 0) || error.message
+        : "Failed to save lead";
+    return errorResponse(request, {
+      status: 500,
+      code: "lead_save_failed",
+      message: message.slice(0, 300),
+    });
   }
 }

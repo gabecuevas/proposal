@@ -1,6 +1,14 @@
 import { prisma } from "@repo/db";
 import type { InputJsonValue } from "@repo/db";
 import { CONTACT_FIELD_LABELS } from "@/lib/crm/field-labels";
+import {
+  parsePhones,
+  phonesToJson,
+  primaryPhoneNumber,
+  syncPhonesWithScalar,
+  formatPhonesHistory,
+  type PhoneEntry,
+} from "@/lib/crm/phones";
 import { recordFieldChanges, recordRecordCreated } from "@/lib/crm/timeline";
 
 export type ContactRecord = {
@@ -12,6 +20,8 @@ export type ContactRecord = {
   full_name: string;
   email: string;
   phone: string | null;
+  phones: PhoneEntry[];
+  linkedin: string | null;
   company_name: string | null;
   title: string | null;
   address_line_1: string | null;
@@ -42,6 +52,8 @@ type ContactRow = {
   full_name: string;
   email: string;
   phone: string | null;
+  phones?: unknown;
+  linkedin?: string | null;
   company_name: string | null;
   title: string | null;
   address_line_1: string | null;
@@ -89,6 +101,8 @@ function parseContact(row: ContactRow): ContactRecord {
     full_name: row.full_name,
     email: row.email,
     phone: row.phone,
+    phones: parsePhones(row.phones, row.phone),
+    linkedin: row.linkedin ?? null,
     company_name: row.company_name,
     title: row.title,
     address_line_1: row.address_line_1,
@@ -119,6 +133,8 @@ function contactSnapshot(row: {
   last_name: string;
   email: string;
   phone: string | null;
+  phones?: unknown;
+  linkedin?: string | null;
   company_id: string | null;
   company_name: string | null;
   title: string | null;
@@ -138,6 +154,8 @@ function contactSnapshot(row: {
     last_name: row.last_name,
     email: row.email,
     phone: row.phone,
+    phones: formatPhonesHistory(parsePhones(row.phones, row.phone)),
+    linkedin: row.linkedin ?? null,
     company_id: row.company?.name ?? row.company_name ?? row.company_id ?? "",
     company_name: row.company?.name ?? row.company_name,
     title: row.title,
@@ -284,6 +302,8 @@ export async function createContact(input: {
   last_name: string;
   email: string;
   phone?: string;
+  phones?: PhoneEntry[];
+  linkedin?: string;
   company_name?: string;
   title?: string;
   address_line_1?: string;
@@ -307,6 +327,10 @@ export async function createContact(input: {
   if (duplicate) {
     throw new ContactDuplicateError();
   }
+  const nextPhones = input.phones
+    ? phonesToJson(input.phones)
+    : syncPhonesWithScalar(null, input.phone);
+  const nextPhone = primaryPhoneNumber(nextPhones);
   const row = await prisma.contact.create({
     data: {
       workspace_id: input.workspaceId,
@@ -315,7 +339,9 @@ export async function createContact(input: {
       last_name: lastName,
       full_name: toFullName(firstName, lastName),
       email,
-      phone: input.phone?.trim() || null,
+      phone: nextPhone,
+      phones: nextPhones as InputJsonValue,
+      linkedin: input.linkedin?.trim() || null,
       company_name: input.company_name?.trim() || null,
       title: input.title?.trim() || null,
       address_line_1: input.address_line_1?.trim() || null,
@@ -371,6 +397,8 @@ export async function updateContact(
     last_name?: string;
     email?: string;
     phone?: string;
+    phones?: PhoneEntry[];
+    linkedin?: string;
     company_name?: string;
     title?: string;
     address_line_1?: string;
@@ -407,6 +435,12 @@ export async function updateContact(
       throw new ContactDuplicateError();
     }
   }
+  const nextPhones = input.phones
+    ? phonesToJson(input.phones)
+    : input.phone !== undefined
+      ? syncPhonesWithScalar(existing.phones, input.phone)
+      : parsePhones(existing.phones, existing.phone);
+  const nextPhone = primaryPhoneNumber(nextPhones);
   const row = await prisma.contact.update({
     where: { id: contactId },
     data: {
@@ -414,7 +448,9 @@ export async function updateContact(
       last_name: nextLastName,
       full_name: toFullName(nextFirstName, nextLastName),
       email: nextEmail,
-      phone: input.phone !== undefined ? input.phone.trim() || null : existing.phone,
+      phone: nextPhone,
+      phones: nextPhones as InputJsonValue,
+      linkedin: input.linkedin !== undefined ? input.linkedin.trim() || null : (existing.linkedin ?? null),
       company_name:
         input.company_name !== undefined ? input.company_name.trim() || null : existing.company_name,
       title: input.title !== undefined ? input.title.trim() || null : existing.title,

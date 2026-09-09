@@ -1,9 +1,17 @@
-import { prisma, type InputJsonValue } from "@repo/db";
+import { prisma, type InputJsonValue, Prisma } from "@repo/db";
 import { createContact, updateContact, type ContactRecord } from "@/lib/contacts/store";
 import { leadContactDetailsError } from "./contact-field-validation";
 import { LEAD_STATUSES, type LeadStatus } from "./lead-status";
 import { LEAD_FIELD_LABELS } from "./field-labels";
 import { userDisplayName } from "./display-name";
+import {
+  parsePhones,
+  phonesToJson,
+  primaryPhoneNumber,
+  syncPhonesWithScalar,
+  formatPhonesHistory,
+  type PhoneEntry,
+} from "./phones";
 import { recordFieldChanges, recordRecordCreated, writeTimelineEvent } from "./timeline";
 
 export { LEAD_STATUSES, type LeadStatus };
@@ -24,6 +32,8 @@ export type LeadRecord = {
   full_name: string | null;
   email: string | null;
   phone: string | null;
+  phones: PhoneEntry[];
+  linkedin: string | null;
   company_name: string | null;
   contact_title: string | null;
   address_line_1: string | null;
@@ -56,6 +66,8 @@ type LeadInput = {
   last_name?: string;
   email?: string;
   phone?: string;
+  phones?: PhoneEntry[];
+  linkedin?: string | null;
   company_name?: string | null;
   contact_title?: string | null;
   address_line_1?: string | null;
@@ -92,6 +104,8 @@ function parseLead(row: {
   full_name: string | null;
   email: string | null;
   phone: string | null;
+  phones?: unknown;
+  linkedin?: string | null;
   company_name: string | null;
   contact_title: string | null;
   address_line_1: string | null;
@@ -128,6 +142,8 @@ function parseLead(row: {
     full_name: row.full_name,
     email: row.email,
     phone: row.phone,
+    phones: parsePhones(row.phones, row.phone),
+    linkedin: row.linkedin ?? null,
     company_name: row.company?.name ?? row.company_name ?? null,
     contact_title: row.contact_title,
     address_line_1: row.address_line_1,
@@ -192,6 +208,8 @@ function leadSnapshot(row: {
   value_minor: number | null;
   email: string | null;
   phone: string | null;
+  phones?: unknown;
+  linkedin?: string | null;
   notes: string | null;
   person_id: string | null;
   company_id: string | null;
@@ -216,6 +234,8 @@ function leadSnapshot(row: {
     value_minor: row.value_minor != null ? String(row.value_minor / 100) : "",
     email: row.email,
     phone: row.phone,
+    phones: formatPhonesHistory(parsePhones(row.phones, row.phone)),
+    linkedin: row.linkedin ?? null,
     notes: row.notes,
     person_id: row.person?.full_name ?? row.person_id ?? "",
     company_id: row.company?.name ?? row.company_id ?? "",
@@ -253,6 +273,8 @@ function buildLeadData(
     last_name: string | null;
     email: string | null;
     phone: string | null;
+    phones?: unknown;
+    linkedin?: string | null;
     company_name: string | null;
     contact_title: string | null;
     address_line_1: string | null;
@@ -272,6 +294,11 @@ function buildLeadData(
     input.first_name !== undefined ? optionalText(input.first_name) : (existing?.first_name ?? null);
   const lastName =
     input.last_name !== undefined ? optionalText(input.last_name) : (existing?.last_name ?? null);
+  const nextPhones = input.phones
+    ? phonesToJson(input.phones)
+    : input.phone !== undefined
+      ? syncPhonesWithScalar(existing?.phones, input.phone)
+      : parsePhones(existing?.phones, existing?.phone ?? null);
   return {
     title: input.title?.trim() ?? existing?.title ?? "",
     status: (input.status ?? existing?.status ?? "NEW") as LeadStatus,
@@ -287,7 +314,9 @@ function buildLeadData(
       input.email !== undefined
         ? optionalText(input.email)?.toLowerCase() ?? null
         : (existing?.email?.toLowerCase() ?? null),
-    phone: input.phone !== undefined ? optionalText(input.phone) : (existing?.phone ?? null),
+    phone: primaryPhoneNumber(nextPhones),
+    phones: nextPhones as InputJsonValue,
+    linkedin: input.linkedin !== undefined ? optionalText(input.linkedin) : (existing?.linkedin ?? null),
     company_name:
       input.company_name !== undefined ? optionalText(input.company_name) : (existing?.company_name ?? null),
     contact_title:
@@ -308,6 +337,41 @@ function buildLeadData(
     tags: (input.tags ?? (Array.isArray(existing?.tags) ? existing.tags : [])) as InputJsonValue,
     color_label:
       input.color_label !== undefined ? optionalText(input.color_label) : (existing?.color_label ?? null),
+  };
+}
+
+/** Always write scalar FKs via UncheckedUpdateInput (avoids checked/relation validation traps). */
+function toLeadUncheckedUpdateData(
+  data: ReturnType<typeof buildLeadData>,
+): Prisma.LeadUncheckedUpdateInput {
+  return {
+    title: data.title,
+    status: data.status,
+    source: data.source,
+    value_minor: data.value_minor,
+    currency: data.currency,
+    person_id: data.person_id,
+    company_id: data.company_id,
+    first_name: data.first_name,
+    last_name: data.last_name,
+    full_name: data.full_name,
+    email: data.email,
+    phone: data.phone,
+    phones: data.phones,
+    linkedin: data.linkedin,
+    company_name: data.company_name,
+    contact_title: data.contact_title,
+    address_line_1: data.address_line_1,
+    address_line_2: data.address_line_2,
+    city: data.city,
+    state: data.state,
+    postal_code: data.postal_code,
+    country: data.country,
+    website: data.website,
+    notes: data.notes,
+    custom_fields_json: data.custom_fields_json,
+    tags: data.tags,
+    color_label: data.color_label,
   };
 }
 
@@ -383,7 +447,7 @@ export async function updateLead(
   assertLeadContactDetails(data);
   const row = await prisma.lead.update({
     where: { id: leadId },
-    data,
+    data: toLeadUncheckedUpdateData(data),
     include: leadInclude,
   });
 
@@ -435,6 +499,8 @@ export async function convertLeadToContact(
     last_name: existing.last_name!.trim(),
     email: existing.email!.trim(),
     phone: existing.phone ?? undefined,
+    phones: parsePhones(existing.phones, existing.phone),
+    linkedin: existing.linkedin ?? undefined,
     company_name: existing.company?.name ?? existing.company_name ?? undefined,
     title: existing.contact_title ?? undefined,
     address_line_1: existing.address_line_1 ?? undefined,

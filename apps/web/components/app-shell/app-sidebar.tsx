@@ -7,7 +7,16 @@ import { useNewDocumentWorkflow } from "@/components/documents/new-document-work
 import { documentTrackingCounts } from "@/lib/ui/document-tracking";
 import { SettingsMenu } from "./settings-menu";
 import { sidebarIcons, IconSearch } from "./shell-icons";
-import { isNavItemActive, navItemHrefHash, type AppSection, type CountKey, type SectionId } from "./nav-config";
+import {
+  isEmailInboxPath,
+  isNavItemActive,
+  navItemHrefHash,
+  sidebarExtrasForSection,
+  sidebarItemsForSection,
+  type AppSection,
+  type CountKey,
+  type SectionId,
+} from "./nav-config";
 import { APP_SIDEBAR_WIDTH_CLASS } from "./shell-metrics";
 
 type AppSidebarProps = {
@@ -94,7 +103,7 @@ function useShellCounts(sectionId: SectionId): Counts {
         return;
       }
       const payload = (await response.json()) as {
-        counts?: { leads?: number; people?: number; companies?: number };
+        counts?: { leads?: number; people?: number; companies?: number; inbox?: number };
       };
       if (cancelled) {
         return;
@@ -103,6 +112,7 @@ function useShellCounts(sectionId: SectionId): Counts {
         leads: payload.counts?.leads ?? 0,
         people: payload.counts?.people ?? 0,
         companies: payload.counts?.companies ?? 0,
+        inbox: payload.counts?.inbox ?? 0,
       });
     }
 
@@ -140,6 +150,9 @@ export function AppSidebar({
   const teamMemberCount = useTeamMemberCount(
     Boolean(section.filters?.some((filter) => filter.id === "members")),
   );
+  const navItems = sidebarItemsForSection(section, pathname);
+  const extras = sidebarExtrasForSection(section, pathname);
+  const inboxShelf = isEmailInboxPath(pathname);
 
   return (
     <aside
@@ -157,7 +170,18 @@ export function AppSidebar({
           !open && "pointer-events-none opacity-0",
         )}
       >
-        {section.createCta ? (
+        {inboxShelf ? (
+          <div className="shrink-0 px-3 pb-2 pt-3">
+            <Link
+              href="/app/contacts/inbox?compose=1"
+              onClick={onNavigate}
+              className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-95"
+            >
+              <span className="text-base leading-none">+</span>
+              New email
+            </Link>
+          </div>
+        ) : section.createCta ? (
           <div className="shrink-0 px-3 pb-2 pt-3">
             <button
               type="button"
@@ -215,7 +239,7 @@ export function AppSidebar({
         ) : null}
 
         <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
-          {section.items.map((item) => {
+          {navItems.map((item) => {
             const active = isNavItemActive(item, pathname, tabParam, hash);
             const count = item.countKey ? counts[item.countKey] : undefined;
             const itemHash = navItemHrefHash(item.href);
@@ -240,22 +264,40 @@ export function AppSidebar({
                 {Icon ? <Icon className="shrink-0" /> : null}
                 <span className="min-w-0 flex-1 truncate">{item.label}</span>
                 {typeof count === "number" ? (
-                  <span
-                    className={cn(
-                      "shrink-0 tabular-nums text-xs",
-                      active ? "text-primary" : "text-muted",
-                    )}
-                  >
-                    {count}
-                  </span>
+                  item.countKey === "inbox" ? (
+                    count > 0 ? (
+                      <span
+                        className={cn(
+                          "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+                          active ? "bg-primary/15 text-primary" : "bg-slate-100 text-muted",
+                        )}
+                      >
+                        {count}
+                      </span>
+                    ) : null
+                  ) : (
+                    <span
+                      className={cn(
+                        "shrink-0 tabular-nums text-xs",
+                        active ? "text-primary" : "text-muted",
+                      )}
+                    >
+                      {count}
+                    </span>
+                  )
                 ) : null}
               </Link>
             );
           })}
 
-          {section.extras?.length ? (
+          {extras.length ? (
             <div className="mt-2 space-y-0.5 border-t border-border pt-2">
-              {section.extras.map((item) => (
+              {inboxShelf ? (
+                <p className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                  Integrations
+                </p>
+              ) : null}
+              {extras.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}

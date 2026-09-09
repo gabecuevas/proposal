@@ -3,6 +3,7 @@ import { errorResponse } from "@/lib/api/response";
 import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
 import { ContactDuplicateError, deleteContact, updateContact } from "@/lib/contacts/store";
 import { firstContactDetailsError } from "@/lib/crm/contact-field-validation";
+import { parsePhones, primaryPhoneNumber, type PhoneEntry } from "@/lib/crm/phones";
 
 type Params = { params: Promise<{ contactId: string }> };
 
@@ -11,6 +12,8 @@ type UpdateContactBody = {
   last_name?: string;
   email?: string;
   phone?: string;
+  phones?: PhoneEntry[];
+  linkedin?: string;
   company_name?: string;
   title?: string;
   address_line_1?: string;
@@ -34,11 +37,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const { contactId } = await params;
   const payload = (await request.json()) as UpdateContactBody;
+  const phones = Array.isArray(payload.phones) ? parsePhones(payload.phones) : undefined;
+  const phone =
+    phones !== undefined ? (primaryPhoneNumber(phones) ?? "") : payload.phone;
   const validationMessage = firstContactDetailsError({
     first_name: payload.first_name,
     last_name: payload.last_name,
     email: payload.email,
-    phone: payload.phone,
+    phone,
     title: payload.title,
     website: payload.website,
   });
@@ -50,7 +56,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     });
   }
   try {
-    const contact = await updateContact(contactId, auth.workspaceId, payload, { actorUserId: auth.userId });
+    const contact = await updateContact(
+      contactId,
+      auth.workspaceId,
+      {
+        ...payload,
+        phone,
+        phones,
+      },
+      { actorUserId: auth.userId },
+    );
     if (!contact) {
       return NextResponse.json({ error: "Contact not found" }, { status: 404 });
     }

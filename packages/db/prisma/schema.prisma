@@ -36,6 +36,8 @@ model Workspace {
   leads         Lead[]
   crmActivities CrmActivity[]
   crmTimelineEvents CrmTimelineEvent[]
+  crmEmailAccounts CrmEmailAccount[]
+  crmEmailMessages CrmEmailMessage[]
   sentVersions  DocumentSentVersion[]
   owner         User?            @relation("workspace_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
 }
@@ -316,6 +318,7 @@ model User {
   crm_activities_created  CrmActivity[]  @relation("crm_activity_creator")
   crm_activities_assigned CrmActivity[]   @relation("crm_activity_assignee")
   crm_timeline_events    CrmTimelineEvent[]
+  crm_email_accounts     CrmEmailAccount[]
 }
 
 model Contact {
@@ -327,6 +330,8 @@ model Contact {
   full_name         String
   email             String
   phone             String?
+  phones            Json?
+  linkedin          String?
   company_name      String?
   title             String?
   address_line_1    String?
@@ -368,6 +373,7 @@ model Company {
   website        String?
   linkedin       String?
   phone          String?
+  phones         Json?
   email          String?
   address_line_1 String?
   address_line_2 String?
@@ -410,6 +416,8 @@ model Lead {
   full_name          String?
   email              String?
   phone              String?
+  phones             Json?
+  linkedin           String?
   company_name       String?
   contact_title      String?
   address_line_1     String?
@@ -725,4 +733,88 @@ enum DocumentPaymentStatus {
   COMPLETED
   EXPIRED
   FAILED
+}
+
+enum CrmEmailFolder {
+  INBOX
+  DRAFTS
+  OUTBOX
+  SENT
+  TRASH
+}
+
+enum CrmEmailDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CrmEmailSyncProvider {
+  GOOGLE
+  OFFICE365
+  EXCHANGE
+  IMAP
+}
+
+enum CrmEmailSyncStatus {
+  INACTIVE
+  ACTIVE
+  ERROR
+}
+
+model CrmEmailAccount {
+  id                      String               @id @default(cuid())
+  workspace_id            String
+  user_id                 String?
+  provider                CrmEmailSyncProvider @default(GOOGLE)
+  email                   String
+  sender_name             String?
+  is_default              Boolean              @default(false)
+  sync_status             CrmEmailSyncStatus   @default(INACTIVE)
+  sync_from_at            DateTime?
+  last_synced_at          DateTime?
+  imap_host               String?
+  imap_port               Int?
+  smtp_host               String?
+  smtp_port               Int?
+  credentials_configured  Boolean              @default(false)
+  created_at              DateTime             @default(now())
+  updated_at              DateTime             @updatedAt
+
+  workspace Workspace         @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  user      User?             @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  messages  CrmEmailMessage[]
+
+  @@unique([workspace_id, email])
+  @@index([workspace_id, sync_status])
+}
+
+model CrmEmailMessage {
+  id               String            @id @default(cuid())
+  workspace_id     String
+  account_id       String?
+  folder           CrmEmailFolder    @default(INBOX)
+  direction        CrmEmailDirection
+  from_name        String?
+  from_address     String
+  to_addresses     Json
+  cc_addresses     Json?
+  subject          String            @default("")
+  snippet          String            @default("")
+  body_text        String?
+  body_html        String?
+  is_read          Boolean           @default(false)
+  has_attachments  Boolean           @default(false)
+  message_at       DateTime          @default(now())
+  external_id      String?
+  contact_id       String?
+  lead_id          String?
+  created_at       DateTime          @default(now())
+  updated_at       DateTime          @updatedAt
+
+  workspace Workspace        @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  account   CrmEmailAccount? @relation(fields: [account_id], references: [id], onDelete: SetNull)
+
+  @@index([workspace_id, folder, message_at])
+  @@index([workspace_id, is_read, folder])
+  @@unique([workspace_id, external_id])
 }

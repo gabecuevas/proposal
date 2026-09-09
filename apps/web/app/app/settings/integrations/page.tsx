@@ -21,6 +21,12 @@ const integrations = [
     status: "Available",
   },
   {
+    name: "Email Sync",
+    description: "Connect Gmail so inbox, sent, and drafts stay in sync for this workspace.",
+    href: "/app/settings/integrations/email",
+    status: "Available",
+  },
+  {
     name: "Stripe",
     description: "Collect payments from signed documents.",
     href: "/app/settings/billing",

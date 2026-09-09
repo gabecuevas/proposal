@@ -3,6 +3,10 @@ import {
   toDocumentTrackingTab,
   type DocumentCountKey,
 } from "@/lib/ui/document-tracking";
+import { EMAIL_FOLDER_IDS, parseEmailFolder, type EmailFolderId } from "@/lib/crm/emails";
+
+export type { EmailFolderId };
+export { EMAIL_FOLDER_IDS, parseEmailFolder };
 
 export type CountKey =
   | DocumentCountKey
@@ -10,9 +14,20 @@ export type CountKey =
   | "contentBlocks"
   | "leads"
   | "people"
-  | "companies";
+  | "companies"
+  | "inbox";
 
-export type SidebarIconId = DocumentCountKey | "leads" | "people" | "companies" | "calendar";
+export type SidebarIconId =
+  | DocumentCountKey
+  | "leads"
+  | "people"
+  | "companies"
+  | "calendar"
+  | "inbox"
+  | "email-drafts"
+  | "email-outbox"
+  | "email-sent"
+  | "email-trash";
 
 export type AppNavItem = {
   label: string;
@@ -98,6 +113,7 @@ export const appSections: AppSection[] = [
       { label: "People", href: "/app/contacts/people", countKey: "people", icon: "people" },
       { label: "Companies", href: "/app/contacts/companies", countKey: "companies", icon: "companies" },
       { label: "Calendar", href: "/app/contacts/calendar", icon: "calendar" },
+      { label: "Inbox", href: "/app/contacts/inbox", icon: "inbox", countKey: "inbox" },
     ],
   },
   {
@@ -112,6 +128,7 @@ export const appSections: AppSection[] = [
       { label: "Integrations", href: "/app/settings/integrations" },
       { label: "All users", href: "/app/settings/users" },
       { label: "Calendar Sync", href: "/app/settings/integrations/calendar" },
+      { label: "Email Sync", href: "/app/settings/integrations/email" },
       { label: "Billing", href: "/app/settings/billing" },
       { label: "Analytics", href: "/app/analytics" },
       { label: "Compliance", href: "/app/settings#compliance" },
@@ -120,6 +137,33 @@ export const appSections: AppSection[] = [
     ],
   },
 ];
+
+export const EMAIL_INBOX_NAV: AppNavItem[] = [
+  { label: "Inbox", href: "/app/contacts/inbox", icon: "inbox", countKey: "inbox" },
+  { label: "Drafts", href: "/app/contacts/inbox?folder=drafts", icon: "email-drafts" },
+  { label: "Outbox", href: "/app/contacts/inbox?folder=outbox", icon: "email-outbox" },
+  { label: "Sent", href: "/app/contacts/inbox?folder=sent", icon: "email-sent" },
+  { label: "Trash", href: "/app/contacts/inbox?folder=trash", icon: "email-trash" },
+];
+
+export function isEmailInboxPath(pathname: string): boolean {
+  return pathname === "/app/contacts/inbox" || pathname.startsWith("/app/contacts/inbox/");
+}
+
+/** Contacts shelf swaps to mail folders while viewing Inbox. */
+export function sidebarItemsForSection(section: AppSection, pathname: string): AppNavItem[] {
+  if (section.id === "contacts" && isEmailInboxPath(pathname)) {
+    return EMAIL_INBOX_NAV;
+  }
+  return section.items;
+}
+
+export function sidebarExtrasForSection(section: AppSection, pathname: string): AppNavItem[] {
+  if (section.id === "contacts" && isEmailInboxPath(pathname)) {
+    return [{ label: "Email Sync", href: "/app/settings/integrations/email" }];
+  }
+  return section.extras ?? [];
+}
 
 const dashboardSection = appSections[0]!;
 
@@ -200,6 +244,15 @@ export function isNavItemActive(
   const itemTab = new URLSearchParams(navItemHrefQuery(item.href) ?? "").get("tab");
   if (pathname === "/app/documents") {
     return toDocumentTrackingTab(itemTab) === toDocumentTrackingTab(tabParam);
+  }
+  // Inbox folders use `?folder=`; shell passes that value via `tabParam`.
+  if (pathname === "/app/contacts/inbox") {
+    const itemFolder = new URLSearchParams(navItemHrefQuery(item.href) ?? "").get("folder");
+    const current = parseEmailFolder(tabParam);
+    if (!itemFolder) {
+      return current === "inbox";
+    }
+    return itemFolder === current;
   }
   if (itemTab) {
     return tabParam === itemTab;

@@ -8,7 +8,6 @@ import {
   leadContactDetailsError,
   validateEmail,
   validatePersonName,
-  validatePhone,
   validateTitle,
   validateWebsite,
 } from "@/lib/crm/contact-field-validation";
@@ -25,6 +24,12 @@ import {
   formatAddressDisplay,
   type AddressValues,
 } from "@/lib/crm/address";
+import {
+  phonesForEditor,
+  phoneTypeLabel,
+  primaryPhoneNumber,
+  type PhoneEntry,
+} from "@/lib/crm/phones";
 import { normalizeWebsite } from "@/lib/crm/website";
 
 type Lead = {
@@ -41,6 +46,8 @@ type Lead = {
   full_name: string | null;
   email: string | null;
   phone: string | null;
+  phones?: PhoneEntry[];
+  linkedin?: string | null;
   company_name: string | null;
   contact_title: string | null;
   address_line_1: string | null;
@@ -77,12 +84,15 @@ type Editor = {
   last_name: string;
   email: string;
   phone: string;
+  phones: PhoneEntry[];
+  linkedin: string;
   contact_title: string;
   address_line_1: string;
   city: string;
   state: string;
   postal_code: string;
   website: string;
+  industry: string;
   notes: string;
 };
 
@@ -107,12 +117,15 @@ const emptyEditor = (): Editor => ({
   last_name: "",
   email: "",
   phone: "",
+  phones: phonesForEditor(null, null),
+  linkedin: "",
   contact_title: "",
   address_line_1: "",
   city: "",
   state: "",
   postal_code: "",
   website: "",
+  industry: "",
   notes: "",
 });
 
@@ -191,7 +204,16 @@ const LEAD_COLUMNS: CrmGridColumn<Lead>[] = [
     label: "Phone",
     width: 180,
     sortValue: (lead) => lead.phone,
-    cell: (lead) => <LabeledValue value={lead.phone} hint="Work" />,
+    cell: (lead) => {
+      const phones = phonesForEditor(lead.phones, lead.phone).filter((p) => p.number);
+      const primary = phones[0];
+      return (
+        <LabeledValue
+          value={primary?.number ?? lead.phone}
+          hint={primary ? phoneTypeLabel(primary.type) : "Work"}
+        />
+      );
+    },
   },
   {
     id: "owner",
@@ -364,6 +386,8 @@ export default function LeadsPage() {
 
   function openLead(lead: Lead) {
     setSelectedId(lead.id);
+    const phones = phonesForEditor(lead.phones, lead.phone);
+    const company = companies.find((item) => item.id === lead.company_id);
     setEditor({
       title: lead.title,
       status: lead.status,
@@ -375,13 +399,16 @@ export default function LeadsPage() {
       first_name: lead.first_name ?? "",
       last_name: lead.last_name ?? "",
       email: lead.email ?? "",
-      phone: lead.phone ?? "",
+      phone: primaryPhoneNumber(phones) ?? lead.phone ?? "",
+      phones,
+      linkedin: lead.linkedin ?? "",
       contact_title: lead.contact_title ?? "",
       address_line_1: lead.address_line_1 ?? "",
       city: lead.city ?? "",
       state: lead.state ?? "",
       postal_code: lead.postal_code ?? "",
       website: lead.website ?? "",
+      industry: company?.industry ?? "",
       notes: lead.notes ?? "",
     });
     setStatus("");
@@ -424,6 +451,8 @@ export default function LeadsPage() {
       last_name: current.last_name,
       email: current.email,
       phone: current.phone,
+      phones: current.phones,
+      linkedin: current.linkedin ? normalizeWebsite(current.linkedin) : undefined,
       contact_title: current.contact_title || undefined,
       address_line_1: current.address_line_1 || undefined,
       city: current.city || undefined,
@@ -597,6 +626,8 @@ export default function LeadsPage() {
       ...(typeof body.last_name === "string" ? { last_name: body.last_name } : {}),
       ...(typeof body.email === "string" ? { email: body.email } : {}),
       ...(typeof body.phone === "string" ? { phone: body.phone } : {}),
+      ...(Array.isArray(body.phones) ? { phones: body.phones as PhoneEntry[] } : {}),
+      ...(typeof body.linkedin === "string" ? { linkedin: normalizeWebsite(body.linkedin) } : {}),
       ...(typeof body.contact_title === "string" ? { contact_title: body.contact_title } : {}),
       ...(typeof body.address_line_1 === "string" ? { address_line_1: body.address_line_1 } : {}),
       ...(typeof body.city === "string" ? { city: body.city } : {}),
@@ -638,6 +669,8 @@ export default function LeadsPage() {
         last_name: merged.last_name || undefined,
         email: merged.email || undefined,
         phone: merged.phone || undefined,
+        phones: merged.phones,
+        linkedin: merged.linkedin || undefined,
         contact_title: merged.contact_title || undefined,
         address_line_1: merged.address_line_1 || undefined,
         city: merged.city || undefined,
@@ -668,21 +701,43 @@ export default function LeadsPage() {
 
   const commitCompanyAssociation = useCallback(
     async (name: string, companyId: string) => {
-      const resolved = await resolveCompanyAssociation(name, companyId);
+      const resolved = await resolveCompanyAssociation(name, companyId, {
+        industry: editor.industry || undefined,
+      });
       if (resolved.company) {
         ensureCompanyOption(resolved.company);
       }
+      const nextIndustry = resolved.company?.industry ?? editor.industry;
       setEditor((current) => ({
         ...current,
         company_id: resolved.company_id ?? "",
         company_name: resolved.company_name ?? "",
+        industry: nextIndustry,
       }));
       void saveLead({
         company_id: resolved.company_id,
         company_name: resolved.company_name,
       });
+      if (resolved.company_id && editor.industry.trim() && !resolved.company?.industry) {
+        void fetch(`/api/companies/${resolved.company_id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ industry: editor.industry.trim() }),
+        }).then(async (response) => {
+          if (!response.ok) {
+            return;
+          }
+          setCompanies((current) =>
+            current.map((company) =>
+              company.id === resolved.company_id
+                ? { ...company, industry: editor.industry.trim() }
+                : company,
+            ),
+          );
+        });
+      }
     },
-    [ensureCompanyOption, saveLead],
+    [editor.industry, ensureCompanyOption, saveLead],
   );
 
   const commitAddress = useCallback(
@@ -711,6 +766,45 @@ export default function LeadsPage() {
       void saveLead({ website: website || null });
     },
     [saveLead],
+  );
+
+  const commitLinkedIn = useCallback(
+    (value: string) => {
+      const linkedin = normalizeWebsite(value);
+      setEditor((current) => ({ ...current, linkedin }));
+      void saveLead({ linkedin: linkedin || null });
+    },
+    [saveLead],
+  );
+
+  const commitIndustry = useCallback(
+    async (value: string) => {
+      const industry = value.trim();
+      setEditor((current) => ({ ...current, industry }));
+      const companyId = editor.company_id;
+      if (!companyId) {
+        return;
+      }
+      const response = await fetch(`/api/companies/${companyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ industry: industry || null }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        setError(payload?.error?.message ?? "Failed to save industry");
+        return;
+      }
+      setCompanies((current) =>
+        current.map((company) =>
+          company.id === companyId ? { ...company, industry: industry || null } : company,
+        ),
+      );
+      setStatus("Saved.");
+    },
+    [editor.company_id],
   );
 
   const sections: DrawerSection[] = useMemo(
@@ -759,13 +853,35 @@ export default function LeadsPage() {
             icon: "phone",
             label: "Phone",
             showLabel: false,
+            type: "phones",
             value: editor.phone,
             placeholder: "Add phone",
-            hint: "Work",
-            inputType: "tel",
+            phones: editor.phones,
+            phonesRequired: true,
             onChange: (value) => setEditor((current) => ({ ...current, phone: value })),
-            validate: (value) => validatePhone(value, { required: true }),
-            onCommit: (value) => void saveLead({ phone: value }),
+            onPhonesChange: (phones) =>
+              setEditor((current) => ({
+                ...current,
+                phones,
+                phone: primaryPhoneNumber(phones) ?? "",
+              })),
+            onPhonesCommit: (phones) =>
+              void saveLead({
+                phones,
+                phone: primaryPhoneNumber(phones) ?? "",
+              }),
+          },
+          {
+            id: "linkedin",
+            icon: "linkedin",
+            label: "LinkedIn",
+            showLabel: true,
+            type: "website",
+            value: editor.linkedin,
+            placeholder: "linkedin.com/in/…",
+            onChange: (value) => setEditor((current) => ({ ...current, linkedin: value })),
+            validate: (value) => validateWebsite(value),
+            onCommit: (value) => void commitLinkedIn(value),
           },
           {
             id: "contact_title",
@@ -801,6 +917,7 @@ export default function LeadsPage() {
                   ...current,
                   company_id: company.id,
                   company_name: company.name,
+                  industry: company.industry ?? current.industry,
                 }));
                 return;
               }
@@ -842,10 +959,11 @@ export default function LeadsPage() {
             id: "org_industry",
             icon: "industry",
             label: "Industry",
-            value: linkedCompany?.industry ?? "",
+            showLabel: true,
+            value: editor.industry,
             placeholder: "Industry",
-            readOnly: true,
-            onChange: () => undefined,
+            onChange: (value) => setEditor((current) => ({ ...current, industry: value })),
+            onCommit: (value) => void commitIndustry(value),
           },
         ],
       },
@@ -920,7 +1038,7 @@ export default function LeadsPage() {
         ],
       },
     ],
-    [commitAddress, commitCompanyAssociation, commitWebsite, companies, currentUserName, editor, ensureCompanyOption, linkedCompany, selected, selectedId, saveLead],
+    [commitAddress, commitCompanyAssociation, commitIndustry, commitLinkedIn, commitWebsite, companies, currentUserName, editor, ensureCompanyOption, linkedCompany, selected, selectedId, saveLead],
   );
 
   const isNewLead = !selectedId;

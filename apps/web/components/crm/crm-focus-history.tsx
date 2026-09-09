@@ -8,6 +8,7 @@ import {
   activityTypeLabel,
   type CrmActivityRecord,
 } from "@/lib/crm/activity-shared";
+import { HistoryFieldIcon, historyFieldIconId } from "@/lib/crm/history-field-icon";
 import { formatGridDate, formatGridDateTime } from "@/lib/ui/datetime";
 import { NotesHtml } from "@/components/crm/notes-html";
 import { isEmptyNoteHtml } from "@/lib/crm/notes-html";
@@ -19,6 +20,7 @@ export type FocusHistoryItem = {
   detail?: string;
   kind?: "note" | "created" | "change" | "activity";
   actorName?: string;
+  fieldKey?: string | null;
 };
 
 type HistoryFilterId =
@@ -359,10 +361,17 @@ function HistoryEntry({
 }) {
   const isNote = item.kind === "note";
   const isActivity = item.kind === "activity";
+  const fieldIconId = historyFieldIconId({
+    fieldKey: item.fieldKey,
+    kind: item.kind,
+    title: item.title,
+  });
   const icon = isNote ? (
     <NotesTimelineIcon />
   ) : isActivity ? (
     <ActivityTypeIcon type="CALL" className="h-3.5 w-3.5" />
+  ) : fieldIconId ? (
+    <HistoryFieldIcon id={fieldIconId} />
   ) : (
     <span className="h-2.5 w-2.5 rounded-full border border-border bg-white" />
   );

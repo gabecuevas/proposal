@@ -347,6 +347,88 @@ export function IconCalendar({ className }: { className?: string }) {
   );
 }
 
+export function IconInbox({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <path
+        d="M4 8.5h16v10a1 1 0 01-1 1H5a1 1 0 01-1-1v-10z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4 8.5l2.8-3.5h10.4L20 8.5M4 12h5l1.2 2h3.6L15 12h5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </StatusIcon>
+  );
+}
+
+export function IconEmailDrafts({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <path
+        d="M7 4h7l4 4v12a1 1 0 01-1 1H7a1 1 0 01-1-1V5a1 1 0 011-1z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M14 4v4h4M8.5 13h5M8.5 16h3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </StatusIcon>
+  );
+}
+
+export function IconEmailOutbox({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <path
+        d="M4 14.5V7a1 1 0 011-1h14a1 1 0 011 1v7.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4 14.5l4 4h8l4-4M12 8v8M9 13l3 3 3-3"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </StatusIcon>
+  );
+}
+
+export function IconEmailSent({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <path
+        d="M4 6.5l16 5.5-16 5.5 3.5-5.5L4 6.5z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M7.5 12H14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </StatusIcon>
+  );
+}
+
+export function IconEmailTrash({ className }: { className?: string }) {
+  return (
+    <StatusIcon className={className}>
+      <path d="M5 7h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M9 7V5h6v2" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path
+        d="M6.5 7l.8 13h9.4l.8-13"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </StatusIcon>
+  );
+}
+
 export function IconSignOut({ className }: { className?: string }) {
   return (
     <StatusIcon className={className}>
@@ -367,6 +449,11 @@ export const sidebarIcons = {
   people: IconPeople,
   companies: IconCompanies,
   calendar: IconCalendar,
+  inbox: IconInbox,
+  "email-drafts": IconEmailDrafts,
+  "email-outbox": IconEmailOutbox,
+  "email-sent": IconEmailSent,
+  "email-trash": IconEmailTrash,
 } as const;
 
 export function IconLibrary({ className }: { className?: string }) {

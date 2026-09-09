@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@repo/ui/utils";
@@ -8,6 +9,7 @@ import { ActivityPanel, type CrmActivityLinks } from "@/components/crm/activity-
 import { CrmFocusHistory } from "@/components/crm/crm-focus-history";
 import { CrmNotesEditor } from "@/components/crm/crm-notes-editor";
 import { AddressFieldsInput } from "@/components/crm/address-fields-input";
+import { PhonesFieldsInput } from "@/components/crm/phones-fields-input";
 import { CompanySearchInput } from "@/components/crm/company-search-input";
 import type { CompanySearchResult } from "@/lib/crm/resolve-company-association";
 import {
@@ -15,10 +17,24 @@ import {
   formatAddressDisplay,
   type AddressValues,
 } from "@/lib/crm/address";
+import {
+  emptyPhoneEntry,
+  formatPhonesDisplay,
+  phoneTypeLabel,
+  primaryPhoneNumber,
+  type PhoneEntry,
+  validatePhones,
+} from "@/lib/crm/phones";
 import { isNoteOverLimit, normalizeNoteHtml } from "@/lib/crm/notes-html";
 import { normalizeWebsite, websiteHref } from "@/lib/crm/website";
 
-export type DrawerFieldType = "text" | "select" | "company-search" | "address" | "website";
+export type DrawerFieldType =
+  | "text"
+  | "select"
+  | "company-search"
+  | "address"
+  | "website"
+  | "phones";
 
 export type DrawerField = {
   id: string;
@@ -36,6 +52,10 @@ export type DrawerField = {
   address?: AddressValues;
   onAddressChange?: (value: AddressValues) => void;
   onAddressCommit?: (value: AddressValues) => void;
+  phones?: PhoneEntry[];
+  onPhonesChange?: (value: PhoneEntry[]) => void;
+  onPhonesCommit?: (value: PhoneEntry[]) => void;
+  phonesRequired?: boolean;
   readOnly?: boolean;
   validate?: (value: string) => string | null;
   onChange: (value: string) => void;
@@ -58,6 +78,7 @@ export type DrawerHistoryItem = {
   detail?: string;
   kind?: "note" | "created" | "change" | "activity";
   actorName?: string;
+  fieldKey?: string | null;
 };
 
 export type CrmRecordContext = {
@@ -115,7 +136,7 @@ export type DrawerIconId =
   | "people"
   | "calendar";
 
-function DrawerIcon({ id }: { id: DrawerIconId }) {
+export function DrawerIcon({ id }: { id: DrawerIconId }) {
   const common = "h-4 w-4 shrink-0 text-muted";
   if (id === "mail") {
     return (
@@ -290,6 +311,9 @@ function fieldDisplayValue(field: DrawerField): string {
   if (field.type === "address") {
     return formatAddressDisplay(field.address);
   }
+  if (field.type === "phones") {
+    return formatPhonesDisplay(field.phones ?? []);
+  }
   if (field.type === "select") {
     if (!field.value) {
       return "";
@@ -346,20 +370,28 @@ function FieldRow({ field }: { field: DrawerField }) {
   const [editing, setEditing] = useState(false);
   const [draftValue, setDraftValue] = useState(field.value);
   const [draftAddress, setDraftAddress] = useState<AddressValues>(field.address ?? emptyAddress());
+  const [draftPhones, setDraftPhones] = useState<PhoneEntry[]>(
+    field.phones?.length ? field.phones : [emptyPhoneEntry({ primary: true })],
+  );
   const [attemptedSave, setAttemptedSave] = useState(false);
   const initialValueRef = useRef(field.value);
   const initialAddressRef = useRef<AddressValues>(field.address ?? emptyAddress());
+  const initialPhonesRef = useRef<PhoneEntry[]>(
+    field.phones?.length ? field.phones : [emptyPhoneEntry({ primary: true })],
+  );
   const initialCompanyRef = useRef<CompanySearchResult | null>(null);
   const isCompanySearch = field.type === "company-search";
   const isAddress = field.type === "address";
+  const isPhones = field.type === "phones";
   const isWebsite = field.type === "website";
 
   useEffect(() => {
     if (!editing) {
       setDraftValue(field.value);
       setDraftAddress(field.address ?? emptyAddress());
+      setDraftPhones(field.phones?.length ? field.phones : [emptyPhoneEntry({ primary: true })]);
     }
-  }, [field.address, field.value, editing]);
+  }, [field.address, field.phones, field.value, editing]);
 
   function updateDraftValue(next: string) {
     setDraftValue(next);
@@ -383,11 +415,21 @@ function FieldRow({ field }: { field: DrawerField }) {
     field.onAddressChange?.(next);
   }
 
+  function updateDraftPhones(next: PhoneEntry[]) {
+    setDraftPhones(next);
+    field.onPhonesChange?.(next);
+    const primary = primaryPhoneNumber(next) ?? "";
+    setDraftValue(primary);
+    field.onChange(primary);
+  }
+
   const error =
     editing && attemptedSave
       ? isAddress
         ? null
-        : (field.validate?.(isWebsite ? normalizeWebsite(draftValue) : draftValue) ?? null)
+        : isPhones
+          ? validatePhones(draftPhones, { required: field.phonesRequired })
+          : (field.validate?.(isWebsite ? normalizeWebsite(draftValue) : draftValue) ?? null)
       : null;
   const showError = Boolean(error);
   const inputClass = cn(
@@ -406,12 +448,16 @@ function FieldRow({ field }: { field: DrawerField }) {
     }
     initialValueRef.current = field.value;
     initialAddressRef.current = field.address ?? emptyAddress();
+    initialPhonesRef.current = field.phones?.length
+      ? field.phones
+      : [emptyPhoneEntry({ primary: true, number: field.value })];
     initialCompanyRef.current =
       field.companyId && field.value
         ? { id: field.companyId, name: field.value }
         : null;
     setDraftValue(field.value);
     setDraftAddress(field.address ?? emptyAddress());
+    setDraftPhones(initialPhonesRef.current);
     setAttemptedSave(false);
     setEditing(true);
   }
@@ -419,9 +465,11 @@ function FieldRow({ field }: { field: DrawerField }) {
   function cancelEditing() {
     field.onChange(initialValueRef.current);
     field.onAddressChange?.(initialAddressRef.current);
+    field.onPhonesChange?.(initialPhonesRef.current);
     field.onCompanySelect?.(initialCompanyRef.current);
     setDraftValue(initialValueRef.current);
     setDraftAddress(initialAddressRef.current);
+    setDraftPhones(initialPhonesRef.current);
     setAttemptedSave(false);
     setEditing(false);
   }
@@ -431,6 +479,20 @@ function FieldRow({ field }: { field: DrawerField }) {
     if (isAddress) {
       field.onAddressChange?.(draftAddress);
       field.onAddressCommit?.(draftAddress);
+      setAttemptedSave(false);
+      setEditing(false);
+      return;
+    }
+    if (isPhones) {
+      const phonesError = validatePhones(draftPhones, { required: field.phonesRequired });
+      if (phonesError) {
+        return;
+      }
+      field.onPhonesChange?.(draftPhones);
+      field.onPhonesCommit?.(draftPhones);
+      const primary = primaryPhoneNumber(draftPhones) ?? "";
+      setDraftValue(primary);
+      field.onChange(primary);
       setAttemptedSave(false);
       setEditing(false);
       return;
@@ -492,6 +554,8 @@ function FieldRow({ field }: { field: DrawerField }) {
             />
           ) : field.type === "address" ? (
             <AddressFieldsInput value={draftAddress} onChange={updateDraftAddress} />
+          ) : field.type === "phones" ? (
+            <PhonesFieldsInput value={draftPhones} onChange={updateDraftPhones} />
           ) : (
             <input
               autoFocus
@@ -558,17 +622,29 @@ function FieldRow({ field }: { field: DrawerField }) {
           <span
             className={cn(
               "min-w-0",
-              isAddress ? "whitespace-pre-wrap" : "truncate",
+              (isAddress || isPhones) && "whitespace-pre-wrap",
+              !isAddress && !isPhones && "truncate",
               FIELD_TEXT_CLASS,
               displayValue ? "text-foreground" : "text-muted",
             )}
           >
             {isWebsite && field.value ? (
               <WebsiteLink value={field.value} />
+            ) : isPhones && (field.phones?.length ?? 0) > 0 ? (
+              <span className="flex flex-col gap-0.5">
+                {(field.phones ?? []).map((phone) => (
+                  <span key={phone.id} className="truncate">
+                    {phone.number}
+                    <span className="ml-1 text-muted">({phoneTypeLabel(phone.type)})</span>
+                  </span>
+                ))}
+              </span>
             ) : (
               displayValue || field.placeholder
             )}
-            {field.hint && field.value ? <span className="ml-1 text-muted">({field.hint})</span> : null}
+            {!isPhones && field.hint && field.value ? (
+              <span className="ml-1 text-muted">({field.hint})</span>
+            ) : null}
           </span>
           {canEdit ? (
             <button
@@ -1090,7 +1166,23 @@ export function CrmRecordDrawer({
               <p className="py-8 text-center text-sm text-muted">No calls yet.</p>
             ) : null}
             {tab === "email" ? (
-              <p className="py-8 text-center text-sm text-muted">No email yet.</p>
+              <div className="space-y-3 py-6 text-center">
+                <p className="text-sm text-muted">No email threads for this record yet.</p>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <Link
+                    href="/app/contacts/inbox?compose=1"
+                    className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"
+                  >
+                    New email
+                  </Link>
+                  <Link
+                    href="/app/contacts/inbox"
+                    className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-slate-50"
+                  >
+                    Open Inbox
+                  </Link>
+                </div>
+              </div>
             ) : null}
             {tab === "files" ? (
               <p className="py-8 text-center text-sm text-muted">No files yet.</p>

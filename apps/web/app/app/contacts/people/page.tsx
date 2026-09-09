@@ -11,7 +11,6 @@ import {
   firstContactDetailsError,
   validateEmail,
   validatePersonName,
-  validatePhone,
   validateTitle,
   validateWebsite,
 } from "@/lib/crm/contact-field-validation";
@@ -20,6 +19,12 @@ import {
   formatAddressDisplay,
   type AddressValues,
 } from "@/lib/crm/address";
+import {
+  phonesForEditor,
+  phoneTypeLabel,
+  primaryPhoneNumber,
+  type PhoneEntry,
+} from "@/lib/crm/phones";
 import { normalizeWebsite } from "@/lib/crm/website";
 import {
   resolveCompanyAssociation,
@@ -33,6 +38,8 @@ type Person = {
   last_name: string;
   email: string;
   phone: string | null;
+  phones?: PhoneEntry[];
+  linkedin?: string | null;
   company_name: string | null;
   company_id: string | null;
   title: string | null;
@@ -63,6 +70,8 @@ type Editor = {
   last_name: string;
   email: string;
   phone: string;
+  phones: PhoneEntry[];
+  linkedin: string;
   title: string;
   company_id: string;
   company_name: string;
@@ -71,6 +80,7 @@ type Editor = {
   state: string;
   postal_code: string;
   website: string;
+  industry: string;
   notes: string;
   source: string;
 };
@@ -89,6 +99,8 @@ const emptyEditor = (): Editor => ({
   last_name: "",
   email: "",
   phone: "",
+  phones: phonesForEditor(null, null),
+  linkedin: "",
   title: "",
   company_id: "",
   company_name: "",
@@ -97,6 +109,7 @@ const emptyEditor = (): Editor => ({
   state: "",
   postal_code: "",
   website: "",
+  industry: "",
   notes: "",
   source: "",
 });
@@ -144,7 +157,16 @@ const PEOPLE_COLUMNS: CrmGridColumn<Person>[] = [
     label: "Phone",
     width: 180,
     sortValue: (person) => person.phone,
-    cell: (person) => <LabeledValue value={person.phone} hint="Work" />,
+    cell: (person) => {
+      const phones = phonesForEditor(person.phones, person.phone).filter((p) => p.number);
+      const primary = phones[0];
+      return (
+        <LabeledValue
+          value={primary?.number ?? person.phone}
+          hint={primary ? phoneTypeLabel(primary.type) : "Work"}
+        />
+      );
+    },
   },
   {
     id: "owner",
@@ -292,11 +314,15 @@ export default function PeoplePage() {
 
   function openPerson(person: Person) {
     setSelectedId(person.id);
+    const phones = phonesForEditor(person.phones, person.phone);
+    const company = companies.find((item) => item.id === person.company_id);
     setEditor({
       first_name: person.first_name,
       last_name: person.last_name,
       email: person.email,
-      phone: person.phone ?? "",
+      phone: primaryPhoneNumber(phones) ?? person.phone ?? "",
+      phones,
+      linkedin: person.linkedin ?? "",
       title: person.title ?? "",
       company_id: person.company_id ?? "",
       company_name: person.company_name ?? "",
@@ -305,6 +331,7 @@ export default function PeoplePage() {
       state: person.state ?? "",
       postal_code: person.postal_code ?? "",
       website: person.website ?? "",
+      industry: company?.industry ?? "",
       notes: person.notes ?? "",
       source: person.source ?? "",
     });
@@ -360,6 +387,8 @@ export default function PeoplePage() {
       ...(typeof body.last_name === "string" ? { last_name: body.last_name } : {}),
       ...(typeof body.email === "string" ? { email: body.email } : {}),
       ...(typeof body.phone === "string" ? { phone: body.phone } : {}),
+      ...(Array.isArray(body.phones) ? { phones: body.phones as PhoneEntry[] } : {}),
+      ...(typeof body.linkedin === "string" ? { linkedin: normalizeWebsite(body.linkedin) } : {}),
       ...(typeof body.title === "string" ? { title: body.title } : {}),
       ...(typeof body.address_line_1 === "string" ? { address_line_1: body.address_line_1 } : {}),
       ...(typeof body.city === "string" ? { city: body.city } : {}),
@@ -393,6 +422,8 @@ export default function PeoplePage() {
         last_name: merged.last_name,
         email: merged.email,
         phone: merged.phone || undefined,
+        phones: merged.phones,
+        linkedin: merged.linkedin || undefined,
         title: merged.title || undefined,
         address_line_1: merged.address_line_1 || undefined,
         city: merged.city || undefined,
@@ -427,6 +458,8 @@ export default function PeoplePage() {
       last_name: current.last_name,
       email: current.email,
       phone: current.phone || undefined,
+      phones: current.phones,
+      linkedin: current.linkedin ? normalizeWebsite(current.linkedin) : undefined,
       title: current.title || undefined,
       address_line_1: current.address_line_1 || undefined,
       city: current.city || undefined,
@@ -507,21 +540,43 @@ export default function PeoplePage() {
 
   const commitCompanyAssociation = useCallback(
     async (name: string, companyId: string) => {
-      const resolved = await resolveCompanyAssociation(name, companyId);
+      const resolved = await resolveCompanyAssociation(name, companyId, {
+        industry: editor.industry || undefined,
+      });
       if (resolved.company) {
         ensureCompanyOption(resolved.company);
       }
+      const nextIndustry = resolved.company?.industry ?? editor.industry;
       setEditor((current) => ({
         ...current,
         company_id: resolved.company_id ?? "",
         company_name: resolved.company_name ?? "",
+        industry: nextIndustry,
       }));
       void savePerson({
         company_id: resolved.company_id,
         company_name: resolved.company_name,
       });
+      if (resolved.company_id && editor.industry.trim() && !resolved.company?.industry) {
+        void fetch(`/api/companies/${resolved.company_id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ industry: editor.industry.trim() }),
+        }).then(async (response) => {
+          if (!response.ok) {
+            return;
+          }
+          setCompanies((current) =>
+            current.map((company) =>
+              company.id === resolved.company_id
+                ? { ...company, industry: editor.industry.trim() }
+                : company,
+            ),
+          );
+        });
+      }
     },
-    [ensureCompanyOption, savePerson],
+    [editor.industry, ensureCompanyOption, savePerson],
   );
 
   const commitAddress = useCallback(
@@ -550,6 +605,45 @@ export default function PeoplePage() {
       void savePerson({ website: website || null });
     },
     [savePerson],
+  );
+
+  const commitLinkedIn = useCallback(
+    (value: string) => {
+      const linkedin = normalizeWebsite(value);
+      setEditor((current) => ({ ...current, linkedin }));
+      void savePerson({ linkedin: linkedin || null });
+    },
+    [savePerson],
+  );
+
+  const commitIndustry = useCallback(
+    async (value: string) => {
+      const industry = value.trim();
+      setEditor((current) => ({ ...current, industry }));
+      const companyId = editor.company_id;
+      if (!companyId) {
+        return;
+      }
+      const response = await fetch(`/api/companies/${companyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ industry: industry || null }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        setError(payload?.error?.message ?? "Failed to save industry");
+        return;
+      }
+      setCompanies((current) =>
+        current.map((company) =>
+          company.id === companyId ? { ...company, industry: industry || null } : company,
+        ),
+      );
+      setStatus("Saved.");
+    },
+    [editor.company_id],
   );
 
   const sections: DrawerSection[] = useMemo(
@@ -598,13 +692,34 @@ export default function PeoplePage() {
             icon: "phone",
             label: "Phone",
             showLabel: false,
+            type: "phones",
             value: editor.phone,
             placeholder: "Add phone",
-            hint: "Work",
-            inputType: "tel",
+            phones: editor.phones,
             onChange: (value) => setEditor((current) => ({ ...current, phone: value })),
-            validate: (value) => validatePhone(value),
-            onCommit: (value) => void savePerson({ phone: value }),
+            onPhonesChange: (phones) =>
+              setEditor((current) => ({
+                ...current,
+                phones,
+                phone: primaryPhoneNumber(phones) ?? "",
+              })),
+            onPhonesCommit: (phones) =>
+              void savePerson({
+                phones,
+                phone: primaryPhoneNumber(phones) ?? "",
+              }),
+          },
+          {
+            id: "linkedin",
+            icon: "linkedin",
+            label: "LinkedIn",
+            showLabel: true,
+            type: "website",
+            value: editor.linkedin,
+            placeholder: "linkedin.com/in/…",
+            onChange: (value) => setEditor((current) => ({ ...current, linkedin: value })),
+            validate: (value) => validateWebsite(value),
+            onCommit: (value) => void commitLinkedIn(value),
           },
           {
             id: "title",
@@ -640,6 +755,7 @@ export default function PeoplePage() {
                   ...current,
                   company_id: company.id,
                   company_name: company.name,
+                  industry: company.industry ?? current.industry,
                 }));
                 return;
               }
@@ -681,10 +797,11 @@ export default function PeoplePage() {
             id: "org_industry",
             icon: "industry",
             label: "Industry",
-            value: linkedCompany?.industry ?? "",
+            showLabel: true,
+            value: editor.industry,
             placeholder: "Industry",
-            readOnly: true,
-            onChange: () => undefined,
+            onChange: (value) => setEditor((current) => ({ ...current, industry: value })),
+            onCommit: (value) => void commitIndustry(value),
           },
         ],
       },
@@ -727,7 +844,7 @@ export default function PeoplePage() {
         ],
       },
     ],
-    [commitAddress, commitCompanyAssociation, commitWebsite, companies, currentUserName, editor, ensureCompanyOption, linkedCompany, selected, selectedId, savePerson],
+    [commitAddress, commitCompanyAssociation, commitIndustry, commitLinkedIn, commitWebsite, companies, currentUserName, editor, ensureCompanyOption, linkedCompany, selected, selectedId, savePerson],
   );
 
   return (
