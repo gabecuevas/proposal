@@ -100,6 +100,131 @@ export async function exchangeGoogleAuthCode(params: {
   };
 }
 
+export async function refreshGoogleAccessToken(refreshToken: string): Promise<GoogleTokenExchange> {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error("Google OAuth is not configured.");
+  }
+
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: refreshToken,
+    grant_type: "refresh_token",
+  });
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  const json = (await response.json()) as GoogleTokenResponse;
+  if (!response.ok || !json.access_token) {
+    throw new Error(json.error_description || json.error || "Google token refresh failed.");
+  }
+
+  return {
+    accessToken: json.access_token,
+    refreshToken: refreshToken,
+    expiresAt: typeof json.expires_in === "number" ? new Date(Date.now() + json.expires_in * 1000) : null,
+    scope: json.scope ?? null,
+  };
+}
+
+function encodeRfc2047(value: string): string {
+  if (/^[\x20-\x7E]*$/.test(value)) {
+    return value;
+  }
+  return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
+}
+
+function encodeAddressHeader(address: string, name?: string | null): string {
+  if (!name?.trim()) {
+    return address;
+  }
+  return `${encodeRfc2047(name.trim())} <${address}>`;
+}
+
+export type GmailSendAttachment = {
+  filename: string;
+  contentType: string;
+  contentBase64: string;
+};
+
+export async function sendGmailRawMessage(params: {
+  accessToken: string;
+  fromEmail: string;
+  fromName?: string | null;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  htmlBody: string;
+  textBody?: string;
+  attachments?: GmailSendAttachment[];
+}): Promise<{ id: string; threadId?: string }> {
+  const boundary = `senddox_${randomBytes(12).toString("hex")}`;
+  const headers = [
+    `From: ${encodeAddressHeader(params.fromEmail, params.fromName)}`,
+    `To: ${params.to.join(", ")}`,
+    ...(params.cc?.length ? [`Cc: ${params.cc.join(", ")}`] : []),
+    ...(params.bcc?.length ? [`Bcc: ${params.bcc.join(", ")}`] : []),
+    `Subject: ${encodeRfc2047(params.subject || "(no subject)")}`,
+    "MIME-Version: 1.0",
+  ];
+
+  let mime = "";
+  if (params.attachments?.length) {
+    headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+    mime += `--${boundary}\r\n`;
+    mime += `Content-Type: multipart/alternative; boundary="${boundary}_alt"\r\n\r\n`;
+    mime += `--${boundary}_alt\r\n`;
+    mime += "Content-Type: text/plain; charset=\"UTF-8\"\r\n\r\n";
+    mime += `${params.textBody ?? ""}\r\n\r\n`;
+    mime += `--${boundary}_alt\r\n`;
+    mime += "Content-Type: text/html; charset=\"UTF-8\"\r\n\r\n";
+    mime += `${params.htmlBody}\r\n\r\n`;
+    mime += `--${boundary}_alt--\r\n`;
+    for (const file of params.attachments) {
+      mime += `--${boundary}\r\n`;
+      mime += `Content-Type: ${file.contentType}; name="${file.filename}"\r\n`;
+      mime += "Content-Transfer-Encoding: base64\r\n";
+      mime += `Content-Disposition: attachment; filename="${file.filename}"\r\n\r\n`;
+      mime += `${file.contentBase64.replace(/(.{76})/g, "$1\r\n")}\r\n`;
+    }
+    mime += `--${boundary}--`;
+  } else {
+    headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+    mime += `--${boundary}\r\n`;
+    mime += "Content-Type: text/plain; charset=\"UTF-8\"\r\n\r\n";
+    mime += `${params.textBody ?? ""}\r\n\r\n`;
+    mime += `--${boundary}\r\n`;
+    mime += "Content-Type: text/html; charset=\"UTF-8\"\r\n\r\n";
+    mime += `${params.htmlBody}\r\n\r\n`;
+    mime += `--${boundary}--`;
+  }
+
+  const raw = Buffer.from(`${headers.join("\r\n")}\r\n\r\n${mime}`, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ raw }),
+  });
+  const json = (await response.json()) as { id?: string; threadId?: string; error?: { message?: string } };
+  if (!response.ok || !json.id) {
+    throw new Error(json.error?.message || "Gmail send failed.");
+  }
+  return { id: json.id, threadId: json.threadId };
+}
+
 export async function fetchGoogleProfileEmail(accessToken: string): Promise<{
   email: string;
   name: string | null;

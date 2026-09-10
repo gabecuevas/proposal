@@ -319,6 +319,289 @@ export async function disconnectEmailAccount(workspaceId: string, accountId: str
   return { id: account.id, email: account.email };
 }
 
+function htmlToSnippet(html: string, max = 160): string {
+  const text = html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export type OutboundEmailMode = "send" | "draft" | "schedule";
+
+export type OutboundEmailAttachment = {
+  filename: string;
+  contentType: string;
+  contentBase64: string;
+};
+
+export type CreateOutboundEmailInput = {
+  accountId: string;
+  mode: OutboundEmailMode;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  bodyHtml: string;
+  contactId?: string | null;
+  leadId?: string | null;
+  companyId?: string | null;
+  scheduleAt?: string | null;
+  trackOpens?: boolean;
+  trackClicks?: boolean;
+  privateSend?: boolean;
+  attachments?: OutboundEmailAttachment[];
+};
+
+function trackingSnippetSuffix(input: {
+  trackOpens?: boolean;
+  trackClicks?: boolean;
+  privateSend?: boolean;
+}): string {
+  const flags = [
+    input.trackOpens ? "opens" : null,
+    input.trackClicks ? "clicks" : null,
+    input.privateSend ? "private" : null,
+  ].filter(Boolean);
+  return flags.length ? ` [${flags.join(",")}]` : "";
+}
+
+async function resolveGoogleAccessToken(account: {
+  id: string;
+  oauth_access_token: string | null;
+  oauth_refresh_token: string | null;
+  oauth_expires_at: Date | null;
+}) {
+  const { decryptSecret, encryptSecret, refreshGoogleAccessToken } = await import(
+    "@/lib/crm/google-email-oauth"
+  );
+
+  if (!account.oauth_access_token && !account.oauth_refresh_token) {
+    throw new Error("This mailbox is not authorized. Connect with Google first.");
+  }
+
+  const expiresAt = account.oauth_expires_at?.getTime() ?? 0;
+  const stillValid = account.oauth_access_token && expiresAt > Date.now() + 60_000;
+  if (stillValid && account.oauth_access_token) {
+    return decryptSecret(account.oauth_access_token);
+  }
+
+  if (!account.oauth_refresh_token) {
+    throw new Error("Google access expired. Reconnect this mailbox under Email Sync.");
+  }
+
+  const refreshed = await refreshGoogleAccessToken(decryptSecret(account.oauth_refresh_token));
+  await prisma.crmEmailAccount.update({
+    where: { id: account.id },
+    data: {
+      oauth_access_token: encryptSecret(refreshed.accessToken),
+      oauth_expires_at: refreshed.expiresAt,
+      oauth_scope: refreshed.scope,
+    },
+  });
+  return refreshed.accessToken;
+}
+
+export async function createOutboundEmail(workspaceId: string, input: CreateOutboundEmailInput) {
+  if (!prisma.crmEmailAccount || !prisma.crmEmailMessage) {
+    throw new Error("Email storage is restarting. Refresh and try again.");
+  }
+
+  const to = input.to.map((item) => item.trim().toLowerCase()).filter(Boolean);
+  if (to.length === 0) {
+    throw new Error("Add at least one recipient.");
+  }
+
+  const account = await prisma.crmEmailAccount.findFirst({
+    where: { id: input.accountId, workspace_id: workspaceId },
+  });
+  if (!account) {
+    throw new Error("Email account not found.");
+  }
+
+  const subject = input.subject.trim();
+  const bodyHtml = input.bodyHtml.trim() || "<p></p>";
+  const bodyText = htmlToPlainText(bodyHtml);
+  const snippet = `${htmlToSnippet(bodyHtml)}${trackingSnippetSuffix(input)}`;
+  const scheduleAt = input.scheduleAt ? new Date(input.scheduleAt) : null;
+  if (input.mode === "schedule" && (!scheduleAt || Number.isNaN(scheduleAt.getTime()))) {
+    throw new Error("Choose a valid schedule time.");
+  }
+
+  if (input.mode === "draft") {
+    return prisma.crmEmailMessage.create({
+      data: {
+        workspace_id: workspaceId,
+        account_id: account.id,
+        folder: "DRAFTS",
+        direction: "OUTBOUND",
+        from_name: account.sender_name,
+        from_address: account.email,
+        to_addresses: to,
+        cc_addresses: input.cc?.length ? input.cc : undefined,
+        subject,
+        snippet,
+        body_text: bodyText,
+        body_html: bodyHtml,
+        is_read: true,
+        has_attachments: Boolean(input.attachments?.length),
+        message_at: new Date(),
+        contact_id: input.contactId ?? null,
+        lead_id: input.leadId ?? null,
+        company_id: input.companyId ?? null,
+      },
+    });
+  }
+
+  if (input.mode === "schedule") {
+    return prisma.crmEmailMessage.create({
+      data: {
+        workspace_id: workspaceId,
+        account_id: account.id,
+        folder: "OUTBOX",
+        direction: "OUTBOUND",
+        from_name: account.sender_name,
+        from_address: account.email,
+        to_addresses: to,
+        cc_addresses: input.cc?.length ? input.cc : undefined,
+        subject,
+        snippet,
+        body_text: bodyText,
+        body_html: bodyHtml,
+        is_read: true,
+        has_attachments: Boolean(input.attachments?.length),
+        message_at: scheduleAt!,
+        contact_id: input.contactId ?? null,
+        lead_id: input.leadId ?? null,
+        company_id: input.companyId ?? null,
+      },
+    });
+  }
+
+  if (account.provider === "GOOGLE") {
+    const { sendGmailRawMessage } = await import("@/lib/crm/google-email-oauth");
+    const accessToken = await resolveGoogleAccessToken(account);
+    const sent = await sendGmailRawMessage({
+      accessToken,
+      fromEmail: account.email,
+      fromName: account.sender_name,
+      to,
+      cc: input.cc,
+      bcc: input.bcc,
+      subject,
+      htmlBody: bodyHtml,
+      textBody: bodyText,
+      attachments: input.attachments,
+    });
+
+    return prisma.crmEmailMessage.create({
+      data: {
+        workspace_id: workspaceId,
+        account_id: account.id,
+        folder: "SENT",
+        direction: "OUTBOUND",
+        from_name: account.sender_name,
+        from_address: account.email,
+        to_addresses: to,
+        cc_addresses: input.cc?.length ? input.cc : undefined,
+        subject,
+        snippet,
+        body_text: bodyText,
+        body_html: bodyHtml,
+        is_read: true,
+        has_attachments: Boolean(input.attachments?.length),
+        message_at: new Date(),
+        external_id: sent.id,
+        contact_id: input.contactId ?? null,
+        lead_id: input.leadId ?? null,
+        company_id: input.companyId ?? null,
+      },
+    });
+  }
+
+  // Non-Google providers: queue in Outbox until SMTP sending is wired.
+  return prisma.crmEmailMessage.create({
+    data: {
+      workspace_id: workspaceId,
+      account_id: account.id,
+      folder: "OUTBOX",
+      direction: "OUTBOUND",
+      from_name: account.sender_name,
+      from_address: account.email,
+      to_addresses: to,
+      cc_addresses: input.cc?.length ? input.cc : undefined,
+      subject,
+      snippet,
+      body_text: bodyText,
+      body_html: bodyHtml,
+      is_read: true,
+      has_attachments: Boolean(input.attachments?.length),
+      message_at: new Date(),
+      contact_id: input.contactId ?? null,
+      lead_id: input.leadId ?? null,
+      company_id: input.companyId ?? null,
+    },
+  });
+}
+
+export async function listEmailsForRecord(
+  workspaceId: string,
+  links: { contactId?: string | null; leadId?: string | null; companyId?: string | null },
+  limit = 50,
+): Promise<CrmEmailListItem[]> {
+  if (!prisma.crmEmailMessage) {
+    return [];
+  }
+  const or = [
+    ...(links.contactId ? [{ contact_id: links.contactId }] : []),
+    ...(links.leadId ? [{ lead_id: links.leadId }] : []),
+    ...(links.companyId ? [{ company_id: links.companyId }] : []),
+  ];
+  if (or.length === 0) {
+    return [];
+  }
+
+  const rows = await prisma.crmEmailMessage.findMany({
+    where: {
+      workspace_id: workspaceId,
+      OR: or,
+    },
+    orderBy: { message_at: "desc" },
+    take: limit,
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    folder: FOLDER_FROM_DB[row.folder],
+    fromName: row.from_name ?? "",
+    fromAddress: row.from_address,
+    subject: row.subject,
+    snippet: row.snippet,
+    isRead: row.is_read,
+    hasAttachments: row.has_attachments,
+    messageAt: row.message_at.toISOString(),
+  }));
+}
+
 export function providerDisplayName(provider: EmailSyncProviderId): string {
   switch (provider) {
     case "GOOGLE":

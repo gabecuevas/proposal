@@ -358,6 +358,7 @@ model Contact {
   leads     Lead[]
   crmActivities CrmActivity[]
   crmTimelineEvents CrmTimelineEvent[]
+  crmEmailMessages CrmEmailMessage[]
 
   @@index([workspace_id, updated_at])
   @@index([workspace_id, full_name])
@@ -394,6 +395,7 @@ model Company {
   leads     Lead[]
   crmActivities CrmActivity[]
   crmTimelineEvents CrmTimelineEvent[]
+  crmEmailMessages CrmEmailMessage[]
 
   @@index([workspace_id, updated_at])
   @@index([workspace_id, name])
@@ -441,6 +443,7 @@ model Lead {
   company   Company?  @relation(fields: [company_id], references: [id], onDelete: SetNull)
   crmActivities CrmActivity[]
   crmTimelineEvents CrmTimelineEvent[]
+  crmEmailMessages CrmEmailMessage[]
 
   @@index([workspace_id, updated_at])
   @@index([workspace_id, status])
@@ -812,13 +815,20 @@ model CrmEmailMessage {
   external_id      String?
   contact_id       String?
   lead_id          String?
+  company_id       String?
   created_at       DateTime          @default(now())
   updated_at       DateTime          @updatedAt
 
   workspace Workspace        @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
   account   CrmEmailAccount? @relation(fields: [account_id], references: [id], onDelete: SetNull)
+  contact   Contact?         @relation(fields: [contact_id], references: [id], onDelete: SetNull)
+  lead      Lead?            @relation(fields: [lead_id], references: [id], onDelete: SetNull)
+  company   Company?         @relation(fields: [company_id], references: [id], onDelete: SetNull)
 
   @@index([workspace_id, folder, message_at])
   @@index([workspace_id, is_read, folder])
+  @@index([contact_id, message_at])
+  @@index([lead_id, message_at])
+  @@index([company_id, message_at])
   @@unique([workspace_id, external_id])
 }
