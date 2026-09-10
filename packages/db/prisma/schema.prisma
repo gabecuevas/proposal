@@ -38,6 +38,7 @@ model Workspace {
   crmTimelineEvents CrmTimelineEvent[]
   crmEmailAccounts CrmEmailAccount[]
   crmEmailMessages CrmEmailMessage[]
+  crmEmailTemplates CrmEmailTemplate[]
   sentVersions  DocumentSentVersion[]
   owner         User?            @relation("workspace_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
 }
@@ -319,6 +320,7 @@ model User {
   crm_activities_assigned CrmActivity[]   @relation("crm_activity_assignee")
   crm_timeline_events    CrmTimelineEvent[]
   crm_email_accounts     CrmEmailAccount[]
+  crm_email_templates    CrmEmailTemplate[]
 }
 
 model Contact {
@@ -831,4 +833,27 @@ model CrmEmailMessage {
   @@index([lead_id, message_at])
   @@index([company_id, message_at])
   @@unique([workspace_id, external_id])
+}
+
+enum CrmEmailTemplateVisibility {
+  PRIVATE
+  SHARED
+}
+
+model CrmEmailTemplate {
+  id           String                     @id @default(cuid())
+  workspace_id String
+  user_id      String?
+  name         String
+  subject      String                     @default("")
+  body_html    String                     @default("")
+  visibility   CrmEmailTemplateVisibility @default(PRIVATE)
+  created_at   DateTime                   @default(now())
+  updated_at   DateTime                   @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@index([workspace_id, updated_at])
+  @@index([workspace_id, name])
 }

@@ -16,6 +16,12 @@ import { useEditorEventTick } from "@/components/editor/hooks/use-editor-event-t
 import { Indent } from "@/lib/editor/extensions/indent";
 import { sanitizePastedHtml } from "@/lib/editor/paste";
 import type { CrmEmailAccountDto } from "@/lib/crm/emails";
+import {
+  applyEmailTemplateMergeFields,
+  type CrmEmailTemplateDto,
+} from "@/lib/crm/email-templates";
+import { CrmEmailTemplateModal } from "@/components/crm/crm-email-template-modal";
+import { CrmEmailTemplatePicker } from "@/components/crm/crm-email-template-picker";
 
 export type CrmEmailMergeFields = {
   firstName?: string;
@@ -52,8 +58,6 @@ type AttachmentDraft = {
   contentBase64: string;
   size: number;
 };
-
-type TemplateOption = { id: string; name: string };
 
 function ToolbarButton({
   title,
@@ -414,7 +418,12 @@ export function CrmEmailComposer({
   onSent,
 }: CrmEmailComposerProps) {
   const [accounts, setAccounts] = useState<CrmEmailAccountDto[]>([]);
-  const [templates, setTemplates] = useState<TemplateOption[]>([]);
+  const [templates, setTemplates] = useState<CrmEmailTemplateDto[]>([]);
+  const [templateModal, setTemplateModal] = useState<{
+    open: boolean;
+    mode: "create" | "edit";
+    template?: CrmEmailTemplateDto | null;
+  }>({ open: false, mode: "create" });
   const [recipientOptions, setRecipientOptions] = useState<CrmEmailRecipientOption[]>([]);
   const [accountId, setAccountId] = useState("");
   const [to, setTo] = useState<string[]>(defaultTo);
@@ -469,13 +478,24 @@ export function CrmEmailComposer({
     setToInitialized(false);
   }, [recordId, companyId, primaryContactId, defaultTo.join("|")]);
 
+  const loadTemplates = useCallback(async (q?: string) => {
+    try {
+      const params = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
+      const response = await fetch(`/api/crm/email-templates${params}`);
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as { templates?: CrmEmailTemplateDto[] };
+      setTemplates(payload.templates ?? []);
+    } catch {
+      // leave existing list
+    }
+  }, []);
+
   useEffect(() => {
     void (async () => {
       try {
-        const [accountsRes, templatesRes] = await Promise.all([
-          fetch("/api/crm/email-accounts"),
-          fetch("/api/templates"),
-        ]);
+        const accountsRes = await fetch("/api/crm/email-accounts");
         if (accountsRes.ok) {
           const payload = (await accountsRes.json()) as { accounts?: CrmEmailAccountDto[] };
           const list = payload.accounts ?? [];
@@ -485,20 +505,12 @@ export function CrmEmailComposer({
             setAccountId(preferred.id);
           }
         }
-        if (templatesRes.ok) {
-          const payload = (await templatesRes.json()) as { templates?: TemplateOption[] };
-          setTemplates(
-            (payload.templates ?? []).map((item) => ({
-              id: item.id,
-              name: item.name,
-            })),
-          );
-        }
       } catch {
         setAccounts([]);
       }
     })();
-  }, []);
+    void loadTemplates();
+  }, [loadTemplates]);
 
   useEffect(() => {
     let cancelled = false;
@@ -685,15 +697,22 @@ export function CrmEmailComposer({
     );
   };
 
-  const applyTemplate = (templateId: string) => {
-    const template = templates.find((item) => item.id === templateId);
-    if (!template) {
-      return;
-    }
+  const applyTemplate = (template: CrmEmailTemplateDto) => {
+    const mergedSubject = applyEmailTemplateMergeFields(template.subject, {
+      ...mergeFields,
+      senderName: selectedAccount?.senderName ?? selectedAccount?.email,
+    });
+    const mergedBody = applyEmailTemplateMergeFields(template.bodyHtml, {
+      ...mergeFields,
+      senderName: selectedAccount?.senderName ?? selectedAccount?.email,
+    });
     if (!subject.trim()) {
-      setSubject(template.name);
+      setSubject(mergedSubject);
+    } else if (template.subject.trim()) {
+      setSubject(mergedSubject);
     }
-    insertHtml(`<p>${template.name}</p><p></p>`);
+    editor?.commands.setContent(mergedBody || "<p></p>");
+    setBodyHtml(mergedBody || "<p></p>");
   };
 
   const resetComposer = () => {
@@ -943,29 +962,24 @@ export function CrmEmailComposer({
       </div>
 
       <div className="flex flex-wrap items-center gap-1 border-b border-border px-3 py-2">
-        <QuietSelect
-          defaultValue=""
-          aria-label="Choose template"
-          onChange={(event) => {
-            if (event.target.value) {
-              applyTemplate(event.target.value);
-              event.target.value = "";
-            }
-          }}
-        >
-          <option value="">Choose template</option>
-          {templates.length === 0 ? (
-            <option value="" disabled>
-              No templates yet
-            </option>
-          ) : (
-            templates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.name}
-              </option>
-            ))
-          )}
-        </QuietSelect>
+        <CrmEmailTemplatePicker
+          templates={templates}
+          onSelect={applyTemplate}
+          onSaveDraftAsTemplate={() =>
+            setTemplateModal({
+              open: true,
+              mode: "create",
+              template: null,
+            })
+          }
+          onManageTemplates={() =>
+            setTemplateModal({
+              open: true,
+              mode: templates[0] ? "edit" : "create",
+              template: templates[0] ?? null,
+            })
+          }
+        />
 
         <QuietSelect
           defaultValue=""
@@ -1156,6 +1170,26 @@ export function CrmEmailComposer({
         onChange={(event) => {
           onPickAttachment(event.target.files);
           event.target.value = "";
+        }}
+      />
+
+      <CrmEmailTemplateModal
+        open={templateModal.open}
+        mode={templateModal.mode}
+        template={templateModal.template}
+        templates={templates}
+        initialName={subject.trim() || "Untitled template"}
+        initialSubject={subject}
+        initialBodyHtml={editor?.getHTML() ?? bodyHtml}
+        onClose={() => setTemplateModal((current) => ({ ...current, open: false }))}
+        onSaved={(saved) => {
+          setTemplates((current) => {
+            const without = current.filter((item) => item.id !== saved.id);
+            return [saved, ...without];
+          });
+        }}
+        onDeleted={(templateId) => {
+          setTemplates((current) => current.filter((item) => item.id !== templateId));
         }}
       />
     </div>

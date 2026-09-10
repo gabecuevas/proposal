@@ -5,7 +5,7 @@ import type { InputJsonValue as PrismaInputJsonValue } from "@prisma/client/runt
  * Bump when adding/removing Prisma model fields so hot-reload drops a stale
  * PrismaClient that would reject new columns (e.g. Company.linkedin).
  */
-const PRISMA_SCHEMA_REV = 13;
+const PRISMA_SCHEMA_REV = 14;
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -19,7 +19,7 @@ function createPrismaClient(): PrismaClient {
 /** Stale hot-reload clients can miss newly generated delegates. */
 function clientLooksCurrent(client: PrismaClient): boolean {
   const record = client as unknown as Record<string, unknown>;
-  return typeof record.crmEmailAccount === "object" && typeof record.crmEmailMessage === "object";
+  return typeof record.crmEmailAccount === "object" && typeof record.crmEmailMessage === "object" && typeof record.crmEmailTemplate === "object";
 }
 
 function getPrismaClient(): PrismaClient {
