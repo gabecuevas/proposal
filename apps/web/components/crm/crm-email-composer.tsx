@@ -311,9 +311,11 @@ export function CrmEmailComposer({
     },
   });
 
+  const defaultToKey = defaultTo.join("|");
+
   useEffect(() => {
     setToInitialized(false);
-  }, [recordId, companyId, primaryContactId, defaultTo.join("|")]);
+  }, [recordId, companyId, primaryContactId, defaultToKey]);
 
   const loadTemplates = useCallback(async (q?: string) => {
     try {

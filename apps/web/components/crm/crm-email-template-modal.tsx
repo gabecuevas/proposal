@@ -12,7 +12,6 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { cn } from "@repo/ui/utils";
 import { Indent } from "@/lib/editor/extensions/indent";
 import { FontSize } from "@/lib/editor/extensions/font-size";
 import { sanitizePastedHtml } from "@/lib/editor/paste";
