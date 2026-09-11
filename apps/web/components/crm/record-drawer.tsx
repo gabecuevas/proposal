@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@repo/ui/utils";
 import type { CrmActivityRecord } from "@/lib/crm/activity-shared";
+import type { CrmEmailListItem } from "@/lib/crm/emails";
 import { ActivityPanel, type CrmActivityLinks } from "@/components/crm/activity-panel";
+import { CrmEmailComposer } from "@/components/crm/crm-email-composer";
 import { CrmFocusHistory } from "@/components/crm/crm-focus-history";
 import { CrmNotesEditor } from "@/components/crm/crm-notes-editor";
 import { AddressFieldsInput } from "@/components/crm/address-fields-input";
@@ -85,6 +86,7 @@ export type CrmRecordContext = {
   type: "contact" | "lead" | "company";
   id: string;
   links: CrmActivityLinks;
+  primaryContactId?: string | null;
 };
 
 type ActivityTab = "activity" | "notes" | "call" | "email" | "files" | "documents";
@@ -665,6 +667,59 @@ function FieldRow({ field }: { field: DrawerField }) {
   );
 }
 
+function ActivityTabIcon({ id }: { id: ActivityTab }) {
+  const common = "h-3.5 w-3.5 shrink-0";
+  if (id === "activity") {
+    return (
+      <svg className={common} viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path d="M4 19V5M4 19h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M8 15V11M12 15V8M16 15v-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (id === "notes") {
+    return (
+      <svg className={common} viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path d="M6 4.5h9.5L18 7v12.5H6V4.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M15.5 4.5V7H18M9 11h6M9 14.5h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (id === "call") {
+    return (
+      <svg className={common} viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path
+          d="M7 3.5h3.5L12 7.5l-2 1.5a12 12 0 005 5l1.5-2 4 1.5V17a2 2 0 01-2 2C8.5 19 5 12.5 5 5.5a2 2 0 012-2z"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (id === "email") {
+    return (
+      <svg className={common} viewBox="0 0 24 24" fill="none" aria-hidden>
+        <rect x="3.5" y="5.5" width="17" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M4 7l8 6 8-6" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
+    );
+  }
+  if (id === "files") {
+    return (
+      <svg className={common} viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path d="M5 6.5h5l1.5 1.5H19v10H5V6.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg className={common} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M7 4.5h7l3 3V19.5H7V4.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M14 4.5V7.5h3M10 12h4M10 15h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function TabButton({
   active,
   children,
@@ -679,7 +734,7 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "border-b-2 px-3 py-2 text-sm",
+        "inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm",
         active ? "border-primary font-medium text-foreground" : "border-transparent text-muted hover:text-foreground",
       )}
     >
@@ -781,28 +836,52 @@ export function CrmRecordDrawer({
   const [openActivities, setOpenActivities] = useState<CrmActivityRecord[]>([]);
   const [notesEditorKey, setNotesEditorKey] = useState(0);
   const [editingActivity, setEditingActivity] = useState<CrmActivityRecord | null>(null);
+  const [recordEmails, setRecordEmails] = useState<CrmEmailListItem[]>([]);
+
+  const emailFieldValues = useMemo(() => {
+    const fields = sections.flatMap((section) => section.fields);
+    const byId = (id: string) => fields.find((field) => field.id === id)?.value?.trim() || "";
+    const email =
+      byId("email") ||
+      fields.find((field) => field.inputType === "email")?.value?.trim() ||
+      "";
+    return {
+      email,
+      firstName: byId("first_name") || byId("firstName"),
+      lastName: byId("last_name") || byId("lastName"),
+      companyName: byId("company_name") || byId("company") || title,
+      title: byId("title") || byId("contact_title"),
+      fullName: title,
+    };
+  }, [sections, title]);
 
   const loadCrmData = useCallback(async () => {
     if (!crmRecord?.id) {
       setTimelineHistory([]);
       setOpenActivities([]);
+      setRecordEmails([]);
       return;
     }
     const timelineParams = new URLSearchParams();
     const activityParams = new URLSearchParams();
+    const emailParams = new URLSearchParams();
     if (crmRecord.type === "contact") {
       timelineParams.set("contactId", crmRecord.id);
       activityParams.set("contactId", crmRecord.id);
+      emailParams.set("contactId", crmRecord.id);
     } else if (crmRecord.type === "lead") {
       timelineParams.set("leadId", crmRecord.id);
       activityParams.set("leadId", crmRecord.id);
+      emailParams.set("leadId", crmRecord.id);
     } else {
       timelineParams.set("companyId", crmRecord.id);
       activityParams.set("companyId", crmRecord.id);
+      emailParams.set("companyId", crmRecord.id);
     }
-    const [timelineRes, activitiesRes] = await Promise.all([
+    const [timelineRes, activitiesRes, emailsRes] = await Promise.all([
       fetch(`/api/crm/timeline?${timelineParams.toString()}`),
       fetch(`/api/crm/activities?${activityParams.toString()}`),
+      fetch(`/api/crm/emails?${emailParams.toString()}`),
     ]);
     if (timelineRes.ok) {
       const payload = (await timelineRes.json()) as { history?: DrawerHistoryItem[] };
@@ -811,6 +890,10 @@ export function CrmRecordDrawer({
     if (activitiesRes.ok) {
       const payload = (await activitiesRes.json()) as { activities?: CrmActivityRecord[] };
       setOpenActivities((payload.activities ?? []).filter((activity) => !activity.completed_at));
+    }
+    if (emailsRes.ok) {
+      const payload = (await emailsRes.json()) as { messages?: CrmEmailListItem[] };
+      setRecordEmails(payload.messages ?? []);
     }
   }, [crmRecord]);
 
@@ -1099,6 +1182,7 @@ export function CrmRecordDrawer({
                     setTab(item.id);
                   }}
                 >
+                  <ActivityTabIcon id={item.id} />
                   {item.label}
                 </TabButton>
               ))}
@@ -1166,22 +1250,36 @@ export function CrmRecordDrawer({
               <p className="py-8 text-center text-sm text-muted">No calls yet.</p>
             ) : null}
             {tab === "email" ? (
-              <div className="space-y-3 py-6 text-center">
-                <p className="text-sm text-muted">No email threads for this record yet.</p>
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  <Link
-                    href="/app/contacts/inbox?compose=1"
-                    className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"
-                  >
-                    New email
-                  </Link>
-                  <Link
-                    href="/app/contacts/inbox"
-                    className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-slate-50"
-                  >
-                    Open Inbox
-                  </Link>
-                </div>
+              <div className="space-y-4">
+                <CrmEmailComposer
+                  key={`${recordKey}-email`}
+                  recordType={crmRecord?.type ?? "contact"}
+                  recordId={crmRecord?.id}
+                  companyId={
+                    crmRecord?.type === "company"
+                      ? crmRecord.id
+                      : crmRecord?.links.companyId ?? null
+                  }
+                  primaryContactId={
+                    crmRecord?.type === "company"
+                      ? crmRecord.primaryContactId ?? null
+                      : crmRecord?.type === "contact"
+                        ? crmRecord.id
+                        : null
+                  }
+                  defaultTo={emailFieldValues.email ? [emailFieldValues.email] : []}
+                  mergeFields={{
+                    firstName: emailFieldValues.firstName || undefined,
+                    lastName: emailFieldValues.lastName || undefined,
+                    fullName: emailFieldValues.fullName || undefined,
+                    email: emailFieldValues.email || undefined,
+                    companyName: emailFieldValues.companyName || undefined,
+                    title: emailFieldValues.title || undefined,
+                  }}
+                  onSent={() => {
+                    void loadCrmData();
+                  }}
+                />
               </div>
             ) : null}
             {tab === "files" ? (
@@ -1195,7 +1293,11 @@ export function CrmRecordDrawer({
               links={crmRecord?.links ?? {}}
               activities={openActivities}
               history={activeHistory}
+              emails={recordEmails}
               onActivityChanged={() => {
+                void loadCrmData();
+              }}
+              onEmailsChanged={() => {
                 void loadCrmData();
               }}
               onEditActivity={(activity) => {

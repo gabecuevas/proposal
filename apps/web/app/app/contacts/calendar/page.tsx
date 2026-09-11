@@ -17,6 +17,7 @@ import {
   type CrmActivityRecord,
   type CrmActivityType,
 } from "@/lib/crm/activity-shared";
+import type { CrmCalendarAccountDto, CrmCalendarEventDto } from "@/lib/crm/calendar-accounts";
 import { activityLinkedRecordHref } from "@/lib/crm/activity-links";
 import {
   defaultVisibleIds,
@@ -153,6 +154,37 @@ function matchesPeriod(activity: CrmActivityRecord, period: PeriodFilter, now = 
   return true;
 }
 
+function isGoogleCalendarActivity(activity: CrmActivityRecord): boolean {
+  return activity.id.startsWith("gcal:");
+}
+
+function googleEventToActivity(event: CrmCalendarEventDto, currentUserId: string): CrmActivityRecord {
+  return {
+    id: `gcal:${event.id}`,
+    workspace_id: "",
+    created_by_user_id: currentUserId,
+    assignee_user_id: currentUserId,
+    contact_id: null,
+    lead_id: null,
+    company_id: null,
+    activity_type: "MEETING",
+    subject: event.title,
+    description: event.description,
+    location: event.location,
+    video_call_url: event.htmlLink,
+    notes: null,
+    priority: null,
+    availability: "BUSY",
+    due_at: event.startsAt,
+    end_at: event.endsAt,
+    completed_at: null,
+    created_at: event.startsAt,
+    updated_at: event.startsAt,
+    assignee_name: "Google Calendar",
+    created_by_name: "Google Calendar",
+  };
+}
+
 export default function ContactsCalendarPage() {
   const [view, setView] = useState<ViewMode>("calendar");
   const [weekStart, setWeekStart] = useState(() => startOfWeekSunday(new Date()));
@@ -162,6 +194,9 @@ export default function ContactsCalendarPage() {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [assigneeUserId, setAssigneeUserId] = useState("");
   const [currentUserId, setCurrentUserId] = useState("");
+  const [calendarSyncStatus, setCalendarSyncStatus] = useState<"ACTIVE" | "INACTIVE" | "ERROR" | null>(
+    null,
+  );
   const [error, setError] = useState("");
   const [weekPickerOpen, setWeekPickerOpen] = useState(false);
   const weekPickerRef = useRef<HTMLDivElement>(null);
@@ -357,9 +392,10 @@ export default function ContactsCalendarPage() {
 
   useEffect(() => {
     void (async () => {
-      const [sessionRes, membersRes] = await Promise.all([
+      const [sessionRes, membersRes, calendarRes] = await Promise.all([
         fetch("/api/auth/session"),
         fetch("/api/workspace/members"),
+        fetch("/api/crm/calendar-accounts"),
       ]);
       if (sessionRes.ok) {
         const payload = (await sessionRes.json()) as { user?: { userId: string } | null };
@@ -373,6 +409,12 @@ export default function ContactsCalendarPage() {
           members: Array<{ userId: string; name: string; email: string }>;
         };
         setMembers(payload.members);
+      }
+      if (calendarRes.ok) {
+        const payload = (await calendarRes.json()) as { accounts?: CrmCalendarAccountDto[] };
+        setCalendarSyncStatus(payload.accounts?.[0]?.syncStatus ?? "INACTIVE");
+      } else {
+        setCalendarSyncStatus("INACTIVE");
       }
     })();
   }, []);
@@ -426,17 +468,34 @@ export default function ContactsCalendarPage() {
       if (openOnly) {
         params.set("openOnly", "1");
       }
-      const response = await fetch(`/api/crm/activities?${params.toString()}`);
-      if (!response.ok) {
+      const [activitiesRes, googleRes] = await Promise.all([
+        fetch(`/api/crm/activities?${params.toString()}`),
+        assigneeUserId === currentUserId
+          ? fetch(`/api/crm/calendar-events?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`)
+          : Promise.resolve(null),
+      ]);
+      if (!activitiesRes.ok) {
         setError("Failed to load activities.");
         return;
       }
-      const payload = (await response.json()) as { activities?: CrmActivityRecord[] };
-      setActivities(payload.activities ?? []);
+      const payload = (await activitiesRes.json()) as { activities?: CrmActivityRecord[] };
+      let next = payload.activities ?? [];
+      if (googleRes?.ok) {
+        const googlePayload = (await googleRes.json()) as { events?: CrmCalendarEventDto[] };
+        const googleActivities = (googlePayload.events ?? []).map((event) =>
+          googleEventToActivity(event, currentUserId),
+        );
+        next = [...next, ...googleActivities].sort((a, b) => {
+          const aDue = a.due_at ? new Date(a.due_at).getTime() : 0;
+          const bDue = b.due_at ? new Date(b.due_at).getTime() : 0;
+          return aDue - bDue;
+        });
+      }
+      setActivities(next);
     } catch {
       setError("Failed to load activities.");
     }
-  }, [assigneeUserId, periodFilter, view, weekStart]);
+  }, [assigneeUserId, currentUserId, periodFilter, view, weekStart]);
 
   useEffect(() => {
     void loadRange();
@@ -456,6 +515,10 @@ export default function ContactsCalendarPage() {
 
   async function confirmMarkDone() {
     if (!markDoneTarget) {
+      return;
+    }
+    if (isGoogleCalendarActivity(markDoneTarget)) {
+      setMarkDoneTarget(null);
       return;
     }
     setMarkDoneSaving(true);
@@ -619,9 +682,20 @@ export default function ContactsCalendarPage() {
 
           <Link
             href="/app/settings/integrations/calendar"
-            className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-red-700 hover:bg-red-100"
+            className={cn(
+              "rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide hover:opacity-90",
+              calendarSyncStatus === "ACTIVE"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : calendarSyncStatus === "ERROR"
+                  ? "border-red-200 bg-red-50 text-red-700"
+                  : "border-red-200 bg-red-50 text-red-700",
+            )}
           >
-            Sync inactive
+            {calendarSyncStatus === "ACTIVE"
+              ? "Sync active"
+              : calendarSyncStatus === "ERROR"
+                ? "Sync error"
+                : "Sync inactive"}
           </Link>
         </div>
       </div>
@@ -672,7 +746,11 @@ export default function ContactsCalendarPage() {
         <ActivitiesWeekCalendar
           weekStart={weekStart}
           activities={filtered}
-          onRequestMarkDone={setMarkDoneTarget}
+          onRequestMarkDone={(activity) => {
+            if (!isGoogleCalendarActivity(activity)) {
+              setMarkDoneTarget(activity);
+            }
+          }}
         />
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
@@ -793,31 +871,37 @@ export default function ContactsCalendarPage() {
                         style={{ width: DONE_COL_WIDTH, minWidth: DONE_COL_WIDTH }}
                       >
                         <div className="flex h-10 items-center justify-center">
-                          <button
-                            type="button"
-                            title="Mark as done"
-                            aria-label="Mark as done"
-                            onClick={() => setMarkDoneTarget(activity)}
-                            className={cn(
-                              "group/mark flex h-4 w-4 items-center justify-center rounded-full border border-border bg-white transition-colors",
-                              "hover:border-primary hover:bg-primary",
-                            )}
-                          >
-                            <svg
-                              className="h-2 w-2 text-primary-foreground opacity-0 group-hover/mark:opacity-100"
-                              viewBox="0 0 16 16"
-                              fill="none"
-                              aria-hidden
+                          {isGoogleCalendarActivity(activity) ? (
+                            <span className="text-[10px] font-medium uppercase tracking-wide text-muted">
+                              GCal
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              title="Mark as done"
+                              aria-label="Mark as done"
+                              onClick={() => setMarkDoneTarget(activity)}
+                              className={cn(
+                                "group/mark flex h-4 w-4 items-center justify-center rounded-full border border-border bg-white transition-colors",
+                                "hover:border-primary hover:bg-primary",
+                              )}
                             >
-                              <path
-                                d="M3.5 8.2l3 3 6-6.5"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          </button>
+                              <svg
+                                className="h-2 w-2 text-primary-foreground opacity-0 group-hover/mark:opacity-100"
+                                viewBox="0 0 16 16"
+                                fill="none"
+                                aria-hidden
+                              >
+                                <path
+                                  d="M3.5 8.2l3 3 6-6.5"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       </td>
                       {visibleListColumns.map((column) => (

@@ -858,6 +858,7 @@ export default function CompaniesPage() {
             ? {
                 type: "company",
                 id: selectedId,
+                primaryContactId: selected?.primary_contact_id ?? null,
                 links: {
                   companyId: selectedId,
                   companyName: editor.name,
