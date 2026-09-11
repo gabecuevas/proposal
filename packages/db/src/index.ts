@@ -53,7 +53,7 @@ function getPrismaClient(): PrismaClient {
  * new model delegates instead of holding a stale singleton.
  */
 export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
-  get(_target, prop, _receiver) {
+  get(_target, prop) {
     const client = getPrismaClient();
     // Use the real client as Reflect receiver so Prisma getters keep `this`.
     const value = Reflect.get(client, prop, client);
