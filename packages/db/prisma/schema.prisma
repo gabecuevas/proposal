@@ -40,6 +40,8 @@ model Workspace {
   crmEmailMessages CrmEmailMessage[]
   crmEmailTemplates CrmEmailTemplate[]
   crmEmailSignatures CrmEmailSignature[]
+  crmCalendarAccounts CrmCalendarAccount[]
+  crmCalendarEvents CrmCalendarEvent[]
   sentVersions  DocumentSentVersion[]
   owner         User?            @relation("workspace_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
 }
@@ -323,6 +325,7 @@ model User {
   crm_email_accounts     CrmEmailAccount[]
   crm_email_templates    CrmEmailTemplate[]
   crm_email_signatures   CrmEmailSignature[]
+  crm_calendar_accounts  CrmCalendarAccount[]
 }
 
 model Contact {
@@ -879,4 +882,65 @@ model CrmEmailSignature {
 
   @@index([workspace_id, updated_at])
   @@index([account_id, updated_at])
+}
+
+enum CrmCalendarSyncProvider {
+  GOOGLE
+}
+
+enum CrmCalendarSyncStatus {
+  INACTIVE
+  ACTIVE
+  ERROR
+}
+
+model CrmCalendarAccount {
+  id                     String                   @id @default(cuid())
+  workspace_id           String
+  user_id                String
+  provider               CrmCalendarSyncProvider  @default(GOOGLE)
+  email                  String
+  calendar_id            String                   @default("primary")
+  calendar_name          String?
+  sync_status            CrmCalendarSyncStatus    @default(INACTIVE)
+  last_synced_at         DateTime?
+  sync_token             String?
+  oauth_access_token     String?
+  oauth_refresh_token    String?
+  oauth_expires_at       DateTime?
+  oauth_scope            String?
+  created_at             DateTime                 @default(now())
+  updated_at             DateTime                 @updatedAt
+
+  workspace Workspace          @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  user      User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  events    CrmCalendarEvent[]
+
+  @@unique([workspace_id, user_id, provider])
+  @@index([workspace_id, sync_status])
+}
+
+model CrmCalendarEvent {
+  id           String   @id @default(cuid())
+  workspace_id String
+  account_id   String
+  external_id  String
+  calendar_id  String   @default("primary")
+  title        String   @default("(no title)")
+  description  String?
+  location     String?
+  html_link    String?
+  status       String?
+  all_day      Boolean  @default(false)
+  starts_at    DateTime
+  ends_at      DateTime
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  workspace Workspace         @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  account   CrmCalendarAccount @relation(fields: [account_id], references: [id], onDelete: Cascade)
+
+  @@unique([workspace_id, external_id])
+  @@index([workspace_id, starts_at])
+  @@index([account_id, starts_at])
 }

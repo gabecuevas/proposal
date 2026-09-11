@@ -1,4 +1,4 @@
-import { prisma } from "@repo/db";
+import { prisma, prismaHasModel } from "@repo/db";
 
 export type CrmEmailSignatureDto = {
   id: string;
@@ -27,11 +27,19 @@ export function serializeEmailSignature(row: {
   };
 }
 
+function ensureSignatureStorage() {
+  if (!prismaHasModel("crmEmailSignature")) {
+    throw new Error(
+      "Email signature storage isn’t ready yet. Restart the app (or run prisma generate) and try again.",
+    );
+  }
+}
+
 export async function listEmailSignatures(
   workspaceId: string,
   options?: { accountId?: string | null; userId?: string | null },
 ) {
-  if (!prisma.crmEmailSignature) {
+  if (!prismaHasModel("crmEmailSignature")) {
     return [];
   }
   const rows = await prisma.crmEmailSignature.findMany({
@@ -55,9 +63,7 @@ export async function createEmailSignature(
     bodyHtml: string;
   },
 ) {
-  if (!prisma.crmEmailSignature) {
-    throw new Error("Email signature storage is restarting. Refresh and try again.");
-  }
+  ensureSignatureStorage();
   const name = input.name.trim().slice(0, 40);
   if (!name) {
     throw new Error("Signature name is required.");
@@ -88,9 +94,7 @@ export async function updateEmailSignature(
   signatureId: string,
   input: { name?: string; bodyHtml?: string },
 ) {
-  if (!prisma.crmEmailSignature) {
-    throw new Error("Email signature storage is restarting. Refresh and try again.");
-  }
+  ensureSignatureStorage();
   const existing = await prisma.crmEmailSignature.findFirst({
     where: { id: signatureId, workspace_id: workspaceId },
   });
@@ -108,9 +112,7 @@ export async function updateEmailSignature(
 }
 
 export async function deleteEmailSignature(workspaceId: string, signatureId: string) {
-  if (!prisma.crmEmailSignature) {
-    throw new Error("Email signature storage is restarting. Refresh and try again.");
-  }
+  ensureSignatureStorage();
   const existing = await prisma.crmEmailSignature.findFirst({
     where: { id: signatureId, workspace_id: workspaceId },
   });

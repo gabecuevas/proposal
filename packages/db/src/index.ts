@@ -5,7 +5,7 @@ import type { InputJsonValue as PrismaInputJsonValue } from "@prisma/client/runt
  * Bump when adding/removing Prisma model fields so hot-reload drops a stale
  * PrismaClient that would reject new columns (e.g. Company.linkedin).
  */
-const PRISMA_SCHEMA_REV = 17;
+const PRISMA_SCHEMA_REV = 19;
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -23,7 +23,9 @@ function clientLooksCurrent(client: PrismaClient): boolean {
     typeof record.crmEmailAccount === "object" &&
     typeof record.crmEmailMessage === "object" &&
     typeof record.crmEmailTemplate === "object" &&
-    typeof record.crmEmailSignature === "object"
+    typeof record.crmEmailSignature === "object" &&
+    typeof record.crmCalendarAccount === "object" &&
+    typeof record.crmCalendarEvent === "object"
   );
 }
 
@@ -37,6 +39,8 @@ function getPrismaClient(): PrismaClient {
   }
   if (globalForPrisma.prisma) {
     void globalForPrisma.prisma.$disconnect().catch(() => undefined);
+    globalForPrisma.prisma = undefined;
+    globalForPrisma.prismaSchemaRev = undefined;
   }
   const next = createPrismaClient();
   globalForPrisma.prisma = next;
@@ -49,12 +53,20 @@ function getPrismaClient(): PrismaClient {
  * new model delegates instead of holding a stale singleton.
  */
 export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
-  get(_target, prop, receiver) {
+  get(_target, prop, _receiver) {
     const client = getPrismaClient();
-    const value = Reflect.get(client, prop, receiver);
+    // Use the real client as Reflect receiver so Prisma getters keep `this`.
+    const value = Reflect.get(client, prop, client);
     return typeof value === "function" ? value.bind(client) : value;
   },
 });
+
+/** True when the generated client includes the given model delegate. */
+export function prismaHasModel(model: keyof PrismaClient): boolean {
+  const client = getPrismaClient();
+  const value = Reflect.get(client, model as string | symbol, client);
+  return typeof value === "object" && value !== null;
+}
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = getPrismaClient();
