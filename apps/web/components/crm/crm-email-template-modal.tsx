@@ -1,5 +1,6 @@
 "use client";
 
+import FontFamily from "@tiptap/extension-font-family";
 import Color from "@tiptap/extension-color";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
@@ -7,15 +8,16 @@ import Placeholder from "@tiptap/extension-placeholder";
 import TextAlign from "@tiptap/extension-text-align";
 import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
-import { EditorContent, useEditor, type Editor } from "@tiptap/react";
+import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@repo/ui/utils";
-import { useEditorEventTick } from "@/components/editor/hooks/use-editor-event-tick";
 import { Indent } from "@/lib/editor/extensions/indent";
+import { FontSize } from "@/lib/editor/extensions/font-size";
 import { sanitizePastedHtml } from "@/lib/editor/paste";
 import type { CrmEmailTemplateDto } from "@/lib/crm/email-templates";
+import { CrmEmailComposerToolbar } from "@/components/crm/crm-email-composer-toolbar";
 
 const FIELD_OPTIONS = [
   { key: "first_name", label: "first name" },
@@ -29,142 +31,6 @@ const FIELD_OPTIONS = [
 
 function fieldPillHtml(key: string, label: string): string {
   return `<span data-email-field="${key}" style="display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:9999px;background:#eef2f7;color:#334155;font-size:0.875em;font-weight:500;" contenteditable="false">${label}</span>`;
-}
-
-function ToolbarButton({
-  title,
-  active,
-  onClick,
-  children,
-}: {
-  title: string;
-  active?: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={onClick}
-      className={cn(
-        "inline-flex h-7 w-7 items-center justify-center rounded text-sm text-muted hover:bg-black/5 hover:text-foreground",
-        active && "bg-black/10 text-foreground",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function TemplateBodyToolbar({ editor }: { editor: Editor }) {
-  useEditorEventTick(editor);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  return (
-    <div className="flex flex-wrap items-center gap-0.5 border-t border-border px-2 py-1.5">
-      <ToolbarButton title="Undo" onClick={() => editor.chain().focus().undo().run()}>
-        ↶
-      </ToolbarButton>
-      <ToolbarButton title="Redo" onClick={() => editor.chain().focus().redo().run()}>
-        ↷
-      </ToolbarButton>
-      <span className="mx-1 h-4 w-px bg-border" />
-      <ToolbarButton title="Bold" active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}>
-        <span className="font-bold">B</span>
-      </ToolbarButton>
-      <ToolbarButton
-        title="Italic"
-        active={editor.isActive("italic")}
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-      >
-        <span className="italic">I</span>
-      </ToolbarButton>
-      <ToolbarButton
-        title="Underline"
-        active={editor.isActive("underline")}
-        onClick={() => editor.chain().focus().toggleUnderline().run()}
-      >
-        <span className="underline">U</span>
-      </ToolbarButton>
-      <label className="inline-flex h-7 items-center gap-1 rounded px-1 text-xs text-muted hover:bg-black/5">
-        <span title="Text color">A</span>
-        <input
-          type="color"
-          className="h-4 w-4 cursor-pointer border-0 bg-transparent p-0"
-          onChange={(event) => editor.chain().focus().setColor(event.target.value).run()}
-        />
-      </label>
-      <span className="mx-1 h-4 w-px bg-border" />
-      <ToolbarButton
-        title="Numbered list"
-        active={editor.isActive("orderedList")}
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-      >
-        1.
-      </ToolbarButton>
-      <ToolbarButton
-        title="Bullet list"
-        active={editor.isActive("bulletList")}
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-      >
-        •
-      </ToolbarButton>
-      <ToolbarButton
-        title="Quote"
-        active={editor.isActive("blockquote")}
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
-      >
-        ”
-      </ToolbarButton>
-      <ToolbarButton
-        title="Link"
-        active={editor.isActive("link")}
-        onClick={() => {
-          const previous = editor.getAttributes("link").href as string | undefined;
-          const next = window.prompt("Enter URL", previous ?? "https://");
-          if (next === null) return;
-          if (!next.trim()) {
-            editor.chain().focus().extendMarkRange("link").unsetLink().run();
-            return;
-          }
-          const href = /^https?:\/\//i.test(next.trim()) ? next.trim() : `https://${next.trim()}`;
-          editor.chain().focus().extendMarkRange("link").setLink({ href, target: "_blank" }).run();
-        }}
-      >
-        🔗
-      </ToolbarButton>
-      <ToolbarButton title="Image" onClick={() => fileRef.current?.click()}>
-        🖼
-      </ToolbarButton>
-      <ToolbarButton
-        title="Clear formatting"
-        onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
-      >
-        Tx
-      </ToolbarButton>
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          event.target.value = "";
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = () => {
-            if (typeof reader.result === "string") {
-              editor.chain().focus().setImage({ src: reader.result }).run();
-            }
-          };
-          reader.readAsDataURL(file);
-        }}
-      />
-    </div>
-  );
 }
 
 export type CrmEmailTemplateModalProps = {
@@ -205,6 +71,8 @@ export function CrmEmailTemplateModal({
       StarterKit,
       Underline,
       TextStyle,
+      FontFamily.configure({ types: ["textStyle"] }),
+      FontSize,
       Color,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Indent,
@@ -318,7 +186,7 @@ export function CrmEmailTemplateModal({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+    <div className="app-theme fixed inset-0 z-[95] flex items-center justify-center p-4">
       <button type="button" className="absolute inset-0 bg-slate-900/30" aria-label="Close" onClick={onClose} />
       <div
         role="dialog"
@@ -439,7 +307,7 @@ export function CrmEmailTemplateModal({
               </select>
             </div>
             <EditorContent editor={editor} />
-            {editor ? <TemplateBodyToolbar editor={editor} /> : null}
+            {editor ? <CrmEmailComposerToolbar editor={editor} /> : null}
           </div>
 
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -458,7 +326,7 @@ export function CrmEmailTemplateModal({
             type="button"
             disabled={busy || !name.trim()}
             onClick={() => void save()}
-            className="rounded-md bg-emerald-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-60"
+            className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
           >
             {busy ? "Saving…" : "Save"}
           </button>

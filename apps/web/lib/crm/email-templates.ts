@@ -6,6 +6,7 @@ export type CrmEmailTemplateDto = {
   subject: string;
   bodyHtml: string;
   visibility: "PRIVATE" | "SHARED";
+  createdAt: string;
   updatedAt: string;
 };
 
@@ -15,6 +16,7 @@ export function serializeEmailTemplate(row: {
   subject: string;
   body_html: string;
   visibility: CrmEmailTemplateVisibility;
+  created_at: Date;
   updated_at: Date;
 }): CrmEmailTemplateDto {
   return {
@@ -23,16 +25,20 @@ export function serializeEmailTemplate(row: {
     subject: row.subject,
     bodyHtml: row.body_html,
     visibility: row.visibility,
+    createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
 }
 
 export async function listEmailTemplates(workspaceId: string, query?: string) {
-  if (!prisma.crmEmailTemplate) {
-    throw new Error("Email templates storage is restarting. Refresh and try again.");
+  const db = prisma as typeof prisma & { crmEmailTemplate?: typeof prisma.crmEmailTemplate };
+  if (!db.crmEmailTemplate) {
+    throw new Error(
+      "Email templates are not available yet. Restart the app (or wait for Prisma to regenerate) and try again.",
+    );
   }
   const q = query?.trim();
-  const rows = await prisma.crmEmailTemplate.findMany({
+  const rows = await db.crmEmailTemplate.findMany({
     where: {
       workspace_id: workspaceId,
       ...(q
@@ -52,7 +58,9 @@ export async function listEmailTemplates(workspaceId: string, query?: string) {
 
 export async function getEmailTemplate(workspaceId: string, templateId: string) {
   if (!prisma.crmEmailTemplate) {
-    throw new Error("Email templates storage is restarting. Refresh and try again.");
+    throw new Error(
+      "Email templates are not available yet. Restart the app (or wait for Prisma to regenerate) and try again.",
+    );
   }
   const row = await prisma.crmEmailTemplate.findFirst({
     where: { id: templateId, workspace_id: workspaceId },
@@ -71,7 +79,9 @@ export async function createEmailTemplate(
   },
 ) {
   if (!prisma.crmEmailTemplate) {
-    throw new Error("Email templates storage is restarting. Refresh and try again.");
+    throw new Error(
+      "Email templates are not available yet. Restart the app (or wait for Prisma to regenerate) and try again.",
+    );
   }
   const name = input.name.trim();
   if (!name) {
@@ -101,7 +111,9 @@ export async function updateEmailTemplate(
   },
 ) {
   if (!prisma.crmEmailTemplate) {
-    throw new Error("Email templates storage is restarting. Refresh and try again.");
+    throw new Error(
+      "Email templates are not available yet. Restart the app (or wait for Prisma to regenerate) and try again.",
+    );
   }
   const existing = await prisma.crmEmailTemplate.findFirst({
     where: { id: templateId, workspace_id: workspaceId },
@@ -127,7 +139,9 @@ export async function updateEmailTemplate(
 
 export async function deleteEmailTemplate(workspaceId: string, templateId: string) {
   if (!prisma.crmEmailTemplate) {
-    throw new Error("Email templates storage is restarting. Refresh and try again.");
+    throw new Error(
+      "Email templates are not available yet. Restart the app (or wait for Prisma to regenerate) and try again.",
+    );
   }
   const existing = await prisma.crmEmailTemplate.findFirst({
     where: { id: templateId, workspace_id: workspaceId },

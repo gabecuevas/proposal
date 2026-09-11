@@ -1,5 +1,6 @@
 "use client";
 
+import FontFamily from "@tiptap/extension-font-family";
 import Color from "@tiptap/extension-color";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
@@ -7,20 +8,27 @@ import Placeholder from "@tiptap/extension-placeholder";
 import TextAlign from "@tiptap/extension-text-align";
 import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
-import { EditorContent, useEditor, type Editor } from "@tiptap/react";
+import Table from "@tiptap/extension-table";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+import TableRow from "@tiptap/extension-table-row";
+import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import LinkNext from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { cn } from "@repo/ui/utils";
-import { useEditorEventTick } from "@/components/editor/hooks/use-editor-event-tick";
 import { Indent } from "@/lib/editor/extensions/indent";
-import { sanitizePastedHtml } from "@/lib/editor/paste";
+import { FontSize } from "@/lib/editor/extensions/font-size";
+import { sanitizeEmailFriendlyHtml } from "@/lib/editor/paste";
 import type { CrmEmailAccountDto } from "@/lib/crm/emails";
 import {
   applyEmailTemplateMergeFields,
   type CrmEmailTemplateDto,
 } from "@/lib/crm/email-templates";
+import type { CrmEmailSignatureDto } from "@/lib/crm/email-signatures";
+import { CrmEmailComposerToolbar } from "@/components/crm/crm-email-composer-toolbar";
 import { CrmEmailTemplateModal } from "@/components/crm/crm-email-template-modal";
+import { CrmEmailTemplateManageModal } from "@/components/crm/crm-email-template-manage-modal";
 import { CrmEmailTemplatePicker } from "@/components/crm/crm-email-template-picker";
 
 export type CrmEmailMergeFields = {
@@ -91,17 +99,6 @@ function ToolbarButton({
       {children}
     </button>
   );
-}
-
-function ensureHttpUrl(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return null;
-  }
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed;
-  }
-  return `https://${trimmed}`;
 }
 
 function ChevronDownIcon({ className }: { className?: string }) {
@@ -237,176 +234,6 @@ function EmailChipRow({
   );
 }
 
-function ComposerToolbar({ editor }: { editor: Editor }) {
-  useEditorEventTick(editor);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const setLink = () => {
-    const previous = editor.getAttributes("link").href as string | undefined;
-    const next = window.prompt("Enter URL", previous ?? "https://");
-    if (next === null) {
-      return;
-    }
-    if (!next.trim()) {
-      editor.chain().focus().extendMarkRange("link").unsetLink().run();
-      return;
-    }
-    const href = ensureHttpUrl(next);
-    if (!href) {
-      return;
-    }
-    editor.chain().focus().extendMarkRange("link").setLink({ href, target: "_blank" }).run();
-  };
-
-  return (
-    <div className="flex flex-wrap items-center gap-0.5 border-t border-border px-2 py-1.5">
-      <ToolbarButton title="Undo" onClick={() => editor.chain().focus().undo().run()}>
-        ↶
-      </ToolbarButton>
-      <ToolbarButton title="Redo" onClick={() => editor.chain().focus().redo().run()}>
-        ↷
-      </ToolbarButton>
-      <span className="mx-1 h-4 w-px bg-border" />
-      <label className="inline-flex h-7 items-center gap-1 rounded px-1 text-xs text-muted hover:bg-black/5">
-        <span title="Text color">A</span>
-        <input
-          type="color"
-          className="h-4 w-4 cursor-pointer border-0 bg-transparent p-0"
-          onChange={(event) => editor.chain().focus().setColor(event.target.value).run()}
-        />
-      </label>
-      <select
-        className="h-7 rounded border-0 bg-transparent px-1 text-xs text-muted hover:bg-black/5"
-        title="Text style"
-        defaultValue="paragraph"
-        onChange={(event) => {
-          const value = event.target.value;
-          if (value === "paragraph") {
-            editor.chain().focus().setParagraph().run();
-          } else {
-            editor
-              .chain()
-              .focus()
-              .toggleHeading({ level: Number(value) as 1 | 2 | 3 })
-              .run();
-          }
-        }}
-      >
-        <option value="paragraph">TT</option>
-        <option value="1">H1</option>
-        <option value="2">H2</option>
-        <option value="3">H3</option>
-      </select>
-      <span className="mx-1 h-4 w-px bg-border" />
-      <ToolbarButton title="Bold" active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}>
-        <span className="font-bold">B</span>
-      </ToolbarButton>
-      <ToolbarButton
-        title="Italic"
-        active={editor.isActive("italic")}
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-      >
-        <span className="italic">I</span>
-      </ToolbarButton>
-      <ToolbarButton
-        title="Underline"
-        active={editor.isActive("underline")}
-        onClick={() => editor.chain().focus().toggleUnderline().run()}
-      >
-        <span className="underline">U</span>
-      </ToolbarButton>
-      <ToolbarButton
-        title="Strikethrough"
-        active={editor.isActive("strike")}
-        onClick={() => editor.chain().focus().toggleStrike().run()}
-      >
-        <span className="line-through">S</span>
-      </ToolbarButton>
-      <span className="mx-1 h-4 w-px bg-border" />
-      <ToolbarButton
-        title="Numbered list"
-        active={editor.isActive("orderedList")}
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-      >
-        1.
-      </ToolbarButton>
-      <ToolbarButton
-        title="Bullet list"
-        active={editor.isActive("bulletList")}
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-      >
-        •
-      </ToolbarButton>
-      <ToolbarButton title="Decrease indent" onClick={() => editor.chain().focus().decreaseIndent().run()}>
-        ⇤
-      </ToolbarButton>
-      <ToolbarButton title="Increase indent" onClick={() => editor.chain().focus().increaseIndent().run()}>
-        ⇥
-      </ToolbarButton>
-      <span className="mx-1 h-4 w-px bg-border" />
-      <ToolbarButton
-        title="Quote"
-        active={editor.isActive("blockquote")}
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
-      >
-        ”
-      </ToolbarButton>
-      <ToolbarButton title="Link" active={editor.isActive("link")} onClick={setLink}>
-        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <path
-            d="M10 13a5 5 0 007.07 0l1.41-1.41a5 5 0 00-7.07-7.07L10 5.9"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          />
-          <path
-            d="M14 11a5 5 0 00-7.07 0L5.52 12.41a5 5 0 007.07 7.07L14 18.1"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          />
-        </svg>
-      </ToolbarButton>
-      <ToolbarButton title="Image" onClick={() => fileRef.current?.click()}>
-        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <rect x="3.5" y="5.5" width="17" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
-          <circle cx="9" cy="10" r="1.5" fill="currentColor" />
-          <path d="M7 16l3.5-3.5L14 15l2-2 3.5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-        </svg>
-      </ToolbarButton>
-      <ToolbarButton title="Divider" onClick={() => editor.chain().focus().setHorizontalRule().run()}>
-        ―
-      </ToolbarButton>
-      <ToolbarButton
-        title="Clear formatting"
-        onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
-      >
-        Tx
-      </ToolbarButton>
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          event.target.value = "";
-          if (!file) {
-            return;
-          }
-          const reader = new FileReader();
-          reader.onload = () => {
-            if (typeof reader.result === "string") {
-              editor.chain().focus().setImage({ src: reader.result }).run();
-            }
-          };
-          reader.readAsDataURL(file);
-        }}
-      />
-    </div>
-  );
-}
-
 export function CrmEmailComposer({
   recordType,
   recordId,
@@ -423,7 +250,12 @@ export function CrmEmailComposer({
     open: boolean;
     mode: "create" | "edit";
     template?: CrmEmailTemplateDto | null;
+    fromDraft?: boolean;
   }>({ open: false, mode: "create" });
+  const [manageTemplatesOpen, setManageTemplatesOpen] = useState(false);
+  const [signatures, setSignatures] = useState<CrmEmailSignatureDto[]>([]);
+  const [signatureMenuOpen, setSignatureMenuOpen] = useState(false);
+  const signatureMenuRef = useRef<HTMLDivElement>(null);
   const [recipientOptions, setRecipientOptions] = useState<CrmEmailRecipientOption[]>([]);
   const [accountId, setAccountId] = useState("");
   const [to, setTo] = useState<string[]>(defaultTo);
@@ -443,7 +275,6 @@ export function CrmEmailComposer({
   const [scheduleAt, setScheduleAt] = useState("");
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [aiBusy, setAiBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [toInitialized, setToInitialized] = useState(false);
@@ -454,11 +285,17 @@ export function CrmEmailComposer({
       StarterKit,
       Underline,
       TextStyle,
+      FontFamily.configure({ types: ["textStyle"] }),
+      FontSize,
       Color,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Indent,
       Image.configure({ allowBase64: true }),
       Link.configure({ openOnClick: false }),
+      Table.configure({ resizable: false }),
+      TableRow,
+      TableHeader,
+      TableCell,
       Placeholder.configure({ placeholder: "Write your email…" }),
     ],
     content: bodyHtml,
@@ -467,7 +304,7 @@ export function CrmEmailComposer({
       attributes: {
         class: "prose prose-sm max-w-none min-h-[160px] px-3 py-3 focus:outline-none",
       },
-      transformPastedHTML: (html) => sanitizePastedHtml(html),
+      transformPastedHTML: (html) => sanitizeEmailFriendlyHtml(html),
     },
     onUpdate: ({ editor: current }) => {
       setBodyHtml(current.getHTML());
@@ -511,6 +348,46 @@ export function CrmEmailComposer({
     })();
     void loadTemplates();
   }, [loadTemplates]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!accountId) {
+        setSignatures([]);
+        return;
+      }
+      try {
+        const response = await fetch(`/api/crm/email-signatures?accountId=${encodeURIComponent(accountId)}`);
+        if (!response.ok) {
+          return;
+        }
+        const payload = (await response.json()) as { signatures?: CrmEmailSignatureDto[] };
+        if (!cancelled) {
+          setSignatures(payload.signatures ?? []);
+        }
+      } catch {
+        if (!cancelled) {
+          setSignatures([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
+
+  useEffect(() => {
+    if (!signatureMenuOpen) {
+      return;
+    }
+    function onPointerDown(event: MouseEvent) {
+      if (!signatureMenuRef.current?.contains(event.target as Node)) {
+        setSignatureMenuOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [signatureMenuOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -680,7 +557,20 @@ export function CrmEmailComposer({
     insertHtml(value);
   };
 
+  const insertSavedSignature = (signature: CrmEmailSignatureDto) => {
+    insertHtml(signature.bodyHtml || "<p></p>");
+    setSignatureMenuOpen(false);
+  };
+
   const insertSignature = () => {
+    if (signatures.length === 1) {
+      insertSavedSignature(signatures[0]!);
+      return;
+    }
+    if (signatures.length > 1) {
+      setSignatureMenuOpen((value) => !value);
+      return;
+    }
     const name = selectedAccount?.senderName || selectedAccount?.email || "SendDox";
     insertHtml(`<p>—<br/>${name}${selectedAccount?.email ? `<br/>${selectedAccount.email}` : ""}</p>`);
   };
@@ -797,32 +687,6 @@ export function CrmEmailComposer({
       setError(err instanceof Error ? err.message : "Could not send email.");
     } finally {
       setBusy(false);
-    }
-  };
-
-  const writeWithAi = async () => {
-    setAiBusy(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/crm/emails/ai-draft", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject,
-          recipientName: mergeFields.fullName || mergeFields.firstName || to[0],
-          companyName: mergeFields.companyName,
-        }),
-      });
-      const payload = (await response.json().catch(() => ({}))) as { html?: string; error?: string };
-      if (!response.ok || !payload.html) {
-        throw new Error(payload.error || "AI draft unavailable.");
-      }
-      editor?.commands.setContent(payload.html);
-      setBodyHtml(payload.html);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "AI draft unavailable.");
-    } finally {
-      setAiBusy(false);
     }
   };
 
@@ -970,15 +834,10 @@ export function CrmEmailComposer({
               open: true,
               mode: "create",
               template: null,
+              fromDraft: true,
             })
           }
-          onManageTemplates={() =>
-            setTemplateModal({
-              open: true,
-              mode: templates[0] ? "edit" : "create",
-              template: templates[0] ?? null,
-            })
-          }
+          onManageTemplates={() => setManageTemplatesOpen(true)}
         />
 
         <QuietSelect
@@ -1020,19 +879,10 @@ export function CrmEmailComposer({
           <option value="30">30-minute meeting</option>
           <option value="calendar">Open calendar</option>
         </QuietSelect>
-
-        <button
-          type="button"
-          disabled={aiBusy}
-          onClick={() => void writeWithAi()}
-          className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-60"
-        >
-          ✦ {aiBusy ? "Writing…" : "Write my email"}
-        </button>
       </div>
 
       <EditorContent editor={editor} />
-      {editor ? <ComposerToolbar editor={editor} /> : null}
+      {editor ? <CrmEmailComposerToolbar editor={editor} /> : null}
 
       {attachments.length ? (
         <ul className="space-y-1 border-t border-border px-3 py-2">
@@ -1066,7 +916,7 @@ export function CrmEmailComposer({
             type="button"
             disabled={busy}
             onClick={() => void submit("schedule")}
-            className="rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+            className="rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
           >
             Confirm schedule
           </button>
@@ -1080,9 +930,25 @@ export function CrmEmailComposer({
         <ToolbarButton title="Attach files" onClick={() => attachRef.current?.click()}>
           📎
         </ToolbarButton>
-        <ToolbarButton title="Insert signature" onClick={insertSignature}>
-          ✎
-        </ToolbarButton>
+        <div ref={signatureMenuRef} className="relative">
+          <ToolbarButton title="Insert signature" onClick={insertSignature}>
+            ✎
+          </ToolbarButton>
+          {signatureMenuOpen && signatures.length > 1 ? (
+            <div className="absolute bottom-full left-0 z-20 mb-1 min-w-[12rem] overflow-hidden rounded-md border border-border bg-white py-1 shadow-lg">
+              {signatures.map((signature) => (
+                <button
+                  key={signature.id}
+                  type="button"
+                  onClick={() => insertSavedSignature(signature)}
+                  className="block w-full px-3 py-1.5 text-left text-sm text-foreground hover:bg-slate-50"
+                >
+                  {signature.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
         <ToolbarButton
           title="Track email opens"
           active={trackOpens}
@@ -1118,7 +984,7 @@ export function CrmEmailComposer({
             type="button"
             disabled={busy}
             onClick={() => void submit("send")}
-            className="rounded-l-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+            className="rounded-l-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
           >
             {busy ? "Sending…" : "Send"}
           </button>
@@ -1126,7 +992,7 @@ export function CrmEmailComposer({
             type="button"
             disabled={busy}
             onClick={() => setSendMenuOpen((value) => !value)}
-            className="rounded-r-md border-l border-emerald-700 bg-emerald-600 px-2 py-1.5 text-sm text-white hover:bg-emerald-700 disabled:opacity-60"
+            className="rounded-r-md border-l border-primary-foreground/20 bg-primary px-2 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
             aria-label="More send options"
           >
             ▾
@@ -1173,14 +1039,51 @@ export function CrmEmailComposer({
         }}
       />
 
+      <CrmEmailTemplateManageModal
+        open={manageTemplatesOpen}
+        templates={templates}
+        onClose={() => setManageTemplatesOpen(false)}
+        onAddNew={() =>
+          setTemplateModal({
+            open: true,
+            mode: "create",
+            template: null,
+            fromDraft: false,
+          })
+        }
+        onEdit={(template) =>
+          setTemplateModal({
+            open: true,
+            mode: "edit",
+            template,
+            fromDraft: false,
+          })
+        }
+        onDeleted={(templateId) => {
+          setTemplates((current) => current.filter((item) => item.id !== templateId));
+        }}
+      />
+
       <CrmEmailTemplateModal
         open={templateModal.open}
         mode={templateModal.mode}
         template={templateModal.template}
         templates={templates}
-        initialName={subject.trim() || "Untitled template"}
-        initialSubject={subject}
-        initialBodyHtml={editor?.getHTML() ?? bodyHtml}
+        initialName={
+          templateModal.fromDraft
+            ? subject.trim() || "Untitled template"
+            : templateModal.template?.name || "Untitled template"
+        }
+        initialSubject={
+          templateModal.fromDraft
+            ? subject
+            : templateModal.template?.subject || ""
+        }
+        initialBodyHtml={
+          templateModal.fromDraft
+            ? editor?.getHTML() ?? bodyHtml
+            : templateModal.template?.bodyHtml || "<p></p>"
+        }
         onClose={() => setTemplateModal((current) => ({ ...current, open: false }))}
         onSaved={(saved) => {
           setTemplates((current) => {

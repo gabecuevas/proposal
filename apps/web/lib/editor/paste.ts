@@ -315,3 +315,101 @@ export function sanitizePastedHtml(html: string): string {
   normalizePastedDocument(parsed.body);
   return parsed.body.innerHTML;
 }
+
+/** Style props safe to keep in CRM email / signature HTML. */
+const EMAIL_KEEP_STYLE_PROPS = new Set([
+  ...KEEP_STYLE_PROPS,
+  "font-size",
+  "width",
+  "height",
+  "max-width",
+  "border",
+  "border-width",
+  "border-style",
+  "border-color",
+  "border-top",
+  "border-right",
+  "border-bottom",
+  "border-left",
+  "border-collapse",
+  "padding",
+  "padding-top",
+  "padding-right",
+  "padding-bottom",
+  "padding-left",
+  "margin",
+  "margin-top",
+  "margin-right",
+  "margin-bottom",
+  "margin-left",
+  "vertical-align",
+  "white-space",
+  "display",
+]);
+
+function normalizeEmailElement(el: Element): void {
+  const tag = el.tagName.toLowerCase();
+  if (tag === "script" || tag === "iframe" || tag === "object" || tag === "embed" || tag === "form") {
+    el.remove();
+    return;
+  }
+  if (tag === "style" || tag === "link" || tag === "meta") {
+    el.remove();
+    return;
+  }
+
+  for (const attr of [...el.attributes]) {
+    const name = attr.name.toLowerCase();
+    if (name.startsWith("on") || name === "srcdoc") {
+      el.removeAttribute(attr.name);
+      continue;
+    }
+    if ((name === "href" || name === "src") && /javascript:/i.test(attr.value)) {
+      el.removeAttribute(attr.name);
+      continue;
+    }
+    if (name === "style") {
+      const kept: string[] = [];
+      for (const part of attr.value.split(";")) {
+        const [rawProp, ...rest] = part.split(":");
+        const prop = rawProp?.trim().toLowerCase();
+        const value = rest.join(":").trim();
+        if (!prop || !value) continue;
+        if (EMAIL_KEEP_STYLE_PROPS.has(prop)) {
+          if (prop === "font-size") {
+            kept.push(`${prop}: ${normalizeFontSize(value) ?? value}`);
+          } else if (prop === "line-height") {
+            kept.push(`${prop}: ${clampPasteLineHeight(value) ?? value}`);
+          } else {
+            kept.push(`${prop}: ${value}`);
+          }
+        }
+      }
+      if (kept.length) {
+        el.setAttribute("style", kept.join("; "));
+      } else {
+        el.removeAttribute("style");
+      }
+    }
+  }
+}
+
+/**
+ * Sanitize HTML intended for email signatures / CRM mail: remove scripts and
+ * event handlers, but keep common email layout styles (tables, widths, padding).
+ */
+export function sanitizeEmailFriendlyHtml(html: string): string {
+  if (!html) {
+    return "";
+  }
+  if (typeof DOMParser === "undefined") {
+    return sanitizeWithRegex(html);
+  }
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  parsed.body.querySelectorAll("script,style,iframe,object,embed,link,meta,form").forEach((el) => el.remove());
+  const elements = [...parsed.body.querySelectorAll("*")].reverse();
+  for (const el of elements) {
+    normalizeEmailElement(el);
+  }
+  return parsed.body.innerHTML;
+}

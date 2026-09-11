@@ -39,6 +39,7 @@ model Workspace {
   crmEmailAccounts CrmEmailAccount[]
   crmEmailMessages CrmEmailMessage[]
   crmEmailTemplates CrmEmailTemplate[]
+  crmEmailSignatures CrmEmailSignature[]
   sentVersions  DocumentSentVersion[]
   owner         User?            @relation("workspace_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
 }
@@ -321,6 +322,7 @@ model User {
   crm_timeline_events    CrmTimelineEvent[]
   crm_email_accounts     CrmEmailAccount[]
   crm_email_templates    CrmEmailTemplate[]
+  crm_email_signatures   CrmEmailSignature[]
 }
 
 model Contact {
@@ -792,6 +794,7 @@ model CrmEmailAccount {
   workspace Workspace         @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
   user      User?             @relation(fields: [user_id], references: [id], onDelete: SetNull)
   messages  CrmEmailMessage[]
+  signatures CrmEmailSignature[]
 
   @@unique([workspace_id, email])
   @@index([workspace_id, sync_status])
@@ -818,6 +821,7 @@ model CrmEmailMessage {
   contact_id       String?
   lead_id          String?
   company_id       String?
+  pinned_at        DateTime?
   created_at       DateTime          @default(now())
   updated_at       DateTime          @updatedAt
 
@@ -832,6 +836,7 @@ model CrmEmailMessage {
   @@index([contact_id, message_at])
   @@index([lead_id, message_at])
   @@index([company_id, message_at])
+  @@index([workspace_id, pinned_at])
   @@unique([workspace_id, external_id])
 }
 
@@ -856,4 +861,22 @@ model CrmEmailTemplate {
 
   @@index([workspace_id, updated_at])
   @@index([workspace_id, name])
+}
+
+model CrmEmailSignature {
+  id           String   @id @default(cuid())
+  workspace_id String
+  user_id      String?
+  account_id   String?
+  name         String
+  body_html    String   @default("")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  workspace Workspace        @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  user      User?            @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  account   CrmEmailAccount? @relation(fields: [account_id], references: [id], onDelete: Cascade)
+
+  @@index([workspace_id, updated_at])
+  @@index([account_id, updated_at])
 }

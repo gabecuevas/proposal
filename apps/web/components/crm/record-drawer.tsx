@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@repo/ui/utils";
 import type { CrmActivityRecord } from "@/lib/crm/activity-shared";
+import type { CrmEmailListItem } from "@/lib/crm/emails";
 import { ActivityPanel, type CrmActivityLinks } from "@/components/crm/activity-panel";
 import { CrmEmailComposer } from "@/components/crm/crm-email-composer";
 import { CrmFocusHistory } from "@/components/crm/crm-focus-history";
@@ -836,9 +836,7 @@ export function CrmRecordDrawer({
   const [openActivities, setOpenActivities] = useState<CrmActivityRecord[]>([]);
   const [notesEditorKey, setNotesEditorKey] = useState(0);
   const [editingActivity, setEditingActivity] = useState<CrmActivityRecord | null>(null);
-  const [emailThreads, setEmailThreads] = useState<
-    Array<{ id: string; subject: string; snippet: string; messageAt: string; folder: string }>
-  >([]);
+  const [recordEmails, setRecordEmails] = useState<CrmEmailListItem[]>([]);
 
   const emailFieldValues = useMemo(() => {
     const fields = sections.flatMap((section) => section.fields);
@@ -861,7 +859,7 @@ export function CrmRecordDrawer({
     if (!crmRecord?.id) {
       setTimelineHistory([]);
       setOpenActivities([]);
-      setEmailThreads([]);
+      setRecordEmails([]);
       return;
     }
     const timelineParams = new URLSearchParams();
@@ -894,16 +892,8 @@ export function CrmRecordDrawer({
       setOpenActivities((payload.activities ?? []).filter((activity) => !activity.completed_at));
     }
     if (emailsRes.ok) {
-      const payload = (await emailsRes.json()) as {
-        messages?: Array<{
-          id: string;
-          subject: string;
-          snippet: string;
-          messageAt: string;
-          folder: string;
-        }>;
-      };
-      setEmailThreads(payload.messages ?? []);
+      const payload = (await emailsRes.json()) as { messages?: CrmEmailListItem[] };
+      setRecordEmails(payload.messages ?? []);
     }
   }, [crmRecord]);
 
@@ -1290,34 +1280,6 @@ export function CrmRecordDrawer({
                     void loadCrmData();
                   }}
                 />
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted">
-                    Threads ({emailThreads.length})
-                  </p>
-                  <Link
-                    href="/app/contacts/inbox"
-                    className="text-xs font-medium text-primary hover:underline"
-                  >
-                    Open Inbox
-                  </Link>
-                </div>
-                {emailThreads.length === 0 ? (
-                  <p className="text-sm text-muted">No email threads for this record yet.</p>
-                ) : (
-                  <ul className="divide-y divide-border rounded-md border border-border">
-                    {emailThreads.map((thread) => (
-                      <li key={thread.id} className="px-3 py-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="truncate text-sm font-medium text-foreground">
-                            {thread.subject || "(no subject)"}
-                          </p>
-                          <span className="shrink-0 text-[11px] uppercase text-muted">{thread.folder}</span>
-                        </div>
-                        <p className="mt-0.5 line-clamp-2 text-xs text-muted">{thread.snippet}</p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
               </div>
             ) : null}
             {tab === "files" ? (
@@ -1331,7 +1293,11 @@ export function CrmRecordDrawer({
               links={crmRecord?.links ?? {}}
               activities={openActivities}
               history={activeHistory}
+              emails={recordEmails}
               onActivityChanged={() => {
+                void loadCrmData();
+              }}
+              onEmailsChanged={() => {
                 void loadCrmData();
               }}
               onEditActivity={(activity) => {

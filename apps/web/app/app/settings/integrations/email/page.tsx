@@ -1,17 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@repo/ui/utils";
 import { EmailAccountConnectWizard } from "@/components/crm/email-account-connect-wizard";
+import { CrmEmailSignatureModal } from "@/components/crm/crm-email-signature-modal";
 import { SheetPage } from "@/components/ui/sheet-table";
 import {
+  EMAIL_SYNC_LOOKBACK_OPTIONS,
   PERSONAL_EMAIL_ACCOUNT_LIMIT,
+  formatSyncLookbackOption,
+  parseEmailSyncLookback,
   providerDisplayName,
   type CrmEmailAccountDto,
+  type EmailSyncLookbackId,
   type EmailSyncProviderId,
 } from "@/lib/crm/emails";
+import type { CrmEmailSignatureDto } from "@/lib/crm/email-signatures";
 
 const TABS = [
   { id: "account", label: "Account" },
@@ -85,8 +91,15 @@ export default function EmailSyncSettingsPage() {
   );
   const [wizardOpen, setWizardOpen] = useState(false);
   const [senderName, setSenderName] = useState("");
+  const [editingSenderName, setEditingSenderName] = useState(false);
+  const [savingSenderName, setSavingSenderName] = useState(false);
+  const [userDisplayName, setUserDisplayName] = useState("");
   const [isDefault, setIsDefault] = useState(true);
-  const [syncStart, setSyncStart] = useState("3days");
+  const [syncStart, setSyncStart] = useState<EmailSyncLookbackId>("3days");
+  const [syncing, setSyncing] = useState(false);
+  const [signatures, setSignatures] = useState<CrmEmailSignatureDto[]>([]);
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [editingSignature, setEditingSignature] = useState<CrmEmailSignatureDto | null>(null);
   const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
@@ -123,6 +136,45 @@ export default function EmailSyncSettingsPage() {
   useEffect(() => {
     void loadAccounts();
   }, [loadAccounts]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSessionUser() {
+      try {
+        const response = await fetch("/api/auth/session");
+        const payload = (await response.json().catch(() => ({}))) as {
+          user?: { name?: string } | null;
+        };
+        if (!cancelled) {
+          setUserDisplayName(payload.user?.name?.trim() || "");
+        }
+      } catch {
+        if (!cancelled) {
+          setUserDisplayName("");
+        }
+      }
+    }
+    void loadSessionUser();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const loadSignatures = useCallback(async (accountId: string | null) => {
+    if (!accountId) {
+      setSignatures([]);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/crm/email-signatures?accountId=${encodeURIComponent(accountId)}`);
+      const payload = (await response.json().catch(() => ({}))) as {
+        signatures?: CrmEmailSignatureDto[];
+      };
+      setSignatures(payload.signatures ?? []);
+    } catch {
+      setSignatures([]);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -179,11 +231,24 @@ export default function EmailSyncSettingsPage() {
     if (!selected) {
       setSenderName("");
       setIsDefault(true);
+      setEditingSenderName(false);
+      setSignatures([]);
       return;
     }
-    setSenderName(selected.senderName ?? "");
+    setSenderName(selected.senderName?.trim() || userDisplayName);
     setIsDefault(selected.isDefault);
-  }, [selected]);
+    setEditingSenderName(false);
+    void loadSignatures(selected.id);
+  }, [selected, userDisplayName, loadSignatures]);
+
+  const syncLookbackOptions = useMemo(
+    () =>
+      EMAIL_SYNC_LOOKBACK_OPTIONS.map((option) => ({
+        id: option.id,
+        label: formatSyncLookbackOption(option.id),
+      })),
+    [],
+  );
 
   const atPersonalLimit = accounts.length >= PERSONAL_EMAIL_ACCOUNT_LIMIT;
 
@@ -193,6 +258,95 @@ export default function EmailSyncSettingsPage() {
       accountId: account.id,
     });
     window.location.assign(`/api/crm/email-accounts/google/start?${params.toString()}`);
+  }
+
+  async function saveSenderName() {
+    if (!selected) {
+      return;
+    }
+    setSavingSenderName(true);
+    setBanner(null);
+    try {
+      const response = await fetch(`/api/crm/email-accounts/${selected.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ senderName: senderName.trim() || null }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        account?: CrmEmailAccountDto;
+        error?: string;
+      };
+      if (!response.ok || !payload.account) {
+        throw new Error(payload.error || "Could not save sender name.");
+      }
+      setAccounts((current) =>
+        current.map((account) => (account.id === payload.account!.id ? payload.account! : account)),
+      );
+      setEditingSenderName(false);
+      setBanner({ tone: "success", message: "Sender name updated." });
+    } catch (err) {
+      setBanner({
+        tone: "error",
+        message: err instanceof Error ? err.message : "Could not save sender name.",
+      });
+    } finally {
+      setSavingSenderName(false);
+    }
+  }
+
+  async function runPastEmailSync() {
+    if (!selected) {
+      return;
+    }
+    setSyncing(true);
+    setBanner(null);
+    try {
+      const response = await fetch(`/api/crm/email-accounts/${selected.id}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lookback: syncStart }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        imported?: number;
+        scanned?: number;
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload.error || "Could not sync past emails.");
+      }
+      setBanner({
+        tone: "success",
+        message: `Synced ${payload.imported ?? 0} email${(payload.imported ?? 0) === 1 ? "" : "s"} from Gmail (${payload.scanned ?? 0} scanned).`,
+      });
+      await loadAccounts();
+    } catch (err) {
+      setBanner({
+        tone: "error",
+        message: err instanceof Error ? err.message : "Could not sync past emails.",
+      });
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function deleteSignature(signatureId: string) {
+    const confirmed = window.confirm("Delete this signature?");
+    if (!confirmed) {
+      return;
+    }
+    try {
+      const response = await fetch(`/api/crm/email-signatures/${signatureId}`, { method: "DELETE" });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error || "Could not delete signature.");
+      }
+      setSignatures((current) => current.filter((item) => item.id !== signatureId));
+    } catch (err) {
+      setBanner({
+        tone: "error",
+        message: err instanceof Error ? err.message : "Could not delete signature.",
+      });
+    }
   }
 
   async function disconnectSelectedAccount() {
@@ -453,26 +607,49 @@ export default function EmailSyncSettingsPage() {
                       </button>
                     ) : null}
 
-                    {selected.provider === "GOOGLE" && selected.syncStatus === "ACTIVE" ? (
-                      <button
-                        type="button"
-                        onClick={() => startGoogleAuthorize(selected)}
-                        className="rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50"
-                      >
-                        Reconnect Google
-                      </button>
-                    ) : null}
-
-                    <label className="block space-y-1.5">
-                      <span className="text-sm font-medium text-foreground">Sender name</span>
-                      <input
-                        value={senderName}
-                        onChange={(event) => setSenderName(event.target.value)}
-                        placeholder="Add custom sender name."
-                        disabled
-                        className="h-9 w-full max-w-md rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none ring-primary/20 placeholder:text-muted/80 focus:border-primary/40 focus:ring-2 disabled:opacity-60"
-                      />
-                    </label>
+                    <div className="max-w-md space-y-2">
+                      <span className="block text-sm font-medium text-foreground">Sender name</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={senderName}
+                          onChange={(event) => setSenderName(event.target.value)}
+                          placeholder={userDisplayName || "Add custom sender name."}
+                          disabled={!editingSenderName || savingSenderName}
+                          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none ring-primary/20 placeholder:text-muted/80 focus:border-primary/40 focus:ring-2 disabled:bg-slate-50 disabled:opacity-80"
+                        />
+                        {editingSenderName ? (
+                          <button
+                            type="button"
+                            disabled={savingSenderName}
+                            onClick={() => void saveSenderName()}
+                            className="shrink-0 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-95 disabled:opacity-60"
+                          >
+                            {savingSenderName ? "Saving…" : "Save"}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            title="Edit sender name"
+                            aria-label="Edit sender name"
+                            onClick={() => setEditingSenderName(true)}
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-white text-muted hover:bg-slate-50 hover:text-foreground"
+                          >
+                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden>
+                              <path
+                                d="M4 20h4l10.5-10.5a1.8 1.8 0 00-2.5-2.5L5.5 17.5V20z"
+                                stroke="currentColor"
+                                strokeWidth="1.6"
+                                strokeLinejoin="round"
+                              />
+                              <path d="M13.5 6.5l2.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted">
+                        Defaults to your user name. Edit to use a custom From display name.
+                      </p>
+                    </div>
 
                     <label className="flex items-center gap-3 text-sm text-foreground">
                       <span
@@ -500,35 +677,80 @@ export default function EmailSyncSettingsPage() {
                   </section>
 
                   <section className="space-y-3 border-t border-border pt-5">
-                    <h2 className="text-sm font-semibold text-foreground">Sync past emails</h2>
+                    <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                      Sync past emails
+                      <span
+                        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border text-[10px] font-semibold text-muted"
+                        title="Pull older messages from this mailbox into Contacts → Inbox and record History."
+                      >
+                        i
+                      </span>
+                    </h2>
                     <div className="flex flex-wrap items-end gap-3">
                       <label className="space-y-1.5">
                         <span className="block text-sm text-muted">Sync start date</span>
                         <select
                           value={syncStart}
-                          onChange={(event) => setSyncStart(event.target.value)}
-                          disabled
-                          className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground disabled:opacity-60"
+                          onChange={(event) => setSyncStart(parseEmailSyncLookback(event.target.value))}
+                          disabled={syncing || selected.syncStatus !== "ACTIVE"}
+                          className="h-9 min-w-[16rem] rounded-md border border-border bg-background px-2 text-sm text-foreground disabled:opacity-60"
                         >
-                          <option value="3days">3 days ago</option>
-                          <option value="7days">7 days ago</option>
-                          <option value="30days">30 days ago</option>
-                          <option value="all">All history</option>
+                          {syncLookbackOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.label}
+                            </option>
+                          ))}
                         </select>
                       </label>
                       <button
                         type="button"
-                        disabled
-                        className="h-9 rounded-md border border-border bg-white px-3 text-sm font-medium text-foreground opacity-60"
+                        disabled={syncing || selected.syncStatus !== "ACTIVE"}
+                        onClick={() => void runPastEmailSync()}
+                        className="h-9 rounded-md border border-border bg-white px-3 text-sm font-medium text-foreground hover:bg-slate-50 disabled:opacity-60"
                       >
-                        Sync
+                        {syncing ? "Syncing…" : "Sync"}
                       </button>
                     </div>
+                    {selected.syncStatus !== "ACTIVE" ? (
+                      <p className="text-xs text-muted">Connect this mailbox before syncing past emails.</p>
+                    ) : null}
                   </section>
 
-                  <section className="space-y-2 border-t border-border pt-5">
+                  <section className="space-y-3 border-t border-border pt-5">
                     <h2 className="text-sm font-semibold text-foreground">Signatures</h2>
-                    <button type="button" disabled className="text-sm font-medium text-primary opacity-60">
+                    {signatures.length > 0 ? (
+                      <ul className="max-w-xl divide-y divide-border rounded-md border border-border">
+                        {signatures.map((item) => (
+                          <li key={item.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingSignature(item);
+                                setSignatureModalOpen(true);
+                              }}
+                              className="min-w-0 flex-1 truncate text-left text-sm font-medium text-foreground hover:text-primary"
+                            >
+                              {item.name}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void deleteSignature(item.id)}
+                              className="text-xs font-medium text-red-600 hover:underline"
+                            >
+                              Delete
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingSignature(null);
+                        setSignatureModalOpen(true);
+                      }}
+                      className="text-sm font-medium text-primary hover:underline"
+                    >
                       + Add signature
                     </button>
                   </section>
@@ -608,6 +830,24 @@ export default function EmailSyncSettingsPage() {
           void loadAccounts();
         }}
       />
+
+      {selected ? (
+        <CrmEmailSignatureModal
+          open={signatureModalOpen}
+          accountId={selected.id}
+          signature={editingSignature}
+          onClose={() => {
+            setSignatureModalOpen(false);
+            setEditingSignature(null);
+          }}
+          onSaved={(signature) => {
+            setSignatures((current) => {
+              const without = current.filter((item) => item.id !== signature.id);
+              return [signature, ...without];
+            });
+          }}
+        />
+      ) : null}
     </>
   );
 }

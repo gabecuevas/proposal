@@ -5,7 +5,7 @@ import type { InputJsonValue as PrismaInputJsonValue } from "@prisma/client/runt
  * Bump when adding/removing Prisma model fields so hot-reload drops a stale
  * PrismaClient that would reject new columns (e.g. Company.linkedin).
  */
-const PRISMA_SCHEMA_REV = 14;
+const PRISMA_SCHEMA_REV = 17;
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -19,7 +19,12 @@ function createPrismaClient(): PrismaClient {
 /** Stale hot-reload clients can miss newly generated delegates. */
 function clientLooksCurrent(client: PrismaClient): boolean {
   const record = client as unknown as Record<string, unknown>;
-  return typeof record.crmEmailAccount === "object" && typeof record.crmEmailMessage === "object" && typeof record.crmEmailTemplate === "object";
+  return (
+    typeof record.crmEmailAccount === "object" &&
+    typeof record.crmEmailMessage === "object" &&
+    typeof record.crmEmailTemplate === "object" &&
+    typeof record.crmEmailSignature === "object"
+  );
 }
 
 function getPrismaClient(): PrismaClient {
@@ -33,15 +38,26 @@ function getPrismaClient(): PrismaClient {
   if (globalForPrisma.prisma) {
     void globalForPrisma.prisma.$disconnect().catch(() => undefined);
   }
-  globalForPrisma.prisma = createPrismaClient();
+  const next = createPrismaClient();
+  globalForPrisma.prisma = next;
   globalForPrisma.prismaSchemaRev = PRISMA_SCHEMA_REV;
-  return globalForPrisma.prisma;
+  return next;
 }
 
-export const prisma = getPrismaClient();
+/**
+ * Always resolve through getPrismaClient so hot-reload / schema bumps pick up
+ * new model delegates instead of holding a stale singleton.
+ */
+export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop, receiver) {
+    const client = getPrismaClient();
+    const value = Reflect.get(client, prop, receiver);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});
 
 if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+  globalForPrisma.prisma = getPrismaClient();
   globalForPrisma.prismaSchemaRev = PRISMA_SCHEMA_REV;
 }
 
@@ -54,6 +70,7 @@ export type {
   CrmEmailDirection,
   CrmEmailSyncProvider,
   CrmEmailSyncStatus,
+  CrmEmailTemplateVisibility,
   CrmTimelineEventType,
 } from "@prisma/client";
 

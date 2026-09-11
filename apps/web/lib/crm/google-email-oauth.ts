@@ -245,3 +245,185 @@ export async function fetchGoogleProfileEmail(accessToken: string): Promise<{
   }
   return { email: profile.email.toLowerCase(), name: profile.name ?? null };
 }
+
+type GmailHeader = { name?: string; value?: string };
+type GmailPart = {
+  mimeType?: string;
+  filename?: string;
+  body?: { data?: string; size?: number; attachmentId?: string };
+  parts?: GmailPart[];
+  headers?: GmailHeader[];
+};
+
+export type GmailSyncedMessage = {
+  externalId: string;
+  threadId: string | null;
+  fromName: string | null;
+  fromAddress: string;
+  toAddresses: string[];
+  ccAddresses: string[];
+  subject: string;
+  snippet: string;
+  bodyText: string | null;
+  bodyHtml: string | null;
+  messageAt: Date;
+  hasAttachments: boolean;
+  labelIds: string[];
+};
+
+function headerValue(headers: GmailHeader[] | undefined, name: string): string {
+  const match = headers?.find((header) => header.name?.toLowerCase() === name.toLowerCase());
+  return match?.value?.trim() ?? "";
+}
+
+function decodeBase64Url(data: string | undefined): string {
+  if (!data) {
+    return "";
+  }
+  const normalized = data.replace(/-/g, "+").replace(/_/g, "/");
+  return Buffer.from(normalized, "base64").toString("utf8");
+}
+
+function collectParts(part: GmailPart | undefined, out: { text: string[]; html: string[]; hasAttachment: boolean }) {
+  if (!part) {
+    return;
+  }
+  if (part.filename && part.body?.attachmentId) {
+    out.hasAttachment = true;
+  }
+  const mime = (part.mimeType || "").toLowerCase();
+  if (mime === "text/plain" && part.body?.data) {
+    out.text.push(decodeBase64Url(part.body.data));
+  } else if (mime === "text/html" && part.body?.data) {
+    out.html.push(decodeBase64Url(part.body.data));
+  }
+  for (const child of part.parts ?? []) {
+    collectParts(child, out);
+  }
+}
+
+function parseAddressList(raw: string): string[] {
+  if (!raw.trim()) {
+    return [];
+  }
+  return raw
+    .split(",")
+    .map((part) => {
+      const angle = part.match(/<([^>]+)>/);
+      const email = (angle?.[1] ?? part).trim().toLowerCase();
+      return email.includes("@") ? email : "";
+    })
+    .filter(Boolean);
+}
+
+function parseFrom(raw: string): { name: string | null; address: string } {
+  const angle = raw.match(/^(.*)<([^>]+)>$/);
+  if (angle) {
+    const name = angle[1]?.replace(/^["']|["']$/g, "").trim() || null;
+    return { name, address: angle[2]!.trim().toLowerCase() };
+  }
+  return { name: null, address: raw.trim().toLowerCase() };
+}
+
+function parseGmailMessage(json: {
+  id?: string;
+  threadId?: string;
+  snippet?: string;
+  labelIds?: string[];
+  internalDate?: string;
+  payload?: GmailPart;
+}): GmailSyncedMessage | null {
+  if (!json.id || !json.payload) {
+    return null;
+  }
+  const headers = json.payload.headers ?? [];
+  const from = parseFrom(headerValue(headers, "From"));
+  if (!from.address) {
+    return null;
+  }
+  const collected = { text: [] as string[], html: [] as string[], hasAttachment: false };
+  collectParts(json.payload, collected);
+  const internalMs = json.internalDate ? Number(json.internalDate) : Date.now();
+  return {
+    externalId: json.id,
+    threadId: json.threadId ?? null,
+    fromName: from.name,
+    fromAddress: from.address,
+    toAddresses: parseAddressList(headerValue(headers, "To")),
+    ccAddresses: parseAddressList(headerValue(headers, "Cc")),
+    subject: headerValue(headers, "Subject") || "(no subject)",
+    snippet: json.snippet ?? "",
+    bodyText: collected.text.join("\n").trim() || null,
+    bodyHtml: collected.html.join("\n").trim() || null,
+    messageAt: new Date(Number.isFinite(internalMs) ? internalMs : Date.now()),
+    hasAttachments: collected.hasAttachment,
+    labelIds: json.labelIds ?? [],
+  };
+}
+
+/** List Gmail message IDs newer than `after` (inclusive calendar day). */
+export async function listGmailMessageIds(params: {
+  accessToken: string;
+  after: Date;
+  maxResults?: number;
+}): Promise<string[]> {
+  const after = params.after;
+  const q = `after:${after.getFullYear()}/${after.getMonth() + 1}/${after.getDate()}`;
+  const ids: string[] = [];
+  let pageToken: string | undefined;
+  const limit = Math.min(Math.max(params.maxResults ?? 150, 1), 300);
+
+  while (ids.length < limit) {
+    const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    url.searchParams.set("q", q);
+    url.searchParams.set("maxResults", String(Math.min(100, limit - ids.length)));
+    if (pageToken) {
+      url.searchParams.set("pageToken", pageToken);
+    }
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${params.accessToken}` },
+    });
+    const json = (await response.json()) as {
+      messages?: Array<{ id?: string }>;
+      nextPageToken?: string;
+      error?: { message?: string };
+    };
+    if (!response.ok) {
+      throw new Error(json.error?.message || "Could not list Gmail messages.");
+    }
+    for (const message of json.messages ?? []) {
+      if (message.id) {
+        ids.push(message.id);
+      }
+    }
+    if (!json.nextPageToken || (json.messages?.length ?? 0) === 0) {
+      break;
+    }
+    pageToken = json.nextPageToken;
+  }
+
+  return ids;
+}
+
+export async function fetchGmailMessage(
+  accessToken: string,
+  messageId: string,
+): Promise<GmailSyncedMessage | null> {
+  const response = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=full`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  const json = (await response.json()) as {
+    id?: string;
+    threadId?: string;
+    snippet?: string;
+    labelIds?: string[];
+    internalDate?: string;
+    payload?: GmailPart;
+    error?: { message?: string };
+  };
+  if (!response.ok) {
+    throw new Error(json.error?.message || "Could not fetch Gmail message.");
+  }
+  return parseGmailMessage(json);
+}

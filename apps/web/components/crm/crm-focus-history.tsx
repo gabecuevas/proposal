@@ -9,25 +9,24 @@ import {
   type CrmActivityRecord,
 } from "@/lib/crm/activity-shared";
 import { HistoryFieldIcon, historyFieldIconId } from "@/lib/crm/history-field-icon";
-import { formatGridDate, formatGridDateTime } from "@/lib/ui/datetime";
+import { formatGridDate, formatHistoryDateTime } from "@/lib/ui/datetime";
 import { NotesHtml } from "@/components/crm/notes-html";
 import { isEmptyNoteHtml } from "@/lib/crm/notes-html";
+import type { CrmEmailListItem } from "@/lib/crm/emails";
 
 export type FocusHistoryItem = {
   id: string;
   title: string;
   at: string;
   detail?: string;
-  kind?: "note" | "created" | "change" | "activity";
+  kind?: "note" | "created" | "change" | "activity" | "email";
   actorName?: string;
   fieldKey?: string | null;
 };
 
-type HistoryFilterId =
-  | "all"
-  | "activities"
-  | "notes"
-  | "changelog";
+type HistoryFilterId = "all" | "activities" | "notes" | "emails" | "changelog";
+
+const EMAIL_BODY_COLLAPSE_CHARS = 180;
 
 function isOverdue(activity: CrmActivityRecord): boolean {
   if (!activity.due_at || activity.completed_at) {
@@ -81,28 +80,68 @@ function NotesTimelineIcon() {
   );
 }
 
+function EmailTimelineIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="3.5" y="5.5" width="17" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M4 7.5l8 6 8-6" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PinIcon({ pinned }: { pinned?: boolean }) {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" aria-hidden>
+      {pinned ? (
+        <>
+          <path
+            d="M12 3.5l1.8 4.2 4.5.5-3.4 3.1.9 4.5L12 13.9 8.2 15.8l.9-4.5-3.4-3.1 4.5-.5L12 3.5z"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+          />
+          <path d="M5 5l14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </>
+      ) : (
+        <path
+          d="M12 3.5l1.8 4.2 4.5.5-3.4 3.1.9 4.5L12 13.9 8.2 15.8l.9-4.5-3.4-3.1 4.5-.5L12 3.5zM12 14v6.5"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      )}
+    </svg>
+  );
+}
+
 function CollapsibleSection({
   title,
   open,
   onToggle,
+  trailing,
   children,
 }: {
   title: string;
   open: boolean;
   onToggle: () => void;
+  trailing?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="mt-6">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-1.5 text-left"
-        aria-expanded={open}
-      >
-        <h3 className="text-[15px] font-semibold text-foreground">{title}</h3>
-        <span className={cn("text-muted transition-transform", open ? "rotate-180" : "")}>▾</span>
-      </button>
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex items-center gap-1.5 text-left"
+          aria-expanded={open}
+        >
+          <h3 className="text-[15px] font-semibold text-foreground">{title}</h3>
+          <span className={cn("text-muted transition-transform", open ? "rotate-180" : "")}>▾</span>
+        </button>
+        {trailing}
+      </div>
       {open ? <div className="mt-3">{children}</div> : null}
     </section>
   );
@@ -153,6 +192,33 @@ function LinkMeta({ links }: { links: CrmActivityLinks }) {
       ) : null}
     </>
   );
+}
+
+function formatFromLabel(email: CrmEmailListItem): string {
+  return email.fromName?.trim() || email.fromAddress;
+}
+
+function formatToLabel(email: CrmEmailListItem): string {
+  if (email.toAddresses.length === 0) {
+    return "—";
+  }
+  return email.toAddresses.join(", ");
+}
+
+function emailPlainBody(email: CrmEmailListItem): string {
+  if (email.bodyText?.trim()) {
+    return email.bodyText.trim();
+  }
+  if (email.bodyHtml?.trim()) {
+    return email.bodyHtml
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  return email.snippet?.trim() || "";
 }
 
 function FocusActivityCard({
@@ -350,6 +416,108 @@ function FocusActivityCard({
   );
 }
 
+function EmailHistoryCard({
+  email,
+  links,
+  pinned,
+  expandAll,
+  onPinnedChange,
+}: {
+  email: CrmEmailListItem;
+  links: CrmActivityLinks;
+  pinned?: boolean;
+  expandAll?: boolean;
+  onPinnedChange?: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const plain = emailPlainBody(email);
+  const isLong = plain.length > EMAIL_BODY_COLLAPSE_CHARS;
+  const showFull = expandAll || expanded || !isLong;
+  const preview = isLong && !showFull ? `${plain.slice(0, EMAIL_BODY_COLLAPSE_CHARS).trimEnd()}…` : plain;
+  const isPinned = Boolean(pinned ?? email.pinnedAt);
+
+  async function togglePin() {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/crm/emails/${email.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned: !isPinned }),
+      });
+      if (!response.ok) {
+        return;
+      }
+      onPinnedChange?.();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border px-3 py-2.5",
+        isPinned ? "border-amber-200/80 bg-amber-50" : "border-border bg-white",
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
+            <span>{formatHistoryDateTime(email.messageAt)}</span>
+            <span aria-hidden>·</span>
+            <span>
+              From {formatFromLabel(email)}
+              {email.fromName ? ` <${email.fromAddress}>` : ""}
+            </span>
+            <span aria-hidden>·</span>
+            <span>To {formatToLabel(email)}</span>
+            <LinkMeta links={links} />
+          </div>
+          <p className="mt-1.5 text-sm font-semibold text-foreground">
+            Subject: {email.subject?.trim() || "(no subject)"}
+          </p>
+        </div>
+        <button
+          type="button"
+          title={isPinned ? "Unpin from Focus" : "Pin to Focus"}
+          aria-label={isPinned ? "Unpin from Focus" : "Pin to Focus"}
+          disabled={busy}
+          onClick={() => void togglePin()}
+          className={cn(
+            "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-black/5 hover:text-foreground disabled:opacity-50",
+            isPinned && "text-foreground",
+          )}
+        >
+          <PinIcon pinned={isPinned} />
+        </button>
+      </div>
+
+      {preview ? (
+        <div className="mt-2">
+          {email.bodyHtml && showFull && !email.bodyText ? (
+            <NotesHtml html={email.bodyHtml} />
+          ) : (
+            <p className="whitespace-pre-wrap text-sm text-foreground">{preview}</p>
+          )}
+          {isLong && !expandAll ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((value) => !value)}
+              className="mt-1 text-xs font-medium text-primary hover:underline"
+            >
+              {expanded ? "Show less" : "Read more"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function HistoryEntry({
   item,
   links,
@@ -363,7 +531,7 @@ function HistoryEntry({
   const isActivity = item.kind === "activity";
   const fieldIconId = historyFieldIconId({
     fieldKey: item.fieldKey,
-    kind: item.kind,
+    kind: item.kind === "email" ? undefined : item.kind,
     title: item.title,
   });
   const icon = isNote ? (
@@ -381,7 +549,7 @@ function HistoryEntry({
       {isNote && item.detail ? (
         <div className="rounded-lg border border-border bg-slate-100 px-3 py-2.5">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted">
-            <span>{formatGridDateTime(item.at)}</span>
+            <span>{formatHistoryDateTime(item.at)}</span>
             {item.actorName ? <span>{item.actorName}</span> : null}
             <LinkMeta links={links} />
           </div>
@@ -405,7 +573,7 @@ function HistoryEntry({
             ) : null}
           </p>
           <p className="mt-0.5 text-xs text-muted">
-            {formatGridDateTime(item.at)}
+            {formatHistoryDateTime(item.at)}
             {item.actorName ? ` · ${item.actorName}` : ""}
           </p>
         </div>
@@ -414,11 +582,17 @@ function HistoryEntry({
   );
 }
 
+type HistoryRow =
+  | { type: "history"; at: string; id: string; item: FocusHistoryItem }
+  | { type: "email"; at: string; id: string; email: CrmEmailListItem };
+
 type CrmFocusHistoryProps = {
   links: CrmActivityLinks;
   activities: CrmActivityRecord[];
   history: FocusHistoryItem[];
+  emails?: CrmEmailListItem[];
   onActivityChanged?: () => void;
+  onEmailsChanged?: () => void;
   onEditActivity?: (activity: CrmActivityRecord) => void;
 };
 
@@ -426,12 +600,15 @@ export function CrmFocusHistory({
   links,
   activities,
   history,
+  emails = [],
   onActivityChanged,
+  onEmailsChanged,
   onEditActivity,
 }: CrmFocusHistoryProps) {
   const [focusOpen, setFocusOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(true);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilterId>("all");
+  const [expandAll, setExpandAll] = useState(false);
 
   const focusActivities = useMemo(
     () =>
@@ -445,38 +622,101 @@ export function CrmFocusHistory({
     [activities],
   );
 
+  const pinnedEmails = useMemo(
+    () =>
+      [...emails]
+        .filter((email) => Boolean(email.pinnedAt))
+        .sort((a, b) => new Date(b.pinnedAt ?? 0).getTime() - new Date(a.pinnedAt ?? 0).getTime()),
+    [emails],
+  );
+
   const noteCount = history.filter((item) => item.kind === "note").length;
   const activityCount = history.filter((item) => item.kind === "activity").length;
+  const emailCount = emails.length;
 
-  const visibleHistory = useMemo(() => {
-    return history.filter((item) => {
-      if (historyFilter === "notes") {
-        return item.kind === "note";
+  const visibleRows = useMemo(() => {
+    const rows: HistoryRow[] = [];
+    if (
+      historyFilter === "all" ||
+      historyFilter === "notes" ||
+      historyFilter === "activities" ||
+      historyFilter === "changelog"
+    ) {
+      for (const item of history) {
+        if (historyFilter === "notes" && item.kind !== "note") continue;
+        if (historyFilter === "activities" && item.kind !== "activity") continue;
+        if (historyFilter === "changelog" && item.kind !== "created" && item.kind !== "change") continue;
+        rows.push({ type: "history", at: item.at, id: item.id, item });
       }
-      if (historyFilter === "activities") {
-        return item.kind === "activity";
+    }
+    if (historyFilter === "all" || historyFilter === "emails") {
+      for (const email of emails) {
+        rows.push({ type: "email", at: email.messageAt, id: `email-${email.id}`, email });
       }
-      if (historyFilter === "changelog") {
-        return item.kind === "created" || item.kind === "change";
-      }
-      return true;
-    });
-  }, [history, historyFilter]);
+    }
+    return rows.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  }, [history, emails, historyFilter]);
 
   const filters: Array<{ id: HistoryFilterId; label: string }> = [
     { id: "all", label: "All" },
     { id: "activities", label: `Activities (${activityCount})` },
     { id: "notes", label: `Notes (${noteCount})` },
+    { id: "emails", label: `Emails (${emailCount})` },
     { id: "changelog", label: "Changelog" },
   ];
 
+  const focusEmpty = focusActivities.length === 0 && pinnedEmails.length === 0;
+
   return (
     <>
-      <CollapsibleSection title="Focus" open={focusOpen} onToggle={() => setFocusOpen((value) => !value)}>
-        {focusActivities.length === 0 ? (
+      <CollapsibleSection
+        title="Focus"
+        open={focusOpen}
+        onToggle={() => setFocusOpen((value) => !value)}
+        trailing={
+          pinnedEmails.length > 0 ? (
+            <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-muted">
+              <span>Expand all items</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={expandAll}
+                onClick={() => setExpandAll((value) => !value)}
+                className={cn(
+                  "relative h-5 w-9 rounded-full transition-colors",
+                  expandAll ? "bg-primary" : "bg-slate-300",
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform",
+                    expandAll ? "left-4" : "left-0.5",
+                  )}
+                />
+              </button>
+            </label>
+          ) : null
+        }
+      >
+        {focusEmpty ? (
           <p className="text-sm text-muted">No open activity.</p>
         ) : (
           <div>
+            {pinnedEmails.map((email, index) => (
+              <TimelineRail
+                key={`pin-${email.id}`}
+                isLast={index === pinnedEmails.length - 1 && focusActivities.length === 0}
+                icon={<EmailTimelineIcon />}
+              >
+                <EmailHistoryCard
+                  email={email}
+                  links={links}
+                  pinned
+                  expandAll={expandAll}
+                  onPinnedChange={onEmailsChanged}
+                />
+              </TimelineRail>
+            ))}
             {focusActivities.map((activity, index) => (
               <TimelineRail
                 key={activity.id}
@@ -518,18 +758,32 @@ export function CrmFocusHistory({
           ))}
         </div>
 
-        {visibleHistory.length === 0 ? (
+        {visibleRows.length === 0 ? (
           <p className="text-sm text-muted">No history yet.</p>
         ) : (
           <div>
-            {visibleHistory.map((item, index) => (
-              <HistoryEntry
-                key={item.id}
-                item={item}
-                links={links}
-                isLast={index === visibleHistory.length - 1}
-              />
-            ))}
+            {visibleRows.map((row, index) =>
+              row.type === "email" ? (
+                <TimelineRail
+                  key={row.id}
+                  icon={<EmailTimelineIcon />}
+                  isLast={index === visibleRows.length - 1}
+                >
+                  <EmailHistoryCard
+                    email={row.email}
+                    links={links}
+                    onPinnedChange={onEmailsChanged}
+                  />
+                </TimelineRail>
+              ) : (
+                <HistoryEntry
+                  key={row.id}
+                  item={row.item}
+                  links={links}
+                  isLast={index === visibleRows.length - 1}
+                />
+              ),
+            )}
           </div>
         )}
       </CollapsibleSection>
