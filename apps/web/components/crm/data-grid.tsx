@@ -255,9 +255,9 @@ export function CrmDataGrid<T>({
 
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col bg-surface">
-      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2">
         <input
-          className="h-10 min-w-0 flex-1 rounded-md border border-border bg-surface px-3 text-sm outline-none ring-primary/15 focus:ring-2"
+          className="h-8 min-w-0 flex-1 rounded-md border border-border bg-surface px-3 text-sm outline-none ring-primary/15 focus:ring-2"
           value={search.value}
           onChange={(event) => search.onChange(event.target.value)}
           onKeyDown={(event) => event.key === "Enter" && search.onSubmit()}
@@ -267,7 +267,7 @@ export function CrmDataGrid<T>({
         <button
           type="button"
           onClick={onAdd}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-95"
+          className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-95"
         >
           {addLabel}
         </button>
@@ -310,7 +310,7 @@ export function CrmDataGrid<T>({
                           type="button"
                           onClick={() => toggleSort(column)}
                           className={cn(
-                            "flex h-10 w-full items-center gap-1.5 whitespace-nowrap px-3 text-left hover:bg-slate-100/80",
+                            "flex h-8 w-full items-center gap-1.5 whitespace-nowrap px-3 text-left text-[13px] font-semibold text-foreground hover:bg-slate-100/80",
                             column.align === "right" && "justify-end",
                           )}
                         >
@@ -320,7 +320,7 @@ export function CrmDataGrid<T>({
                       ) : (
                         <span
                           className={cn(
-                            "flex h-10 items-center whitespace-nowrap px-3",
+                            "flex h-8 items-center whitespace-nowrap px-3 text-[13px] font-semibold text-foreground",
                             column.align === "right" && "justify-end",
                           )}
                         >

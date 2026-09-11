@@ -34,8 +34,14 @@ export async function POST(request: NextRequest) {
     editor_json?: EditorDoc;
     tags?: string[];
     folder_id?: string | null;
+    is_sample?: boolean;
+    sample_folder_slug?: string | null;
   };
   try {
+    const isSample = Boolean(payload.is_sample);
+    if (isSample) {
+      assertRole(auth, "OWNER");
+    }
     const template = await createTemplate({
       name: payload.name?.trim() || "Untitled Template",
       workspaceId: auth.workspaceId,
@@ -43,6 +49,8 @@ export async function POST(request: NextRequest) {
       editor_json: payload.editor_json,
       tags: Array.isArray(payload.tags) ? payload.tags.map(String).slice(0, 20) : undefined,
       folder_id: payload.folder_id,
+      is_sample: isSample,
+      sample_folder_slug: isSample ? payload.sample_folder_slug ?? null : null,
     });
     return jsonWithRequestId(request, { template }, { status: 201 });
   } catch (error) {

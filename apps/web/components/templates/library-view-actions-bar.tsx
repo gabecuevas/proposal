@@ -47,6 +47,7 @@ type Props = {
   selectionMode?: boolean;
   onClearSelection?: () => void;
   onDuplicate?: () => void;
+  onCopyToLibrary?: () => void;
   onMove?: () => void;
   onShare?: () => void;
   onRename?: () => void;
@@ -55,6 +56,8 @@ type Props = {
   onActionsOpen?: () => void;
   menuHint?: string;
   leading?: ReactNode;
+  /** Sample Templates mode: Copy to My Library instead of personal library actions. */
+  sampleMode?: boolean;
 };
 
 export function LibraryViewActionsBar({
@@ -66,6 +69,7 @@ export function LibraryViewActionsBar({
   selectionMode = false,
   onClearSelection,
   onDuplicate,
+  onCopyToLibrary,
   onMove,
   onShare,
   onRename,
@@ -73,6 +77,7 @@ export function LibraryViewActionsBar({
   onActionsOpen,
   menuHint,
   leading,
+  sampleMode = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -181,46 +186,59 @@ export function LibraryViewActionsBar({
               {menuHint ? (
                 <p className="border-b border-border px-3 py-2 text-xs text-muted">{menuHint}</p>
               ) : null}
-              <button
-                type="button"
-                role="menuitem"
-                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
-                onClick={() => runAndClose(onDuplicate)}
-              >
-                Duplicate
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
-                onClick={() => runAndClose(onMove)}
-              >
-                Move to…
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
-                onClick={() => runAndClose(onShare)}
-              >
-                Sharing…
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
-                onClick={() => runAndClose(onRename)}
-              >
-                Rename…
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="block w-full px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
-                onClick={() => runAndClose(onDelete)}
-              >
-                Delete…
-              </button>
+              {sampleMode ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+                  onClick={() => runAndClose(onCopyToLibrary)}
+                >
+                  Copy to My Library
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+                    onClick={() => runAndClose(onDuplicate)}
+                  >
+                    Duplicate
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+                    onClick={() => runAndClose(onMove)}
+                  >
+                    Move to…
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+                    onClick={() => runAndClose(onShare)}
+                  >
+                    Sharing…
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+                    onClick={() => runAndClose(onRename)}
+                  >
+                    Rename…
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
+                    onClick={() => runAndClose(onDelete)}
+                  >
+                    Delete…
+                  </button>
+                </>
+              )}
               {selectionMode ? (
                 <button
                   type="button"

@@ -13,7 +13,7 @@ export function SheetPage({
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col bg-surface">
       {toolbar ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2">
           {toolbar}
         </div>
       ) : null}
@@ -38,18 +38,21 @@ export function SheetTable({
   minWidth,
   empty,
   fitContent = false,
+  preventWrap = false,
 }: {
   children: ReactNode;
   minWidth?: string | number;
   empty?: ReactNode;
   /** Size columns to content so they don’t stretch across the viewport. */
   fitContent?: boolean;
+  /** Keep cells on one line and grow the table; parent scrolls horizontally when needed. */
+  preventWrap?: boolean;
 }) {
   const minWidthStyle =
     typeof minWidth === "number"
-      ? `max(100%, ${minWidth}px)`
+      ? `${minWidth}px`
       : minWidth
-        ? `max(100%, ${minWidth})`
+        ? minWidth
         : undefined;
 
   return (
@@ -57,9 +60,16 @@ export function SheetTable({
       <table
         className={cn(
           "border-collapse text-left text-sm",
-          fitContent ? "w-max" : "w-full table-fixed",
+          fitContent || preventWrap ? "w-max min-w-full" : "w-full table-fixed",
+          preventWrap && "[&_th]:whitespace-nowrap [&_td]:whitespace-nowrap",
         )}
-        style={minWidthStyle ? { minWidth: minWidthStyle } : undefined}
+        style={
+          minWidthStyle
+            ? {
+                minWidth: `max(100%, ${minWidthStyle})`,
+              }
+            : undefined
+        }
       >
         {children}
       </table>
@@ -70,7 +80,7 @@ export function SheetTable({
 
 export function sheetTh(className?: string): string {
   return cn(
-    "whitespace-nowrap border-b border-r border-border bg-slate-50 px-3 py-2 text-[13px] font-semibold text-foreground last:border-r-0",
+    "whitespace-nowrap border-b border-r border-border bg-slate-50 px-3 py-1.5 text-[13px] font-semibold text-foreground last:border-r-0",
     className,
   );
 }
@@ -101,10 +111,10 @@ export function ResizableSheetTh({
 }) {
   return (
     <th
-      className={cn(sheetTh("relative px-0"), className)}
+      className={cn(sheetTh("relative px-0 py-0"), className)}
       style={{ width, minWidth: width, maxWidth: width }}
     >
-      <div className="truncate whitespace-nowrap px-3 py-2">{children}</div>
+      <div className="flex h-8 items-center truncate whitespace-nowrap px-3">{children}</div>
       <span
         role="separator"
         aria-orientation="vertical"

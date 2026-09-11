@@ -20,6 +20,8 @@ export type TemplateEditorRecord = {
   variable_registry: VariableRegistry;
   pricing_json: PricingModel;
   folder_id: string | null;
+  is_sample: boolean;
+  sample_folder_slug: string | null;
   created_by: string;
   updated_by: string | null;
   created_at: string;
@@ -51,6 +53,8 @@ function parseTemplateJson(
     variable_registry_json: unknown;
     pricing_json: unknown;
     folder_id: string | null;
+    is_sample?: boolean;
+    sample_folder_slug?: string | null;
     created_by: string;
     updated_by: string | null;
     created_at: Date;
@@ -88,6 +92,8 @@ function parseTemplateJson(
     variable_registry: (variableRegistry as VariableRegistry) ?? defaultVariableRegistry,
     pricing_json: (template.pricing_json as PricingModel) ?? defaultPricingModel,
     folder_id: template.folder_id,
+    is_sample: Boolean(template.is_sample),
+    sample_folder_slug: template.sample_folder_slug ?? null,
     created_by: template.created_by,
     updated_by: template.updated_by,
     created_at: template.created_at.toISOString(),
@@ -118,6 +124,8 @@ export async function createTemplate(input: {
   editor_json?: EditorDoc;
   tags?: string[];
   folder_id?: string | null;
+  is_sample?: boolean;
+  sample_folder_slug?: string | null;
 }): Promise<TemplateEditorRecord> {
   const row = await prisma.template.create({
     data: {
@@ -130,7 +138,9 @@ export async function createTemplate(input: {
       schema_version: CURRENT_DOC_VERSION,
       created_by: input.createdBy,
       updated_by: input.createdBy,
-      folder_id: input.folder_id ?? null,
+      folder_id: input.is_sample ? null : (input.folder_id ?? null),
+      is_sample: Boolean(input.is_sample),
+      sample_folder_slug: input.is_sample ? (input.sample_folder_slug ?? null) : null,
     },
     include: { shares: true },
   });
@@ -172,6 +182,7 @@ export async function listTemplates(
   const rows = await prisma.template.findMany({
     where: {
       workspace_id: workspaceId,
+      is_sample: false,
       created_at: options?.before ? { lt: options.before } : undefined,
       name: query ? { contains: query, mode: "insensitive" } : undefined,
       tags: tag ? { array_contains: [tag] } : undefined,
@@ -255,6 +266,84 @@ export async function duplicateTemplate(input: {
     editor_json: existing.editor_json,
     tags: [...existing.tags.filter((t) => t !== "copy"), "copy"],
     folder_id: existing.folder_id,
+  });
+}
+
+export async function listSampleTemplates(options?: {
+  folderSlug?: string | null;
+  query?: string;
+  limit?: number;
+}): Promise<TemplateEditorRecord[]> {
+  const query = options?.query?.trim();
+  const folderSlug = options?.folderSlug?.trim() || null;
+  const rows = await prisma.template.findMany({
+    where: {
+      is_sample: true,
+      sample_folder_slug: folderSlug ?? undefined,
+      name: query ? { contains: query, mode: "insensitive" } : undefined,
+    },
+    include: { shares: true },
+    orderBy: [{ updated_at: "desc" }, { id: "desc" }],
+    take: options?.limit ?? 200,
+  });
+  const userMap = await loadUserMap(
+    rows.flatMap((r) => [r.created_by, r.updated_by ?? "", ...r.shares.map((s) => s.user_id)]),
+  );
+  return rows.map((row) => parseTemplateJson(row, userMap));
+}
+
+export async function countSampleTemplatesByFolder(): Promise<Record<string, number>> {
+  const rows = await prisma.template.groupBy({
+    by: ["sample_folder_slug"],
+    where: { is_sample: true, sample_folder_slug: { not: null } },
+    _count: { _all: true },
+  });
+  const counts: Record<string, number> = {};
+  for (const row of rows) {
+    if (row.sample_folder_slug) {
+      counts[row.sample_folder_slug] = row._count._all;
+    }
+  }
+  return counts;
+}
+
+export async function getSampleTemplate(templateId: string): Promise<TemplateEditorRecord | null> {
+  const row = await prisma.template.findFirst({
+    where: { id: templateId, is_sample: true },
+    include: { shares: true },
+  });
+  if (!row) {
+    return null;
+  }
+  const userMap = await loadUserMap([
+    row.created_by,
+    row.updated_by ?? "",
+    ...row.shares.map((s) => s.user_id),
+  ]);
+  return parseTemplateJson(row, userMap);
+}
+
+export async function copySampleTemplateToLibrary(input: {
+  templateId: string;
+  workspaceId: string;
+  createdBy: string;
+  name?: string;
+}): Promise<TemplateEditorRecord | null> {
+  const existing = await getSampleTemplate(input.templateId);
+  if (!existing) {
+    return null;
+  }
+  return createTemplate({
+    name: input.name?.trim() || existing.name,
+    workspaceId: input.workspaceId,
+    createdBy: input.createdBy,
+    editor_json: existing.editor_json,
+    tags: [
+      ...existing.tags.filter((tag) => tag !== "sample" && !tag.startsWith("sample-folder:")),
+      "from-sample",
+    ],
+    folder_id: null,
+    is_sample: false,
   });
 }
 

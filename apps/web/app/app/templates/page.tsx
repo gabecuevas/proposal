@@ -23,6 +23,11 @@ import {
   templateSubtitleFromTags,
   templateThumbnailKey,
 } from "@/lib/ui/template-meta";
+import {
+  SAMPLE_TEMPLATE_FOLDERS,
+  sampleFolderBySlug,
+  type SampleTemplateFolder,
+} from "@/lib/templates/sample-catalog";
 
 const FAVORITES_KEY = "senddox-template-favorites";
 const VIEW_KEY = "senddox-template-view";
@@ -156,10 +161,16 @@ export default function AppTemplatesPage() {
   const [shareSeed, setShareSeed] = useState<string[]>([]);
   const [shareFolderId, setShareFolderId] = useState<string | null>(null);
   const [browsingSamples, setBrowsingSamples] = useState(false);
+  const [sampleFolderSlug, setSampleFolderSlug] = useState<string | null>(null);
+  const [sampleFolders, setSampleFolders] = useState<
+    Array<SampleTemplateFolder & { template_count: number }>
+  >(SAMPLE_TEMPLATE_FOLDERS.map((folder) => ({ ...folder, template_count: 0 })));
+  const [sampleTemplates, setSampleTemplates] = useState<TemplateItem[]>([]);
   const [useTemplateTarget, setUseTemplateTarget] = useState<{ id: string; name: string } | null>(null);
 
   const currentFolderId = path[path.length - 1]?.id ?? null;
   const browseFolders = tab !== "suggested" && !browsingSamples;
+  const activeSampleFolder = sampleFolderBySlug(sampleFolderSlug);
 
   useEffect(() => {
     setFavorites(loadFavoriteSet());
@@ -177,6 +188,8 @@ export default function AppTemplatesPage() {
     setTab(id);
     setSelected(new Set());
     setBrowsingSamples(false);
+    setSampleFolderSlug(null);
+    setSampleTemplates([]);
     if (id === "suggested") {
       setPath([{ id: null, name: "Library" }]);
     }
@@ -187,6 +200,7 @@ export default function AppTemplatesPage() {
 
   function openSampleTemplates() {
     setBrowsingSamples(true);
+    setSampleFolderSlug(null);
     setSelected(new Set());
     setSelectionMode(false);
     setActionHint("");
@@ -194,6 +208,15 @@ export default function AppTemplatesPage() {
 
   function exitSampleTemplates() {
     setBrowsingSamples(false);
+    setSampleFolderSlug(null);
+    setSampleTemplates([]);
+    setSelected(new Set());
+    setSelectionMode(false);
+    setActionHint("");
+  }
+
+  function openSampleFolder(slug: string) {
+    setSampleFolderSlug(slug);
     setSelected(new Set());
     setSelectionMode(false);
     setActionHint("");
@@ -269,15 +292,49 @@ export default function AppTemplatesPage() {
     setLoading(false);
   }, [browseFolders, currentFolderId, query]);
 
+  const loadSampleCatalog = useCallback(async () => {
+    if (!browsingSamples) {
+      return;
+    }
+    setError("");
+    const params = new URLSearchParams();
+    if (sampleFolderSlug) {
+      params.set("folder", sampleFolderSlug);
+    }
+    if (query.trim()) {
+      params.set("q", query.trim());
+    }
+    const response = await fetch(`/api/templates/samples?${params.toString()}`);
+    if (!response.ok) {
+      setError("Failed to load sample templates");
+      return;
+    }
+    const payload = (await response.json()) as {
+      folders?: Array<SampleTemplateFolder & { template_count: number }>;
+      templates?: TemplateItem[];
+    };
+    setSampleFolders(
+      payload.folders ?? SAMPLE_TEMPLATE_FOLDERS.map((folder) => ({ ...folder, template_count: 0 })),
+    );
+    setSampleTemplates(payload.templates ?? []);
+  }, [browsingSamples, query, sampleFolderSlug]);
+
   useEffect(() => {
     void loadLibrary();
   }, [loadLibrary]);
+
+  useEffect(() => {
+    void loadSampleCatalog();
+  }, [loadSampleCatalog]);
 
   useEffect(() => {
     void loadMembers();
   }, [loadMembers]);
 
   const filtered = useMemo(() => {
+    if (browsingSamples) {
+      return sampleFolderSlug ? sampleTemplates : [];
+    }
     if (tab === "uploads") {
       return templates.filter((t) => t.tags.some((tag) => tag.toLowerCase() === "uploaded"));
     }
@@ -285,7 +342,7 @@ export default function AppTemplatesPage() {
       return templates.slice(0, SUGGESTED_LIMIT);
     }
     return templates;
-  }, [templates, tab]);
+  }, [browsingSamples, sampleFolderSlug, sampleTemplates, templates, tab]);
 
   const selectedTemplates = useMemo(
     () => filtered.filter((t) => selected.has(t.id)),
@@ -471,6 +528,39 @@ export default function AppTemplatesPage() {
     }
   }
 
+  async function copySamplesToLibrary(explicitItems?: TemplateItem[]) {
+    const items = explicitItems ?? requireSelection(1);
+    if (!items || items.length === 0) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      for (const template of items) {
+        const response = await fetch(`/api/templates/samples/${template.id}/copy`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(payload.error || `Could not copy “${template.name}”`);
+        }
+      }
+      setSelected(new Set());
+      setSelectionMode(false);
+      setActionHint(
+        items.length === 1
+          ? `“${items[0]!.name}” was copied to My templates.`
+          : `${items.length} templates were copied to My templates.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not copy to library");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function moveSelected(folderId: string | null) {
     setBusy(true);
     setError("");
@@ -621,7 +711,14 @@ export default function AppTemplatesPage() {
         onNewFolder={() => openAction("new-folder")}
         selectionMode={selectionMode}
         selectionCount={selected.size}
-        menuHint={selectionMode && selected.size === 0 ? "Select items below, then choose an action." : undefined}
+        sampleMode={browsingSamples}
+        menuHint={
+          selectionMode && selected.size === 0
+            ? browsingSamples
+              ? "Select sample templates below, then choose Copy to My Library."
+              : "Select items below, then choose an action."
+            : undefined
+        }
         onActionsOpen={ensureSelectionMode}
         onClearSelection={() => {
           setSelectionMode(false);
@@ -629,6 +726,7 @@ export default function AppTemplatesPage() {
           setActionHint("");
         }}
         onDuplicate={() => void duplicateSelected()}
+        onCopyToLibrary={() => void copySamplesToLibrary()}
         onMove={() => openAction("move")}
         onShare={() => openAction("share")}
         onRename={() => openAction("rename")}
@@ -644,10 +742,29 @@ export default function AppTemplatesPage() {
                 Library
               </button>
               <span className="text-muted">/</span>
-              <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-                <FolderIcon filled className="text-primary" />
-                Sample Templates
-              </span>
+              {activeSampleFolder ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSampleFolderSlug(null);
+                      setSelected(new Set());
+                      setSelectionMode(false);
+                    }}
+                    className="inline-flex items-center gap-1.5 text-muted hover:text-foreground"
+                  >
+                    <FolderIcon filled className="text-primary" />
+                    Sample Templates
+                  </button>
+                  <span className="text-muted">/</span>
+                  <span className="font-medium text-foreground">{activeSampleFolder.name}</span>
+                </>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+                  <FolderIcon filled className="text-primary" />
+                  Sample Templates
+                </span>
+              )}
             </nav>
           ) : browseFolders && path.length > 1 ? (
             <nav aria-label="Folder path" className="flex flex-wrap items-center gap-1 text-sm">
@@ -689,35 +806,171 @@ export default function AppTemplatesPage() {
       ) : null}
 
       {browsingSamples ? (
-        viewMode === "list" ? (
-          <SheetTable
-            minWidth="64rem"
-            empty={
-              <p className="px-4 py-10 text-center text-sm text-muted">
-                Sample templates will appear here. Browse master Templates, Agreements, Contracts, and
-                more — then add them to your Library.
+        <>
+          {activeSampleFolder ? (
+            <div className="border-b border-border px-4 py-3">
+              <p className="mb-2 text-sm text-muted">
+                Master templates in this category. Select one or more, then use Actions → Copy to My Library.
               </p>
-            }
-          >
-            <thead>
-              <tr>
-                <th className={sheetTh()}>Document Title</th>
-                <th className={sheetTh()}>Category</th>
-                <th className={sheetTh()}>Type</th>
-                <th className={sheetTh()}>Description</th>
-              </tr>
-            </thead>
-            <tbody />
-          </SheetTable>
-        ) : (
-          <p className="px-4 py-10 text-center text-sm text-muted">
-            Sample templates will appear here. Browse master Templates, Agreements, Contracts, and more
-            — then add them to your Library.
-          </p>
-        )
+              <UploadDropzone
+                sampleFolderSlug={activeSampleFolder.slug}
+                onUploaded={() => void loadSampleCatalog()}
+              />
+            </div>
+          ) : (
+            <p className="border-b border-border px-4 py-3 text-sm text-muted">
+              Browse master template categories. Open a folder, then copy templates into your own library.
+            </p>
+          )}
+          {viewMode === "list" ? (
+            <SheetTable
+              minWidth="72rem"
+              preventWrap
+              empty={
+                !activeSampleFolder ? null : sampleTemplates.length === 0 ? (
+                  <p className="px-4 py-10 text-center text-sm text-muted">
+                    No master templates in this folder yet. Upload one above to publish it for all users.
+                  </p>
+                ) : null
+              }
+            >
+              <thead>
+                <tr>
+                  {selectionMode && activeSampleFolder ? (
+                    <th className={sheetTh("w-10")}>
+                      <input
+                        type="checkbox"
+                        data-library-select
+                        aria-label="Select all sample templates"
+                        checked={filtered.length > 0 && selected.size === filtered.length}
+                        onChange={toggleSelectAll}
+                      />
+                    </th>
+                  ) : null}
+                  <th className={sheetTh()}>Document Title</th>
+                  <th className={sheetTh()}>{activeSampleFolder ? "Date Added" : "Description"}</th>
+                  <th className={sheetTh()}>{activeSampleFolder ? "Last Modified" : "Templates"}</th>
+                  <th className={sheetTh()}>{activeSampleFolder ? "Type" : "Category"}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!activeSampleFolder
+                  ? sampleFolders.map((folder) => (
+                      <tr key={folder.slug} className={sheetTr()}>
+                        <td className={sheetTd("font-medium text-foreground")}>
+                          <button
+                            type="button"
+                            onClick={() => openSampleFolder(folder.slug)}
+                            className="inline-flex items-center gap-2 text-left hover:text-primary"
+                          >
+                            <FolderIcon className="text-amber-700" />
+                            {folder.name} ({folder.template_count})
+                          </button>
+                        </td>
+                        <td className={sheetTd()}>{folder.description}</td>
+                        <td className={sheetTd()}>{folder.template_count}</td>
+                        <td className={sheetTd()}>Master</td>
+                      </tr>
+                    ))
+                  : filtered.map((template) => {
+                      const checked = selected.has(template.id);
+                      return (
+                        <tr key={template.id} className={sheetTr(checked ? "bg-slate-50/90" : undefined)}>
+                          {selectionMode ? (
+                            <td className={sheetTd()}>
+                              <input
+                                type="checkbox"
+                                data-library-select
+                                aria-label={`Select ${template.name}`}
+                                checked={checked}
+                                onChange={() => toggleSelected(template.id)}
+                              />
+                            </td>
+                          ) : null}
+                          <td className={sheetTd("font-medium text-foreground")}>
+                            <div className="flex items-center gap-2 whitespace-nowrap">
+                              <Link href={`/app/templates/${template.id}`} className="hover:text-primary">
+                                {template.name}
+                              </Link>
+                              <button
+                                type="button"
+                                className="shrink-0 rounded border border-border px-2 py-0.5 text-[11px] font-medium text-muted hover:border-primary/40 hover:text-primary"
+                                onClick={() => void copySamplesToLibrary([template])}
+                              >
+                                Copy to My Library
+                              </button>
+                            </div>
+                          </td>
+                          <td className={sheetTd()}>{formatDate(template.created_at)}</td>
+                          <td className={sheetTd()}>{formatDate(template.updated_at)}</td>
+                          <td className={sheetTd()}>{template.kind}</td>
+                        </tr>
+                      );
+                    })}
+              </tbody>
+            </SheetTable>
+          ) : (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(11.5rem,1fr))] gap-4 p-4">
+              {!activeSampleFolder
+                ? sampleFolders.map((folder) => (
+                    <button
+                      key={folder.slug}
+                      type="button"
+                      onClick={() => openSampleFolder(folder.slug)}
+                      className="flex flex-col overflow-hidden rounded-lg border border-border bg-surface text-left shadow-sm transition-shadow hover:shadow-md"
+                    >
+                      <div className="flex aspect-[4/5] items-center justify-center bg-amber-50 text-amber-800">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" aria-hidden>
+                          <path
+                            d="M3 7.5A1.5 1.5 0 014.5 6H9l2 2h8.5A1.5 1.5 0 0121 9.5v8A1.5 1.5 0 0119.5 19h-15A1.5 1.5 0 013 17.5v-10z"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </div>
+                      <div className="border-t border-border p-3">
+                        <p className="truncate font-semibold text-foreground">{folder.name}</p>
+                        <p className="mt-0.5 line-clamp-2 text-sm text-muted">{folder.description}</p>
+                        <p className="mt-1 text-xs text-muted">{folder.template_count} templates</p>
+                      </div>
+                    </button>
+                  ))
+                : sampleTemplates.length === 0 ? (
+                    <p className="col-span-full px-2 py-8 text-center text-sm text-muted">
+                      No master templates in this folder yet.
+                    </p>
+                  ) : (
+                    sampleTemplates.map((template) => (
+                      <div
+                        key={template.id}
+                        className="group relative flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-sm transition-shadow hover:shadow-md"
+                      >
+                        <Link href={`/app/templates/${template.id}`} className="flex flex-1 flex-col">
+                          <div className="relative flex aspect-[4/5] items-center justify-center overflow-hidden bg-slate-100">
+                            <span className="text-sm font-medium text-muted">{template.kind}</span>
+                          </div>
+                          <div className="border-t border-border p-3">
+                            <p className="truncate font-semibold text-foreground">{template.name}</p>
+                          </div>
+                        </Link>
+                        <button
+                          type="button"
+                          className="m-3 mt-0 rounded-md border border-border px-2 py-1.5 text-xs font-medium text-foreground hover:border-primary/40 hover:text-primary"
+                          onClick={() => void copySamplesToLibrary([template])}
+                        >
+                          Copy to My Library
+                        </button>
+                      </div>
+                    ))
+                  )}
+            </div>
+          )}
+        </>
       ) : viewMode === "list" ? (
         <SheetTable
-          minWidth="64rem"
+          minWidth="72rem"
+          preventWrap
           empty={
             !loading && filtered.length === 0 && folders.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-muted">
@@ -798,7 +1051,7 @@ export default function AppTemplatesPage() {
                     </td>
                   ) : null}
                   <td className={sheetTd("font-medium text-foreground")}>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 whitespace-nowrap">
                       <Link href={`/app/templates/${template.id}`} className="hover:text-primary">
                         {template.name}
                       </Link>

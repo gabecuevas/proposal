@@ -551,7 +551,8 @@ export default function ContentLibraryPage() {
 
       {viewMode === "list" ? (
         <SheetTable
-          minWidth="56rem"
+          minWidth="72rem"
+          preventWrap
           empty={
             !loading && items.length === 0 && folders.length === 0 ? (
               <p className="px-4 py-10 text-center text-sm text-muted">No content blocks yet.</p>
