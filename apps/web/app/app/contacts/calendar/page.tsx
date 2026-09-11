@@ -17,7 +17,7 @@ import {
   type CrmActivityRecord,
   type CrmActivityType,
 } from "@/lib/crm/activity-shared";
-import type { CrmCalendarEventDto } from "@/lib/crm/calendar-accounts";
+import type { CrmCalendarAccountDto, CrmCalendarEventDto } from "@/lib/crm/calendar-accounts";
 import { activityLinkedRecordHref } from "@/lib/crm/activity-links";
 import {
   defaultVisibleIds,
@@ -194,6 +194,9 @@ export default function ContactsCalendarPage() {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [assigneeUserId, setAssigneeUserId] = useState("");
   const [currentUserId, setCurrentUserId] = useState("");
+  const [calendarSyncStatus, setCalendarSyncStatus] = useState<"ACTIVE" | "INACTIVE" | "ERROR" | null>(
+    null,
+  );
   const [error, setError] = useState("");
   const [weekPickerOpen, setWeekPickerOpen] = useState(false);
   const weekPickerRef = useRef<HTMLDivElement>(null);
@@ -389,9 +392,10 @@ export default function ContactsCalendarPage() {
 
   useEffect(() => {
     void (async () => {
-      const [sessionRes, membersRes] = await Promise.all([
+      const [sessionRes, membersRes, calendarRes] = await Promise.all([
         fetch("/api/auth/session"),
         fetch("/api/workspace/members"),
+        fetch("/api/crm/calendar-accounts"),
       ]);
       if (sessionRes.ok) {
         const payload = (await sessionRes.json()) as { user?: { userId: string } | null };
@@ -405,6 +409,12 @@ export default function ContactsCalendarPage() {
           members: Array<{ userId: string; name: string; email: string }>;
         };
         setMembers(payload.members);
+      }
+      if (calendarRes.ok) {
+        const payload = (await calendarRes.json()) as { accounts?: CrmCalendarAccountDto[] };
+        setCalendarSyncStatus(payload.accounts?.[0]?.syncStatus ?? "INACTIVE");
+      } else {
+        setCalendarSyncStatus("INACTIVE");
       }
     })();
   }, []);
@@ -672,9 +682,20 @@ export default function ContactsCalendarPage() {
 
           <Link
             href="/app/settings/integrations/calendar"
-            className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-red-700 hover:bg-red-100"
+            className={cn(
+              "rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide hover:opacity-90",
+              calendarSyncStatus === "ACTIVE"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : calendarSyncStatus === "ERROR"
+                  ? "border-red-200 bg-red-50 text-red-700"
+                  : "border-red-200 bg-red-50 text-red-700",
+            )}
           >
-            Sync inactive
+            {calendarSyncStatus === "ACTIVE"
+              ? "Sync active"
+              : calendarSyncStatus === "ERROR"
+                ? "Sync error"
+                : "Sync inactive"}
           </Link>
         </div>
       </div>
