@@ -50,13 +50,13 @@ export function BarChartPanel({ title, icon, points }: BarChartPanelProps) {
   return (
     <section className="overflow-hidden border-b border-border bg-surface lg:border-b-0 lg:border-r lg:last:border-r-0">
       <header className="flex items-center justify-center gap-2 border-b border-border bg-slate-50 px-3 py-2 text-[13px] font-semibold text-foreground">
-        <span className="text-muted" aria-hidden>
+        <span className="text-primary" aria-hidden>
           {icon}
         </span>
         {title}
       </header>
 
-      <div className="px-4 pb-2 pt-4">
+      <div className="px-4 pb-3 pt-4">
         <div className="flex gap-2">
           <div
             className="flex w-7 shrink-0 flex-col justify-between text-right text-[10px] leading-none text-muted"
@@ -77,7 +77,7 @@ export function BarChartPanel({ title, icon, points }: BarChartPanelProps) {
               {points.map((point) => (
                 <div
                   key={point.start}
-                  className="min-w-0 flex-1 bg-sky-400/80"
+                  className="min-w-0 flex-1 rounded-t-[1px] bg-primary/75"
                   style={{ height: `${max > 0 ? (point.count / max) * 100 : 0}%` }}
                   title={`${formatMonthLabel(point.start)}: ${point.count}`}
                 />
