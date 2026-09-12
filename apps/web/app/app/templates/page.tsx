@@ -178,9 +178,17 @@ export default function AppTemplatesPage() {
   }, []);
 
   useEffect(() => {
-    const next = new URLSearchParams(window.location.search).get("tab");
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get("tab");
     if (next === "suggested" || next === "mine" || next === "uploads") {
       setTab(next);
+    }
+    if (params.get("samples") === "1") {
+      setBrowsingSamples(true);
+      const folder = params.get("folder");
+      if (folder) {
+        setSampleFolderSlug(folder);
+      }
     }
   }, []);
 
@@ -481,18 +489,26 @@ export default function AppTemplatesPage() {
     setBusy(true);
     setError("");
     try {
-      const response = await fetch(`/api/templates/${renameTarget.id}`, {
+      const endpoint = browsingSamples
+        ? `/api/templates/samples/${renameTarget.id}`
+        : `/api/templates/${renameTarget.id}`;
+      const response = await fetch(endpoint, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
       if (!response.ok) {
-        throw new Error("Could not rename template");
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error || "Could not rename template");
       }
       setModal(null);
       setRenameTarget(null);
       setSelected(new Set());
-      await loadLibrary();
+      if (browsingSamples) {
+        await loadSampleCatalog();
+      } else {
+        await loadLibrary();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not rename template");
     } finally {
@@ -509,18 +525,26 @@ export default function AppTemplatesPage() {
     setError("");
     try {
       for (const template of items) {
-        const response = await fetch(`/api/templates/${template.id}`, {
+        const endpoint = browsingSamples
+          ? `/api/templates/samples/${template.id}`
+          : `/api/templates/${template.id}`;
+        const response = await fetch(endpoint, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ duplicate: true }),
         });
         if (!response.ok) {
-          throw new Error(`Could not duplicate “${template.name}”`);
+          const payload = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(payload.error || `Could not duplicate “${template.name}”`);
         }
       }
       setSelected(new Set());
       setActionHint("");
-      await loadLibrary();
+      if (browsingSamples) {
+        await loadSampleCatalog();
+      } else {
+        await loadLibrary();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not duplicate");
     } finally {
@@ -635,14 +659,22 @@ export default function AppTemplatesPage() {
     setError("");
     try {
       for (const template of selectedTemplates) {
-        const response = await fetch(`/api/templates/${template.id}`, { method: "DELETE" });
+        const endpoint = browsingSamples
+          ? `/api/templates/samples/${template.id}`
+          : `/api/templates/${template.id}`;
+        const response = await fetch(endpoint, { method: "DELETE" });
         if (!response.ok) {
-          throw new Error(`Could not delete “${template.name}”`);
+          const payload = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(payload.error || `Could not delete “${template.name}”`);
         }
       }
       setModal(null);
       setSelected(new Set());
-      await loadLibrary();
+      if (browsingSamples) {
+        await loadSampleCatalog();
+      } else {
+        await loadLibrary();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not delete");
     } finally {
@@ -715,7 +747,7 @@ export default function AppTemplatesPage() {
         menuHint={
           selectionMode && selected.size === 0
             ? browsingSamples
-              ? "Select sample templates below, then choose Copy to My Library."
+              ? "Select master templates below, then choose an action."
               : "Select items below, then choose an action."
             : undefined
         }
@@ -810,7 +842,8 @@ export default function AppTemplatesPage() {
           {activeSampleFolder ? (
             <div className="border-b border-border px-4 py-3">
               <p className="mb-2 text-sm text-muted">
-                Master templates in this category. Select one or more, then use Actions → Copy to My Library.
+                Master templates in this category. Anyone can copy them into My Library. As owner, you can
+                also rename, duplicate, or delete masters from Actions.
               </p>
               <UploadDropzone
                 sampleFolderSlug={activeSampleFolder.slug}
@@ -889,8 +922,21 @@ export default function AppTemplatesPage() {
                           ) : null}
                           <td className={sheetTd("font-medium text-foreground")}>
                             <div className="flex items-center gap-2 whitespace-nowrap">
-                              <Link href={`/app/templates/${template.id}`} className="hover:text-primary">
+                              <Link
+                                href={`/app/templates/${template.id}?preview=1${
+                                  sampleFolderSlug ? `&folder=${encodeURIComponent(sampleFolderSlug)}` : ""
+                                }`}
+                                className="hover:text-primary"
+                              >
                                 {template.name}
+                              </Link>
+                              <Link
+                                href={`/app/templates/${template.id}?preview=1${
+                                  sampleFolderSlug ? `&folder=${encodeURIComponent(sampleFolderSlug)}` : ""
+                                }`}
+                                className="shrink-0 rounded border border-border px-2 py-0.5 text-[11px] font-medium text-muted hover:border-primary/40 hover:text-primary"
+                              >
+                                Preview
                               </Link>
                               <button
                                 type="button"
@@ -941,28 +987,41 @@ export default function AppTemplatesPage() {
                       No master templates in this folder yet.
                     </p>
                   ) : (
-                    sampleTemplates.map((template) => (
-                      <div
-                        key={template.id}
-                        className="group relative flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-sm transition-shadow hover:shadow-md"
-                      >
-                        <Link href={`/app/templates/${template.id}`} className="flex flex-1 flex-col">
-                          <div className="relative flex aspect-[4/5] items-center justify-center overflow-hidden bg-slate-100">
-                            <span className="text-sm font-medium text-muted">{template.kind}</span>
-                          </div>
-                          <div className="border-t border-border p-3">
-                            <p className="truncate font-semibold text-foreground">{template.name}</p>
-                          </div>
-                        </Link>
-                        <button
-                          type="button"
-                          className="m-3 mt-0 rounded-md border border-border px-2 py-1.5 text-xs font-medium text-foreground hover:border-primary/40 hover:text-primary"
-                          onClick={() => void copySamplesToLibrary([template])}
+                    sampleTemplates.map((template) => {
+                      const previewHref = `/app/templates/${template.id}?preview=1${
+                        sampleFolderSlug ? `&folder=${encodeURIComponent(sampleFolderSlug)}` : ""
+                      }`;
+                      return (
+                        <div
+                          key={template.id}
+                          className="group relative flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-sm transition-shadow hover:shadow-md"
                         >
-                          Copy to My Library
-                        </button>
-                      </div>
-                    ))
+                          <Link href={previewHref} className="flex flex-1 flex-col">
+                            <div className="relative flex aspect-[4/5] items-center justify-center overflow-hidden bg-slate-100">
+                              <span className="text-sm font-medium text-muted">{template.kind}</span>
+                            </div>
+                            <div className="border-t border-border p-3">
+                              <p className="truncate font-semibold text-foreground">{template.name}</p>
+                            </div>
+                          </Link>
+                          <div className="m-3 mt-0 flex flex-col gap-1.5">
+                            <Link
+                              href={previewHref}
+                              className="rounded-md border border-border px-2 py-1.5 text-center text-xs font-medium text-foreground hover:border-primary/40 hover:text-primary"
+                            >
+                              Preview
+                            </Link>
+                            <button
+                              type="button"
+                              className="rounded-md border border-border px-2 py-1.5 text-xs font-medium text-foreground hover:border-primary/40 hover:text-primary"
+                              onClick={() => void copySamplesToLibrary([template])}
+                            >
+                              Copy to My Library
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
                   )}
             </div>
           )}

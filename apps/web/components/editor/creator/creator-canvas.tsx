@@ -44,6 +44,8 @@ type Props = {
   documentName?: string;
   variableKeys?: string[];
   children?: ReactNode;
+  /** Hide editing chrome (block controls, blank starter, selection toolbar, page menus). */
+  readOnly?: boolean;
 };
 
 export function CreatorCanvas({
@@ -57,6 +59,7 @@ export function CreatorCanvas({
   documentName,
   variableKeys = [],
   children,
+  readOnly = false,
 }: Props) {
   const paperRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -134,6 +137,9 @@ export function CreatorCanvas({
 
   useEffect(() => {
     function onFieldKeys(event: KeyboardEvent) {
+      if (readOnly) {
+        return;
+      }
       if (!(event.metaKey || event.ctrlKey)) {
         return;
       }
@@ -175,9 +181,12 @@ export function CreatorCanvas({
     }
     window.addEventListener("keydown", onFieldKeys);
     return () => window.removeEventListener("keydown", onFieldKeys);
-  }, [editor]);
+  }, [editor, readOnly]);
 
   useEffect(() => {
+    if (readOnly) {
+      return;
+    }
     function onFieldDrop(event: Event) {
       const detail = (event as CustomEvent<FieldDropDetail>).detail;
       if (!detail?.type) {
@@ -187,9 +196,12 @@ export function CreatorCanvas({
     }
     window.addEventListener(FIELD_DROP_EVENT, onFieldDrop);
     return () => window.removeEventListener(FIELD_DROP_EVENT, onFieldDrop);
-  }, [onDropField]);
+  }, [onDropField, readOnly]);
 
   function onDragOver(event: DragEvent<HTMLDivElement>) {
+    if (readOnly) {
+      return;
+    }
     if (event.dataTransfer.types.includes(FIELD_DRAG_MIME)) {
       event.preventDefault();
       event.dataTransfer.dropEffect = "copy";
@@ -197,6 +209,9 @@ export function CreatorCanvas({
   }
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
+    if (readOnly) {
+      return;
+    }
     const type = event.dataTransfer.getData(FIELD_DRAG_MIME);
     if (!type) {
       return;
@@ -269,7 +284,7 @@ export function CreatorCanvas({
                 <div className="creator-page-index">
                   Page {index + 1} of {pageCount}
                 </div>
-                {pageActions ? (
+                {pageActions && !readOnly ? (
                   <CreatorPageMenu
                     page={index + 1}
                     pageCount={pageCount}
@@ -304,18 +319,22 @@ export function CreatorCanvas({
             <div data-creator-surface className="relative">
               <CreatorPageBackgrounds editor={editor} pageCount={pageCount} spec={spec} />
               <EditorContent editor={editor} />
-              <BlankPageStarter editor={editor} variableKeys={variableKeys} />
+              {readOnly ? null : <BlankPageStarter editor={editor} variableKeys={variableKeys} />}
             </div>
-            <CreatorBlockControls
-              editor={editor}
-              paperRef={paperRef}
-              scrollerRef={scrollerRef}
-              documentId={documentId}
-              templateId={templateId}
-              pageSize={pageSize}
-            />
-            <CreatorSelectionToolbar editor={editor} paperRef={paperRef} />
-            <SlashInsertMenu editor={editor} paperRef={paperRef} />
+            {readOnly ? null : (
+              <>
+                <CreatorBlockControls
+                  editor={editor}
+                  paperRef={paperRef}
+                  scrollerRef={scrollerRef}
+                  documentId={documentId}
+                  templateId={templateId}
+                  pageSize={pageSize}
+                />
+                <CreatorSelectionToolbar editor={editor} paperRef={paperRef} />
+                <SlashInsertMenu editor={editor} paperRef={paperRef} />
+              </>
+            )}
             {children}
           </div>
         </div>

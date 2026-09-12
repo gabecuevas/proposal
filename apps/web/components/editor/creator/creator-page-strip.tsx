@@ -11,6 +11,7 @@ type Props = {
   onPreviewPdf?: () => void;
   onDownloadPdf?: () => void;
   pdfBusy?: boolean;
+  hideAddPage?: boolean;
 };
 
 export function CreatorPageStrip({
@@ -22,6 +23,7 @@ export function CreatorPageStrip({
   onPreviewPdf,
   onDownloadPdf,
   pdfBusy = false,
+  hideAddPage = false,
 }: Props) {
   const stripButtonClass =
     "inline-flex h-6 w-6 items-center justify-center rounded border border-border bg-slate-50 text-muted hover:bg-slate-100 hover:text-foreground disabled:opacity-50";
@@ -63,15 +65,17 @@ export function CreatorPageStrip({
         >
           <IconDownload className="h-3.5 w-3.5" />
         </button>
-        <button
-          type="button"
-          onClick={onAddPage}
-          className={stripButtonClass}
-          aria-label="Add page"
-          title="Add page"
-        >
-          <IconPlus className="h-3.5 w-3.5" />
-        </button>
+        {hideAddPage ? null : (
+          <button
+            type="button"
+            onClick={onAddPage}
+            className={stripButtonClass}
+            aria-label="Add page"
+            title="Add page"
+          >
+            <IconPlus className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );

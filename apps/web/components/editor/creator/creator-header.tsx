@@ -63,6 +63,9 @@ type Props = {
   onPrimaryAction?: () => void;
   moreItems?: CreatorMoreItem[];
   extraActions?: ReactNode;
+  /** Read-only Master Template Preview Mode (Sample Templates). */
+  previewMode?: boolean;
+  primaryActionBusy?: boolean;
 };
 
 export function CreatorHeader({
@@ -86,6 +89,8 @@ export function CreatorHeader({
   onPrimaryAction,
   moreItems,
   extraActions,
+  previewMode = false,
+  primaryActionBusy = false,
 }: Props) {
   const tick = useEditorEventTick(editor);
   const saveLabel = formatEditorSaveStatus(saveStatus);
@@ -118,6 +123,33 @@ export function CreatorHeader({
   function runAndClose(action: () => void) {
     action();
     setOpen(null);
+  }
+
+  if (previewMode) {
+    return (
+      <header className="shrink-0 border-b border-border bg-surface">
+        <div className="relative flex h-12 items-center px-3">
+          <Link
+            href={closeHref}
+            className="absolute left-3 inline-flex items-center gap-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-foreground hover:bg-slate-50"
+          >
+            <IconArrowLeft className="h-3.5 w-3.5" />
+            Back
+          </Link>
+          <p className="mx-auto max-w-[min(40rem,70vw)] truncate px-28 text-center text-sm font-semibold text-foreground">
+            Previewing {name.trim() || "Master Template"}
+          </p>
+          <button
+            type="button"
+            onClick={onPrimaryAction}
+            disabled={!onPrimaryAction || primaryActionBusy}
+            className="absolute right-3 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-95 disabled:opacity-60"
+          >
+            {primaryActionBusy ? "Copying…" : primaryActionLabel}
+          </button>
+        </div>
+      </header>
+    );
   }
 
   return (

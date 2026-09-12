@@ -187,14 +187,40 @@ export function LibraryViewActionsBar({
                 <p className="border-b border-border px-3 py-2 text-xs text-muted">{menuHint}</p>
               ) : null}
               {sampleMode ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
-                  onClick={() => runAndClose(onCopyToLibrary)}
-                >
-                  Copy to My Library
-                </button>
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+                    onClick={() => runAndClose(onCopyToLibrary)}
+                  >
+                    Copy to My Library
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+                    onClick={() => runAndClose(onDuplicate)}
+                  >
+                    Duplicate
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+                    onClick={() => runAndClose(onRename)}
+                  >
+                    Rename…
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
+                    onClick={() => runAndClose(onDelete)}
+                  >
+                    Delete…
+                  </button>
+                </>
               ) : (
                 <>
                   <button

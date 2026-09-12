@@ -347,6 +347,72 @@ export async function copySampleTemplateToLibrary(input: {
   });
 }
 
+export async function updateSampleTemplate(
+  templateId: string,
+  input: { name?: string; updatedBy?: string },
+): Promise<TemplateEditorRecord | null> {
+  const existing = await getSampleTemplate(templateId);
+  if (!existing) {
+    return null;
+  }
+  const name = input.name?.trim();
+  if (!name) {
+    throw new Error("Template name is required.");
+  }
+  const row = await prisma.template.update({
+    where: { id: templateId },
+    data: {
+      name,
+      updated_by: input.updatedBy ?? existing.updated_by,
+    },
+    include: { shares: true },
+  });
+  const userMap = await loadUserMap([
+    row.created_by,
+    row.updated_by ?? "",
+    ...row.shares.map((s) => s.user_id),
+  ]);
+  return parseTemplateJson(row, userMap);
+}
+
+export async function deleteSampleTemplate(templateId: string): Promise<boolean> {
+  const existing = await prisma.template.findFirst({
+    where: { id: templateId, is_sample: true },
+    select: { id: true },
+  });
+  if (!existing) {
+    return false;
+  }
+  await prisma.template.delete({ where: { id: templateId } });
+  return true;
+}
+
+export async function duplicateSampleTemplate(input: {
+  templateId: string;
+  workspaceId: string;
+  createdBy: string;
+  name?: string;
+}): Promise<TemplateEditorRecord | null> {
+  const existing = await getSampleTemplate(input.templateId);
+  if (!existing) {
+    return null;
+  }
+  return createTemplate({
+    name: input.name?.trim() || `${existing.name} (copy)`,
+    workspaceId: input.workspaceId,
+    createdBy: input.createdBy,
+    editor_json: existing.editor_json,
+    tags: [
+      ...existing.tags.filter((tag) => tag !== "copy"),
+      "sample",
+      ...(existing.sample_folder_slug ? [`sample-folder:${existing.sample_folder_slug}`] : []),
+      "copy",
+    ],
+    is_sample: true,
+    sample_folder_slug: existing.sample_folder_slug,
+  });
+}
+
 export async function setTemplateShares(input: {
   templateId: string;
   workspaceId: string;
