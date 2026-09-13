@@ -43,6 +43,9 @@ type Props = {
   initialVariableRegistry: VariableRegistry;
   initialPricing: PricingModel;
   contentBlocks: ContentBlockSummary[];
+  /** Read-only Master Template Preview Mode (Sample Templates → Preview). */
+  masterPreview?: boolean;
+  closeHref?: string;
 };
 
 const defaultRecipients = [
@@ -66,6 +69,8 @@ export function TemplateEditor({
   initialVariableRegistry,
   initialPricing,
   contentBlocks,
+  masterPreview = false,
+  closeHref = "/app/templates",
 }: Props) {
   const router = useRouter();
   const migratedInitial = useMemo(
@@ -76,6 +81,7 @@ export function TemplateEditor({
   const [status, setStatus] = useState("Idle");
   const [name, setName] = useState(initialName);
   const [useTemplateOpen, setUseTemplateOpen] = useState(false);
+  const [copyBusy, setCopyBusy] = useState(false);
   const [serialized, setSerialized] = useState(() =>
     serializeStable(withPageSize(migratedInitial, pageSizeFromDoc(migratedInitial))),
   );
@@ -116,18 +122,28 @@ export function TemplateEditor({
 
   const editor = useEditor({
     immediatelyRender: false,
+    editable: !masterPreview,
     extensions: editorExtensions,
     content: migratedInitial,
     editorProps: creatorEditorProps,
     onCreate({ editor: created }) {
-      scheduleFocusDocumentStart(created);
+      if (!masterPreview) {
+        scheduleFocusDocumentStart(created);
+      }
     },
     onUpdate({ editor: nextEditor }) {
+      if (masterPreview) {
+        return;
+      }
       setSerialized(serializeStable(withPageSize(nextEditor.getJSON() as EditorDoc, pageSizeRef.current)));
     },
   });
   const editorRef = useRef(editor);
   editorRef.current = editor;
+
+  useEffect(() => {
+    editor?.setEditable(!masterPreview);
+  }, [editor, masterPreview]);
 
   const variableRegistry = parseJsonText<VariableRegistry>(registryText, initialVariableRegistry);
   const variableContext = parseJsonText<VariableContext>(variablesText, {});
@@ -228,7 +244,7 @@ export function TemplateEditor({
   }, [editor, pageSize]);
 
   useEffect(() => {
-    if (!editor) {
+    if (masterPreview || !editor) {
       return;
     }
     if (serialized === lastSavedSerialized && name === lastSavedName) {
@@ -238,9 +254,12 @@ export function TemplateEditor({
       void saveNow();
     }, AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(id);
-  }, [editor, lastSavedName, lastSavedSerialized, name, saveNow, serialized]);
+  }, [editor, lastSavedName, lastSavedSerialized, masterPreview, name, saveNow, serialized]);
 
   useEffect(() => {
+    if (masterPreview) {
+      return;
+    }
     function flushIfDirty() {
       if (serialized === lastSavedSerializedRef.current && name === lastSavedNameRef.current) {
         return;
@@ -259,7 +278,7 @@ export function TemplateEditor({
     }
     window.addEventListener("pagehide", flushIfDirty);
     return () => window.removeEventListener("pagehide", flushIfDirty);
-  }, [name, pricing, serialized, templateId, variableRegistry]);
+  }, [masterPreview, name, pricing, serialized, templateId, variableRegistry]);
 
   const currentBlock = availableBlocks.find((block) => block.id === selectedBlockId);
 
@@ -376,6 +395,27 @@ export function TemplateEditor({
     await saveNow();
   }
 
+  async function copySampleToLibrary() {
+    setCopyBusy(true);
+    setStatus("Copying…");
+    try {
+      const response = await fetch(`/api/templates/samples/${templateId}/copy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!response.ok) {
+        setStatus("Copy failed");
+        return;
+      }
+      router.push("/app/templates?tab=mine");
+    } catch {
+      setStatus("Copy failed");
+    } finally {
+      setCopyBusy(false);
+    }
+  }
+
   return (
     <SignerRecipientProvider recipients={defaultRecipients}>
       <PricingProvider pricing={pricing}>
@@ -384,26 +424,38 @@ export function TemplateEditor({
           name={name}
           onNameChange={setName}
           saveStatus={status}
-          closeHref="/app/templates"
-          editor={editor}
+          closeHref={closeHref}
+          editor={masterPreview ? null : editor}
           pageSize={pageSize}
-          onPageSizeChange={(size: PageSizeId) => {
-            setPageSize(size);
-            editor?.commands.setPageSize(size);
-          }}
-          onSave={() => void saveNow()}
-          onSaveAs={(nextName) => saveAs(nextName)}
+          onPageSizeChange={
+            masterPreview
+              ? undefined
+              : (size: PageSizeId) => {
+                  setPageSize(size);
+                  editor?.commands.setPageSize(size);
+                }
+          }
+          onSave={masterPreview ? undefined : () => void saveNow()}
+          onSaveAs={masterPreview ? undefined : (nextName) => saveAs(nextName)}
           saveAsKind="template"
-          onPrint={() => openPrintPreview(buildComputedHtml(), pageSize)}
-          onInsertField={insertSignerField}
+          onPrint={masterPreview ? undefined : () => openPrintPreview(buildComputedHtml(), pageSize)}
+          onInsertField={masterPreview ? undefined : insertSignerField}
           variableKeys={Object.keys(variableRegistry)}
-          fileItems={[
-            { label: "Make a copy", onClick: () => void duplicateTemplate() },
-            { label: "Create document…", onClick: () => setUseTemplateOpen(true) },
-          ]}
-          primaryActionLabel="Create document"
+          fileItems={
+            masterPreview
+              ? undefined
+              : [
+                  { label: "Make a copy", onClick: () => void duplicateTemplate() },
+                  { label: "Create document…", onClick: () => setUseTemplateOpen(true) },
+                ]
+          }
+          primaryActionLabel={masterPreview ? "Copy to My Library" : "Create document"}
           primaryActionShowsSendIcon={false}
-          onPrimaryAction={() => setUseTemplateOpen(true)}
+          onPrimaryAction={
+            masterPreview ? () => void copySampleToLibrary() : () => setUseTemplateOpen(true)
+          }
+          previewMode={masterPreview}
+          primaryActionBusy={copyBusy}
         />
 
         <div className="flex min-h-0 min-w-0 flex-1">
@@ -413,7 +465,8 @@ export function TemplateEditor({
             pageCount={pageCount}
             currentPage={currentPage}
             pageSize={pageSize}
-            onAddPage={() => editor && insertPageBreak(editor)}
+            readOnly={masterPreview}
+            onAddPage={masterPreview ? undefined : () => editor && insertPageBreak(editor)}
             onPreviewPdf={() => void previewPdf()}
             onDownloadPdf={() => void downloadPdf()}
             pdfBusy={pdfBusy}
@@ -424,10 +477,11 @@ export function TemplateEditor({
               templateId={templateId}
               documentName={name}
               variableKeys={Object.keys(variableRegistry)}
+              readOnly={masterPreview}
               onPageCountChange={setVisualPages}
               onVisiblePageChange={setCurrentPage}
               onDropField={(type, clientX, clientY) => {
-                if (!editor || !selectedRecipientId) {
+                if (masterPreview || !editor || !selectedRecipientId) {
                   return;
                 }
                 insertSignerFieldAtPoint(editor, {
@@ -440,24 +494,29 @@ export function TemplateEditor({
             />
           </CreatorPageWorkspace>
 
-          <CreatorFieldsSidebar
-            editor={editor}
-            recipients={defaultRecipients}
-            selectedRecipientId={selectedRecipientId}
-            onSelectRecipient={setSelectedRecipientId}
-            onInsertField={insertSignerField}
-            missingVariableCount={variableOutput.missing.length}
-            unassignedRoleCount={0}
-          />
+          {masterPreview ? null : (
+            <CreatorFieldsSidebar
+              editor={editor}
+              recipients={defaultRecipients}
+              selectedRecipientId={selectedRecipientId}
+              onSelectRecipient={setSelectedRecipientId}
+              onInsertField={insertSignerField}
+              missingVariableCount={variableOutput.missing.length}
+              unassignedRoleCount={0}
+            />
+          )}
         </div>
 
-        <UseTemplateRecipientModal
-          open={useTemplateOpen}
-          templateId={templateId}
-          templateName={name}
-          onClose={() => setUseTemplateOpen(false)}
-        />
+        {masterPreview ? null : (
+          <UseTemplateRecipientModal
+            open={useTemplateOpen}
+            templateId={templateId}
+            templateName={name}
+            onClose={() => setUseTemplateOpen(false)}
+          />
+        )}
 
+        {masterPreview ? null : (
         <details
           className="shrink-0 border-t border-border bg-surface"
           onToggle={(event) => setDebugOpen((event.currentTarget as HTMLDetailsElement).open)}
@@ -667,6 +726,7 @@ export function TemplateEditor({
             </div>
           </div>
         </details>
+        )}
       </div>
       </PricingProvider>
     </SignerRecipientProvider>

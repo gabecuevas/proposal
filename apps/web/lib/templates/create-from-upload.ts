@@ -141,7 +141,11 @@ async function pagesFromDocx(
 export async function createTemplateFromFile(
   file: File,
   onProgress: (progress: UploadProgress) => void,
-  options?: { folderId?: string | null },
+  options?: {
+    folderId?: string | null;
+    isSample?: boolean;
+    sampleFolderSlug?: string | null;
+  },
 ): Promise<{ id: string; name: string }> {
   const pages = isDocxUpload(file)
     ? await pagesFromDocx(file, onProgress)
@@ -150,14 +154,19 @@ export async function createTemplateFromFile(
   onProgress({ fileName: file.name, stage: "Creating template…", ratio: 1 });
 
   const kindTag = isDocxUpload(file) ? "docx" : "pdf";
+  const isSample = Boolean(options?.isSample && options.sampleFolderSlug);
   const response = await fetch("/api/templates", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: templateNameFromFileName(file.name),
       editor_json: buildPageBackedEditorDoc(pages),
-      tags: ["uploaded", kindTag],
-      folder_id: options?.folderId ?? null,
+      tags: isSample
+        ? ["sample", `sample-folder:${options!.sampleFolderSlug}`, kindTag]
+        : ["uploaded", kindTag],
+      folder_id: isSample ? null : (options?.folderId ?? null),
+      is_sample: isSample,
+      sample_folder_slug: isSample ? options!.sampleFolderSlug : null,
     }),
   });
 

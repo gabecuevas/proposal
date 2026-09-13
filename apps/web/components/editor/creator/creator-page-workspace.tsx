@@ -28,6 +28,7 @@ type Props = {
   onPreviewPdf?: () => void;
   onDownloadPdf?: () => void;
   pdfBusy?: boolean;
+  readOnly?: boolean;
   children: ReactNode;
 };
 
@@ -41,6 +42,7 @@ export function CreatorPageWorkspace({
   onPreviewPdf,
   onDownloadPdf,
   pdfBusy = false,
+  readOnly = false,
   children,
 }: Props) {
   const [propertiesOpen, setPropertiesOpen] = useState(false);
@@ -60,8 +62,8 @@ export function CreatorPageWorkspace({
   }, []);
 
   const actions = useMemo(
-    () => ({ openPageProperties, openImportBackground }),
-    [openImportBackground, openPageProperties],
+    () => (readOnly ? null : { openPageProperties, openImportBackground }),
+    [openImportBackground, openPageProperties, readOnly],
   );
 
   return (
@@ -73,14 +75,15 @@ export function CreatorPageWorkspace({
             pageCount={pageCount}
             currentPage={currentPage}
             pageSizeLabel={spec.shortLabel}
-            onAddPage={onAddPage}
+            onAddPage={readOnly ? undefined : onAddPage}
             onPreviewPdf={onPreviewPdf}
             onDownloadPdf={onDownloadPdf}
             pdfBusy={pdfBusy}
+            hideAddPage={readOnly}
           />
           {children}
         </div>
-        {propertiesOpen ? (
+        {!readOnly && propertiesOpen ? (
           <CreatorPagePropertiesPanel
             editor={editor}
             currentPage={editingPage}
@@ -89,13 +92,15 @@ export function CreatorPageWorkspace({
             onImportBackground={() => setImportOpen(true)}
           />
         ) : null}
-        <ImportBackgroundModal
-          open={importOpen}
-          editor={editor}
-          currentPage={editingPage}
-          pageSize={pageSize}
-          onClose={() => setImportOpen(false)}
-        />
+        {!readOnly ? (
+          <ImportBackgroundModal
+            open={importOpen}
+            editor={editor}
+            currentPage={editingPage}
+            pageSize={pageSize}
+            onClose={() => setImportOpen(false)}
+          />
+        ) : null}
       </div>
     </CreatorPageActionsContext.Provider>
   );

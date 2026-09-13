@@ -17,7 +17,11 @@ import {
   type CrmActivityRecord,
   type CrmActivityType,
 } from "@/lib/crm/activity-shared";
-import type { CrmCalendarAccountDto, CrmCalendarEventDto } from "@/lib/crm/calendar-accounts";
+import {
+  DEFAULT_MY_CALENDAR_EVENT_COLOR,
+  type CrmCalendarAccountDto,
+  type CrmCalendarEventDto,
+} from "@/lib/crm/calendar-accounts";
 import { activityLinkedRecordHref } from "@/lib/crm/activity-links";
 import {
   defaultVisibleIds,
@@ -197,6 +201,7 @@ export default function ContactsCalendarPage() {
   const [calendarSyncStatus, setCalendarSyncStatus] = useState<"ACTIVE" | "INACTIVE" | "ERROR" | null>(
     null,
   );
+  const [myCalendarEventColor, setMyCalendarEventColor] = useState(DEFAULT_MY_CALENDAR_EVENT_COLOR);
   const [error, setError] = useState("");
   const [weekPickerOpen, setWeekPickerOpen] = useState(false);
   const weekPickerRef = useRef<HTMLDivElement>(null);
@@ -412,7 +417,9 @@ export default function ContactsCalendarPage() {
       }
       if (calendarRes.ok) {
         const payload = (await calendarRes.json()) as { accounts?: CrmCalendarAccountDto[] };
-        setCalendarSyncStatus(payload.accounts?.[0]?.syncStatus ?? "INACTIVE");
+        const account = payload.accounts?.[0];
+        setCalendarSyncStatus(account?.syncStatus ?? "INACTIVE");
+        setMyCalendarEventColor(account?.eventColor ?? DEFAULT_MY_CALENDAR_EVENT_COLOR);
       } else {
         setCalendarSyncStatus("INACTIVE");
       }
@@ -746,6 +753,7 @@ export default function ContactsCalendarPage() {
         <ActivitiesWeekCalendar
           weekStart={weekStart}
           activities={filtered}
+          myCalendarEventColor={myCalendarEventColor}
           onRequestMarkDone={(activity) => {
             if (!isGoogleCalendarActivity(activity)) {
               setMarkDoneTarget(activity);
@@ -770,7 +778,7 @@ export default function ContactsCalendarPage() {
                   className="border-b border-r border-border px-2"
                   style={{ width: DONE_COL_WIDTH, minWidth: DONE_COL_WIDTH }}
                 >
-                  <span className="flex h-10 items-center justify-center">Done</span>
+                  <span className="flex h-8 items-center justify-center">Done</span>
                 </th>
                 {visibleListColumns.map((column) => (
                   <th
@@ -778,7 +786,7 @@ export default function ContactsCalendarPage() {
                     className="border-b border-r border-border px-0"
                     style={{ width: column.width, minWidth: column.width }}
                   >
-                    <span className="flex h-10 items-center px-3">{column.label}</span>
+                    <span className="flex h-8 items-center px-3">{column.label}</span>
                   </th>
                 ))}
                 <th className="border-b border-border bg-slate-50" aria-hidden />

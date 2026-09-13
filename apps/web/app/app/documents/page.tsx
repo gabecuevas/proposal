@@ -315,7 +315,7 @@ export default function DocumentsPage() {
               </svg>
             </span>
             <input
-              className="h-10 w-full rounded-md border border-border bg-surface pl-9 pr-3 text-sm outline-none ring-primary/15 focus:ring-2"
+              className="h-8 w-full rounded-md border border-border bg-surface pl-9 pr-3 text-sm outline-none ring-primary/15 focus:ring-2"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(e) => e.key === "Enter" && void loadDocuments()}
@@ -327,7 +327,7 @@ export default function DocumentsPage() {
           </p>
           <button
             type="button"
-            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-surface px-3 text-sm text-foreground hover:bg-slate-50"
+            className="inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-surface px-3 text-sm text-foreground hover:bg-slate-50"
           >
             Filter
           </button>

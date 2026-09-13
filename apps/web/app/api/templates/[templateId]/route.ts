@@ -3,6 +3,7 @@ import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
 import {
   deleteTemplate,
   duplicateTemplate,
+  getSampleTemplate,
   getTemplate,
   setTemplateShares,
   updateTemplate,
@@ -14,7 +15,8 @@ type Params = { params: Promise<{ templateId: string }> };
 export async function GET(request: NextRequest, { params }: Params) {
   const auth = await getRequestAuthContext(request);
   const { templateId } = await params;
-  const template = await getTemplate(templateId, auth.workspaceId);
+  const template =
+    (await getTemplate(templateId, auth.workspaceId)) ?? (await getSampleTemplate(templateId));
   if (!template) {
     return NextResponse.json({ error: "Template not found" }, { status: 404 });
   }

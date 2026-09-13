@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -22,7 +23,26 @@ import { rasterizePdf } from "@/lib/pdf/rasterize";
 type Props = {
   onUploaded: () => void;
   folderId?: string | null;
+  /** When set, uploads are published into Sample Templates for all workspaces. */
+  sampleFolderSlug?: string | null;
 };
+
+type TemplateCreateOptions = {
+  folderId?: string | null;
+  tags?: string[];
+  isSample?: boolean;
+  sampleFolderSlug?: string | null;
+};
+
+function sampleCreatePayload(options?: TemplateCreateOptions) {
+  const isSample = Boolean(options?.isSample && options.sampleFolderSlug);
+  return {
+    folder_id: isSample ? null : (options?.folderId ?? null),
+    is_sample: isSample,
+    sample_folder_slug: isSample ? options!.sampleFolderSlug : null,
+    tags: options?.tags,
+  };
+}
 
 type DocxMode = "pdf" | "editor" | "both";
 
@@ -82,17 +102,20 @@ async function uploadPageBlob(blob: Blob, fileName: string): Promise<string> {
 async function createTemplateFromPdfPages(
   pages: Array<{ key: string; pageNumber: number; width: number; height: number }>,
   name: string,
-  options?: { folderId?: string | null; tags?: string[] },
+  options?: TemplateCreateOptions,
 ): Promise<{ id: string; name: string }> {
   const editor_json = buildPageBackedEditorDoc(pages);
+  const sample = sampleCreatePayload(options);
   const response = await fetch("/api/templates", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name,
       editor_json,
-      tags: options?.tags ?? ["uploaded", "pdf"],
-      folder_id: options?.folderId ?? null,
+      tags: sample.tags ?? ["uploaded", "pdf"],
+      folder_id: sample.folder_id,
+      is_sample: sample.is_sample,
+      sample_folder_slug: sample.sample_folder_slug,
     }),
   });
   if (!response.ok) {
@@ -105,16 +128,19 @@ async function createTemplateFromPdfPages(
 async function createTemplateFromEditorJson(
   editor_json: unknown,
   name: string,
-  options?: { folderId?: string | null; tags?: string[] },
+  options?: TemplateCreateOptions,
 ): Promise<{ id: string; name: string }> {
+  const sample = sampleCreatePayload(options);
   const response = await fetch("/api/templates", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name,
       editor_json,
-      tags: options?.tags ?? ["uploaded", "docx"],
-      folder_id: options?.folderId ?? null,
+      tags: sample.tags ?? ["uploaded", "docx"],
+      folder_id: sample.folder_id,
+      is_sample: sample.is_sample,
+      sample_folder_slug: sample.sample_folder_slug,
     }),
   });
   if (!response.ok) {
@@ -128,7 +154,7 @@ async function createTemplateFromPdfBlob(
   pdfBlob: Blob,
   name: string,
   onProgress: (progress: UploadProgress) => void,
-  options?: { folderId?: string | null; tags?: string[] },
+  options?: TemplateCreateOptions,
 ): Promise<{ id: string; name: string }> {
   const pdfFile = new File([pdfBlob], `${name}.pdf`, { type: "application/pdf" });
   const rendered = await rasterizePdf(pdfFile, (done, total) => {
@@ -240,7 +266,7 @@ function DocxImportModal({
   );
 }
 
-export function UploadDropzone({ onUploaded, folderId = null }: Props) {
+export function UploadDropzone({ onUploaded, folderId = null, sampleFolderSlug = null }: Props) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -250,6 +276,13 @@ export function UploadDropzone({ onUploaded, folderId = null }: Props) {
   const [docxModalOpen, setDocxModalOpen] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [expanded, setExpanded] = useState(true);
+  const sampleOptions = useMemo(
+    () =>
+      sampleFolderSlug
+        ? { isSample: true as const, sampleFolderSlug, folderId: null as string | null }
+        : { folderId },
+    [folderId, sampleFolderSlug],
+  );
 
   const handleFiles = useCallback(
     async (fileList: FileList | null) => {
@@ -279,7 +312,7 @@ export function UploadDropzone({ onUploaded, folderId = null }: Props) {
         setExpanded(true);
         try {
           for (const file of otherFiles) {
-            await createTemplateFromFile(file, setProgress, { folderId });
+            await createTemplateFromFile(file, setProgress, sampleOptions);
           }
           onUploaded();
         } catch (uploadError) {
@@ -298,7 +331,7 @@ export function UploadDropzone({ onUploaded, folderId = null }: Props) {
         setDocxModalOpen(true);
       }
     },
-    [folderId, onUploaded],
+    [onUploaded, sampleOptions],
   );
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
@@ -341,7 +374,13 @@ export function UploadDropzone({ onUploaded, folderId = null }: Props) {
           decodePdfBase64(result.pdfBase64),
           name,
           setProgress,
-          { folderId, tags: ["uploaded", "pdf"] },
+          sampleFolderSlug
+            ? {
+                isSample: true,
+                sampleFolderSlug,
+                tags: ["sample", `sample-folder:${sampleFolderSlug}`, "pdf"],
+              }
+            : { folderId, tags: ["uploaded", "pdf"] },
         );
         pdfTemplateId = pdfTemplate.id;
       }
@@ -350,10 +389,16 @@ export function UploadDropzone({ onUploaded, folderId = null }: Props) {
         if (!result.editor_json) {
           throw new Error("DOCX import failed: editor content missing");
         }
-        const editorTemplate = await createTemplateFromEditorJson(result.editor_json, name, {
-          folderId,
-          tags: ["uploaded", "docx"],
-        });
+        const editorTemplate = await createTemplateFromEditorJson(result.editor_json, name, sampleFolderSlug
+          ? {
+              isSample: true,
+              sampleFolderSlug,
+              tags: ["sample", `sample-folder:${sampleFolderSlug}`, "docx"],
+            }
+          : {
+              folderId,
+              tags: ["uploaded", "docx"],
+            });
         editorTemplateId = editorTemplate.id;
       }
 

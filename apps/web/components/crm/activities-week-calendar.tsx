@@ -84,26 +84,46 @@ type ActivitiesWeekCalendarProps = {
   weekStart: Date;
   activities: CrmActivityRecord[];
   onRequestMarkDone?: (activity: CrmActivityRecord) => void;
+  /** Accent for Google / My Calendar synced events (`gcal:` ids). */
+  myCalendarEventColor?: string | null;
 };
+
+function isGoogleCalendarActivity(activity: CrmActivityRecord): boolean {
+  return activity.id.startsWith("gcal:");
+}
 
 function ActivityChip({
   activity,
   dense,
   onRequestMarkDone,
+  accentColor,
 }: {
   activity: CrmActivityRecord;
   dense?: boolean;
   onRequestMarkDone?: (activity: CrmActivityRecord) => void;
+  accentColor?: string | null;
 }) {
   const href = activityLinkedRecordHref(activity);
   const label = activity.subject || activityTypeLabel(activity.activity_type);
+  const useAccent = Boolean(accentColor);
+  const chipStyle = useAccent
+    ? {
+        borderColor: `color-mix(in srgb, ${accentColor} 45%, white)`,
+        backgroundColor: `color-mix(in srgb, ${accentColor} 14%, white)`,
+        color: `color-mix(in srgb, ${accentColor} 72%, black)`,
+      }
+    : undefined;
+  const iconClass = useAccent ? "h-3 w-3 shrink-0 opacity-90" : "h-3 w-3 shrink-0 text-sky-800";
+  const showMarkDone = Boolean(onRequestMarkDone) && !isGoogleCalendarActivity(activity);
 
   return (
     <div
       className={cn(
-        "group flex items-center gap-1 rounded border border-sky-200 bg-sky-50 text-left text-[11px] text-sky-950",
+        "group flex items-center gap-1 rounded border text-left text-[11px]",
+        !useAccent && "border-sky-200 bg-sky-50 text-sky-950",
         dense ? "px-1.5 py-0.5" : "px-1.5 py-1",
       )}
+      style={chipStyle}
       title={label}
     >
       {href ? (
@@ -112,45 +132,48 @@ function ActivityChip({
           className="flex min-w-0 flex-1 items-center gap-1 hover:underline"
           onClick={(event) => event.stopPropagation()}
         >
-          <ActivityTypeIcon type={activity.activity_type} className="h-3 w-3 shrink-0 text-sky-800" />
+          <ActivityTypeIcon type={activity.activity_type} className={iconClass} />
           <span className="min-w-0 flex-1 truncate font-bold">{label}</span>
         </Link>
       ) : (
         <span className="flex min-w-0 flex-1 items-center gap-1">
-          <ActivityTypeIcon type={activity.activity_type} className="h-3 w-3 shrink-0 text-sky-800" />
+          <ActivityTypeIcon type={activity.activity_type} className={iconClass} />
           <span className="min-w-0 flex-1 truncate font-bold">{label}</span>
         </span>
       )}
-      <button
-        type="button"
-        title="Mark as done"
-        aria-label="Mark as done"
-        className={cn(
-          "flex h-3 w-3 shrink-0 items-center justify-center rounded-full border border-sky-300 bg-white transition-colors",
-          "hover:border-primary hover:bg-primary",
-          "group/mark",
-        )}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          onRequestMarkDone?.(activity);
-        }}
-      >
-        <svg
-          className="h-1.5 w-1.5 text-primary-foreground opacity-0 group-hover/mark:opacity-100"
-          viewBox="0 0 16 16"
-          fill="none"
-          aria-hidden
+      {showMarkDone ? (
+        <button
+          type="button"
+          title="Mark as done"
+          aria-label="Mark as done"
+          className={cn(
+            "group/mark flex h-3 w-3 shrink-0 items-center justify-center rounded-full border bg-white transition-colors",
+            useAccent
+              ? "border-current/30 hover:border-primary hover:bg-primary"
+              : "border-sky-300 hover:border-primary hover:bg-primary",
+          )}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onRequestMarkDone?.(activity);
+          }}
         >
-          <path
-            d="M3.5 8.2l3 3 6-6.5"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
+          <svg
+            className="h-1.5 w-1.5 text-primary-foreground opacity-0 group-hover/mark:opacity-100"
+            viewBox="0 0 16 16"
+            fill="none"
+            aria-hidden
+          >
+            <path
+              d="M3.5 8.2l3 3 6-6.5"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -159,6 +182,7 @@ export function ActivitiesWeekCalendar({
   weekStart,
   activities,
   onRequestMarkDone,
+  myCalendarEventColor,
 }: ActivitiesWeekCalendarProps) {
   const [now, setNow] = useState(() => new Date());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -259,7 +283,13 @@ export function ActivitiesWeekCalendar({
         {byDay.map(({ day, untimed }) => (
           <div key={`allday-${day.toISOString()}`} className="min-h-10 space-y-1 border-r border-border p-1 last:border-r-0">
             {untimed.map((activity) => (
-              <ActivityChip key={activity.id} activity={activity} dense onRequestMarkDone={onRequestMarkDone} />
+              <ActivityChip
+                key={activity.id}
+                activity={activity}
+                dense
+                onRequestMarkDone={onRequestMarkDone}
+                accentColor={isGoogleCalendarActivity(activity) ? myCalendarEventColor : null}
+              />
             ))}
           </div>
         ))}
@@ -302,7 +332,11 @@ export function ActivitiesWeekCalendar({
               const height = Math.max(22, ((endMinutes - startMinutes) / 60) * HOUR_HEIGHT);
               return (
                 <div key={activity.id} className="absolute inset-x-1 z-10" style={{ top, height }}>
-                  <ActivityChip activity={activity} onRequestMarkDone={onRequestMarkDone} />
+                  <ActivityChip
+                    activity={activity}
+                    onRequestMarkDone={onRequestMarkDone}
+                    accentColor={isGoogleCalendarActivity(activity) ? myCalendarEventColor : null}
+                  />
                 </div>
               );
             })}

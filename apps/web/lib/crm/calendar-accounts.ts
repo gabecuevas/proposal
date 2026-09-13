@@ -7,6 +7,31 @@ import {
   refreshGoogleAccessToken,
 } from "@/lib/crm/google-calendar-oauth";
 
+/** Default accent for Google / My Calendar events (distinct from CRM sky chips). */
+export const DEFAULT_MY_CALENDAR_EVENT_COLOR = "#7C3AED";
+
+export const MY_CALENDAR_EVENT_COLOR_PRESETS = [
+  "#7C3AED",
+  "#2563EB",
+  "#059669",
+  "#D97706",
+  "#DC2626",
+  "#DB2777",
+  "#0D9488",
+  "#4F46E5",
+] as const;
+
+export function normalizeCalendarEventColor(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!/^#[0-9A-Fa-f]{6}$/.test(trimmed)) {
+    return null;
+  }
+  return trimmed.toUpperCase();
+}
+
 export type CrmCalendarAccountDto = {
   id: string;
   email: string;
@@ -14,6 +39,7 @@ export type CrmCalendarAccountDto = {
   calendarName: string | null;
   syncStatus: "INACTIVE" | "ACTIVE" | "ERROR";
   lastSyncedAt: string | null;
+  eventColor: string;
   provider: "GOOGLE";
 };
 
@@ -45,6 +71,7 @@ export function serializeCalendarAccount(row: {
   calendar_name: string | null;
   sync_status: "INACTIVE" | "ACTIVE" | "ERROR";
   last_synced_at: Date | null;
+  event_color?: string | null;
   provider: "GOOGLE";
 }): CrmCalendarAccountDto {
   return {
@@ -54,6 +81,7 @@ export function serializeCalendarAccount(row: {
     calendarName: row.calendar_name,
     syncStatus: row.sync_status,
     lastSyncedAt: row.last_synced_at?.toISOString() ?? null,
+    eventColor: normalizeCalendarEventColor(row.event_color) ?? DEFAULT_MY_CALENDAR_EVENT_COLOR,
     provider: row.provider,
   };
 }
@@ -168,6 +196,39 @@ export async function disconnectCalendarAccount(workspaceId: string, userId: str
   await prisma.crmCalendarEvent.deleteMany({ where: { account_id: account.id } });
   await prisma.crmCalendarAccount.delete({ where: { id: account.id } });
   return { id: account.id, email: account.email };
+}
+
+export async function updateCalendarAccount(
+  workspaceId: string,
+  userId: string,
+  accountId: string,
+  input: { eventColor?: string },
+) {
+  ensureCalendarStorage();
+  const account = await prisma.crmCalendarAccount.findFirst({
+    where: { id: accountId, workspace_id: workspaceId, user_id: userId },
+  });
+  if (!account) {
+    throw new Error("Calendar account not found.");
+  }
+
+  const data: { event_color?: string } = {};
+  if (input.eventColor !== undefined) {
+    const color = normalizeCalendarEventColor(input.eventColor);
+    if (!color) {
+      throw new Error("Pick a valid hex color (for example #7C3AED).");
+    }
+    data.event_color = color;
+  }
+
+  if (Object.keys(data).length === 0) {
+    return account;
+  }
+
+  return prisma.crmCalendarAccount.update({
+    where: { id: account.id },
+    data,
+  });
 }
 
 async function resolveCalendarAccessToken(account: {

@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { BarChartPanel } from "@/components/dashboard/bar-chart";
-import { WorkspaceTools } from "@/components/dashboard/workspace-tools";
+import {
+  IconCompleted,
+  IconDeclined,
+  IconEmailSent,
+  IconInProgress,
+  IconViewed,
+} from "@/components/app-shell/shell-icons";
 import { SheetTable, sheetTd, sheetTh, sheetTr } from "@/components/ui/sheet-table";
 import { buildSampleOverview } from "@/lib/dashboard/sample-data";
 import type { DashboardActivityKind, DashboardOverview } from "@/lib/dashboard/types";
@@ -22,43 +28,18 @@ const emptyOverview: DashboardOverview = {
   teamMemberCount: 0,
 };
 
-function IconBolt({ className }: { className?: string }) {
+function IconComment({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M4 5h16v11H10l-4 3v-3H4V5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconDot({ className }: { className?: string }) {
   return (
     <svg className={className} width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z" />
-    </svg>
-  );
-}
-
-function IconCheck({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M4 12.5l5 5L20 6.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function IconCross({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function IconSend({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M21 3L2 10.5l7 2.5 2.5 7L21 3z" />
-    </svg>
-  );
-}
-
-function IconEye({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z" stroke="currentColor" strokeWidth="1.6" />
-      <circle cx="12" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="12" cy="12" r="4" />
     </svg>
   );
 }
@@ -66,10 +47,7 @@ function IconEye({ className }: { className?: string }) {
 function IconActivity({ className }: { className?: string }) {
   return (
     <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M4 18a14 14 0 0114 14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" transform="translate(0 -10)" />
-      <path d="M4 13a9 9 0 019 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M4 7a15 15 0 0115 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <circle cx="5" cy="19" r="1.6" fill="currentColor" />
+      <path d="M3 12h4l2.5-5 3 10L16 9.5 18 12h3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -98,45 +76,29 @@ function formatTimestamp(iso: string): string {
 }
 
 const activityBadgeClass: Record<DashboardActivityKind, string> = {
-  View: "bg-sky-100 text-sky-700",
-  Sent: "bg-indigo-100 text-indigo-700",
-  Signed: "bg-emerald-100 text-emerald-700",
-  Paid: "bg-emerald-100 text-emerald-700",
-  Comment: "bg-amber-100 text-amber-800",
-  Approval: "bg-violet-100 text-violet-700",
+  View: "bg-primary/10 text-primary",
+  Sent: "bg-slate-100 text-slate-700",
+  Signed: "bg-emerald-50 text-emerald-800",
+  Paid: "bg-emerald-50 text-emerald-800",
+  Comment: "bg-amber-50 text-amber-900",
+  Approval: "bg-slate-100 text-slate-700",
   Event: "bg-slate-100 text-slate-600",
 };
-
-function IconComment({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M4 5h16v11H10l-4 3v-3H4V5z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function IconDot({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <circle cx="12" cy="12" r="4" />
-    </svg>
-  );
-}
 
 function activityIcon(kind: DashboardActivityKind) {
   switch (kind) {
     case "View":
-      return <IconEye className="h-3 w-3" />;
+      return <IconViewed className="h-3.5 w-3.5" />;
     case "Sent":
-      return <IconSend className="h-3 w-3" />;
+      return <IconEmailSent className="h-3.5 w-3.5" />;
     case "Signed":
     case "Paid":
     case "Approval":
-      return <IconCheck />;
+      return <IconCompleted className="h-3.5 w-3.5" />;
     case "Comment":
-      return <IconComment />;
+      return <IconComment className="h-3.5 w-3.5" />;
     default:
-      return <IconDot />;
+      return <IconDot className="h-3.5 w-3.5" />;
   }
 }
 
@@ -188,42 +150,44 @@ export default function AppHomePage() {
       count: totals.inProgress.count,
       label: "In Progress",
       value: totals.inProgress.value,
-      icon: <IconBolt />,
-      tone: "text-amber-600",
+      icon: <IconInProgress className="h-3.5 w-3.5" />,
+      tone: "text-amber-700",
+      chip: "bg-amber-50 border-amber-200",
     },
     {
       key: "accepted",
       count: totals.accepted.count,
       label: "Accepted",
       value: totals.accepted.value,
-      icon: <IconCheck />,
-      tone: "text-emerald-600",
+      icon: <IconCompleted className="h-3.5 w-3.5" />,
+      tone: "text-emerald-700",
+      chip: "bg-emerald-50 border-emerald-200",
     },
     {
       key: "declined",
       count: totals.declined.count,
       label: "Declined",
       value: totals.declined.value,
-      icon: <IconCross />,
-      tone: "text-red-600",
+      icon: <IconDeclined className="h-3.5 w-3.5" />,
+      tone: "text-red-700",
+      chip: "bg-red-50 border-red-200",
     },
   ];
 
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-auto bg-surface">
       {showSample ? (
-        <div className="flex shrink-0 items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm">
-          <span className="rounded bg-amber-200/70 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-900">
+        <div className="flex shrink-0 items-center gap-3 border-b border-border bg-slate-50 px-4 py-2.5 text-sm">
+          <span className="rounded-md border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-primary">
             Sample Data
           </span>
-          <p className="min-w-0 flex-1 text-amber-900/90">
-            These figures are illustrative. Close this banner to see your workspace&apos;s real
-            numbers.
+          <p className="min-w-0 flex-1 text-muted">
+            These figures are illustrative. Close this banner to see your workspace&apos;s real numbers.
           </p>
           <button
             type="button"
             onClick={dismissSample}
-            className="shrink-0 rounded p-1 text-amber-800 transition-colors hover:bg-amber-100"
+            className="shrink-0 rounded-md p-1 text-muted transition-colors hover:bg-slate-100 hover:text-foreground"
             aria-label="Dismiss sample data"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -243,18 +207,28 @@ export default function AppHomePage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 border-b border-border sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 border-b border-border bg-[#f4f6f9] p-4 sm:grid-cols-3">
         {stats.map((stat) => (
           <div
             key={stat.key}
-            className="border-b border-border px-3 py-4 text-center last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0"
+            className="rounded-lg border border-border bg-surface px-4 py-5 text-center shadow-[0_1px_2px_rgba(30,58,95,0.04)]"
           >
-            <p className="text-3xl font-semibold tabular-nums text-foreground">{stat.count}</p>
-            <p className={`mt-1 flex items-center justify-center gap-1.5 text-xs ${stat.tone}`}>
+            <p
+              className="text-4xl tabular-nums tracking-tight text-foreground"
+              style={{
+                fontFamily: 'Menlo, Monaco, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace',
+                fontWeight: 700,
+              }}
+            >
+              {stat.count}
+            </p>
+            <p
+              className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${stat.chip} ${stat.tone}`}
+            >
               {stat.icon}
               {stat.label}
             </p>
-            <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">
+            <p className="mt-2.5 text-sm font-semibold tabular-nums text-foreground">
               {formatMoney(stat.value, currency)}
             </p>
           </div>
@@ -262,13 +236,13 @@ export default function AppHomePage() {
       </div>
 
       <div className="grid border-b border-border lg:grid-cols-2">
-        <BarChartPanel title="Deliveries" icon={<IconSend />} points={data.series.deliveries} />
-        <BarChartPanel title="Views" icon={<IconEye />} points={data.series.views} />
+        <BarChartPanel title="Deliveries" icon={<IconEmailSent className="h-4 w-4" />} points={data.series.deliveries} />
+        <BarChartPanel title="Views" icon={<IconViewed className="h-4 w-4" />} points={data.series.views} />
       </div>
 
       <section>
         <header className="flex items-center gap-2 border-b border-border bg-slate-50 px-3 py-2 text-[13px] font-semibold text-foreground">
-          <span className="text-muted" aria-hidden>
+          <span className="text-primary" aria-hidden>
             <IconActivity />
           </span>
           Activity
@@ -296,7 +270,7 @@ export default function AppHomePage() {
               <tr key={item.id} className={sheetTr()}>
                 <td className={sheetTd("whitespace-nowrap")}>
                   <span
-                    className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${activityBadgeClass[item.kind]}`}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium ${activityBadgeClass[item.kind]}`}
                   >
                     {activityIcon(item.kind)}
                     {item.kind}
@@ -318,8 +292,6 @@ export default function AppHomePage() {
           </tbody>
         </SheetTable>
       </section>
-
-      <WorkspaceTools />
     </div>
   );
 }

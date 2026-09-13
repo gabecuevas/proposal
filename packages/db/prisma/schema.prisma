@@ -87,6 +87,8 @@ model Template {
   pricing_json    Json?
   editor_json    Json
   schema_version Int      @default(1)
+  is_sample             Boolean  @default(false)
+  sample_folder_slug    String?
   created_by     String
   updated_by     String?
   updated_at     DateTime @updatedAt
@@ -98,6 +100,7 @@ model Template {
   shares    TemplateShare[]
 
   @@index([workspace_id, folder_id])
+  @@index([is_sample, sample_folder_slug])
 }
 
 model TemplateShare {
@@ -905,6 +908,7 @@ model CrmCalendarAccount {
   sync_status            CrmCalendarSyncStatus    @default(INACTIVE)
   last_synced_at         DateTime?
   sync_token             String?
+  event_color            String                   @default("#7C3AED")
   oauth_access_token     String?
   oauth_refresh_token    String?
   oauth_expires_at       DateTime?
