@@ -12,13 +12,13 @@
 }
 
 :root {
-  --background: #f6f8ff;
-  --foreground: #111430;
-  --primary: #5b4ff7;
+  --background: #f7f8fa;
+  --foreground: #0f2744;
+  --primary: #1e3a5f;
   --primary-foreground: #ffffff;
   --surface: #ffffff;
-  --muted: #63698d;
-  --border: #d8ddf4;
+  --muted: #5b6b7c;
+  --border: #e2e8f0;
 }
 
 * {
@@ -28,10 +28,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 10% 0%, rgba(91, 79, 247, 0.16), transparent 35%),
-    radial-gradient(circle at 90% 0%, rgba(99, 102, 241, 0.12), transparent 40%),
-    var(--background);
+  background: var(--background);
+  color: var(--foreground);
 }
 
 /* Logged-in app: light enterprise SaaS (sidebar + canvas) */
@@ -775,14 +773,72 @@ body {
 }
 
 .glass-card {
-  background: color-mix(in oklab, var(--surface) 92%, #eef1ff 8%);
+  background: color-mix(in oklab, var(--surface) 92%, #eef2f6 8%);
   border: 1px solid color-mix(in oklab, var(--border) 80%, #ffffff 20%);
-  box-shadow: 0 20px 40px rgba(43, 56, 125, 0.08);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.06);
   backdrop-filter: blur(6px);
+}
+
+.marketing-shell {
+  background:
+    radial-gradient(70% 50% at 50% -10%, rgba(30, 58, 95, 0.06), transparent 55%),
+    var(--background);
+  color: #0f2744;
 }
 
 .marketing-hero {
   background:
-    radial-gradient(75% 60% at 50% 10%, rgba(91, 79, 247, 0.14) 0%, transparent 60%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(246, 248, 255, 0.8) 100%);
+    radial-gradient(75% 60% at 50% 10%, rgba(30, 58, 95, 0.08) 0%, transparent 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(247, 248, 250, 0.9) 100%);
+}
+
+@keyframes marketing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes marketing-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes marketing-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(30, 58, 95, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(30, 58, 95, 0.04);
+  }
+}
+
+.marketing-rise {
+  animation: marketing-rise 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.marketing-float {
+  animation: marketing-float 6s ease-in-out infinite;
+}
+
+.marketing-pulse {
+  animation: marketing-pulse 3.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marketing-rise,
+  .marketing-float,
+  .marketing-pulse {
+    animation: none;
+  }
 }

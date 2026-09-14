@@ -97,14 +97,14 @@ function AppShellChrome({ children, userEmail, userName, userInitials }: AppShel
   }
 
   return (
-    <div className="app-theme flex min-h-screen w-full flex-col bg-background">
+    <div className="app-theme flex h-screen w-full flex-col overflow-hidden bg-background">
       <AppTopBar
         activeSectionId={section.id}
         userInitials={resolvedInitials}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
       />
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         <AppSidebar
           section={section}
           pathname={pathname}
@@ -125,7 +125,7 @@ function AppShellChrome({ children, userEmail, userName, userInitials }: AppShel
             className="fixed inset-0 top-14 z-30 bg-slate-900/20 md:hidden"
           />
         ) : null}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <AppBreadcrumbs
             section={section}
             pathname={pathname}

@@ -70,6 +70,10 @@ function weekdayAbbrev(date: Date): string {
   return date.toLocaleDateString(undefined, { weekday: "short" });
 }
 
+function dayKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
 export function startOfWeekSunday(date: Date): Date {
   const start = startOfLocalDay(date);
   start.setDate(start.getDate() - start.getDay());
@@ -81,11 +85,16 @@ export function weekDaysFrom(weekStart: Date): Date[] {
 }
 
 type ActivitiesWeekCalendarProps = {
-  weekStart: Date;
+  /** First day shown in the grid. */
+  rangeStart?: Date;
+  /** 1 = day view, 7 = week view. */
+  dayCount?: 1 | 7;
   activities: CrmActivityRecord[];
   onRequestMarkDone?: (activity: CrmActivityRecord) => void;
   /** Accent for Google / My Calendar synced events (`gcal:` ids). */
   myCalendarEventColor?: string | null;
+  /** @deprecated Prefer rangeStart. */
+  weekStart?: Date;
 };
 
 function isGoogleCalendarActivity(activity: CrmActivityRecord): boolean {
@@ -179,20 +188,36 @@ function ActivityChip({
 }
 
 export function ActivitiesWeekCalendar({
+  rangeStart,
   weekStart,
+  dayCount = 7,
   activities,
   onRequestMarkDone,
   myCalendarEventColor,
 }: ActivitiesWeekCalendarProps) {
+  const startKey = dayKey(rangeStart ?? weekStart ?? new Date());
+  const start = useMemo(
+    () => startOfLocalDay(rangeStart ?? weekStart ?? new Date()),
+    // dayKey captures calendar-day identity when parent recreates Date objects.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- startKey is the intentional dependency
+    [startKey, dayCount],
+  );
   const [now, setNow] = useState(() => new Date());
   const scrollRef = useRef<HTMLDivElement>(null);
   const didScrollRef = useRef(false);
-  const days = useMemo(() => weekDaysFrom(weekStart), [weekStart]);
+  const days = useMemo(
+    () => Array.from({ length: dayCount }, (_, index) => addDays(startOfLocalDay(start), index)),
+    [dayCount, start],
+  );
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    didScrollRef.current = false;
+  }, [start, dayCount]);
 
   useEffect(() => {
     if (!scrollRef.current) {
@@ -205,8 +230,7 @@ export function ActivitiesWeekCalendar({
     const focusHour = days.some((day) => sameLocalDay(day, now))
       ? Math.max(0, now.getHours() - 1)
       : 8;
-    // Offset past sticky header + all-day band roughly.
-    scrollRef.current.scrollTop = 72 + focusHour * HOUR_HEIGHT;
+    scrollRef.current.scrollTop = focusHour * HOUR_HEIGHT;
   }, [days, now]);
 
   const byDay = useMemo(() => {
@@ -240,32 +264,32 @@ export function ActivitiesWeekCalendar({
 
   const nowTop = (minutesSinceMidnight(now) / 60) * HOUR_HEIGHT;
   const showNow = days.some((day) => sameLocalDay(day, now));
+  const columnTemplate = `${GUTTER_WIDTH}px repeat(${dayCount}, minmax(0, 1fr))`;
 
   return (
-    <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto bg-white">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-white">
+      {/* Pinned outside the scrollport so Sun–Sat stay visible while hours scroll */}
       <div
-        className="sticky top-0 z-30 grid border-b border-border bg-white"
-        style={{ gridTemplateColumns: `${GUTTER_WIDTH}px repeat(7, minmax(0, 1fr))` }}
+        className="z-30 grid shrink-0 border-b border-border bg-white"
+        style={{ gridTemplateColumns: columnTemplate }}
       >
-        <div className="flex h-8 items-center border-r border-border px-2">
-          <p className="text-sm font-bold uppercase text-foreground">{monthAbbrev(weekStart)}</p>
+        <div className="flex h-9 items-center border-r border-border px-2">
+          <p className="text-sm font-bold uppercase text-foreground">{monthAbbrev(days[0]!)}</p>
         </div>
         {days.map((day) => {
           const isToday = sameLocalDay(day, now);
           return (
             <div
               key={day.toISOString()}
-              className="flex h-8 items-center justify-center gap-1 border-r border-border px-1 last:border-r-0"
+              className="flex h-9 items-center justify-center gap-1.5 border-r border-border px-1 last:border-r-0"
             >
               <span className="whitespace-nowrap text-sm font-bold text-foreground">
                 {weekdayAbbrev(day)}
               </span>
               <span
                 className={cn(
-                  "inline-flex h-5 w-5 items-center justify-center text-sm font-bold",
-                  isToday
-                    ? "rounded-full bg-primary text-primary-foreground"
-                    : "text-foreground",
+                  "inline-flex h-6 w-6 items-center justify-center text-sm font-bold",
+                  isToday ? "rounded-full bg-primary text-primary-foreground" : "text-foreground",
                 )}
               >
                 {day.getDate()}
@@ -275,88 +299,92 @@ export function ActivitiesWeekCalendar({
         })}
       </div>
 
-      <div
-        className="grid border-b border-border bg-slate-50/70"
-        style={{ gridTemplateColumns: `${GUTTER_WIDTH}px repeat(7, minmax(0, 1fr))` }}
-      >
-        <div className="border-r border-border px-1 py-2 text-[10px] font-semibold text-muted">All day</div>
-        {byDay.map(({ day, untimed }) => (
-          <div key={`allday-${day.toISOString()}`} className="min-h-10 space-y-1 border-r border-border p-1 last:border-r-0">
-            {untimed.map((activity) => (
-              <ActivityChip
-                key={activity.id}
-                activity={activity}
-                dense
-                onRequestMarkDone={onRequestMarkDone}
-                accentColor={isGoogleCalendarActivity(activity) ? myCalendarEventColor : null}
-              />
-            ))}
-          </div>
-        ))}
-      </div>
-
-      <div
-        className="relative grid"
-        style={{
-          gridTemplateColumns: `${GUTTER_WIDTH}px repeat(7, minmax(0, 1fr))`,
-          height: 24 * HOUR_HEIGHT,
-        }}
-      >
-        <div className="relative border-r border-border">
-          {HOURS.map((hour) => (
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="grid border-b border-border bg-slate-50/70" style={{ gridTemplateColumns: columnTemplate }}>
+          <div className="border-r border-border px-1 py-2 text-[10px] font-semibold text-muted">All day</div>
+          {byDay.map(({ day, untimed }) => (
             <div
-              key={hour}
-              className="absolute right-2 -translate-y-1/2 text-[10px] text-muted"
-              style={{ top: hour * HOUR_HEIGHT }}
+              key={`allday-${day.toISOString()}`}
+              className="min-h-10 space-y-1 border-r border-border p-1 last:border-r-0"
             >
-              {formatHourLabel(hour)}
+              {untimed.map((activity) => (
+                <ActivityChip
+                  key={activity.id}
+                  activity={activity}
+                  dense
+                  onRequestMarkDone={onRequestMarkDone}
+                  accentColor={isGoogleCalendarActivity(activity) ? myCalendarEventColor : null}
+                />
+              ))}
             </div>
           ))}
         </div>
 
-        {byDay.map(({ day, timed }) => (
-          <div key={`col-${day.toISOString()}`} className="relative border-r border-border last:border-r-0">
+        <div
+          className="relative grid"
+          style={{
+            gridTemplateColumns: columnTemplate,
+            height: 24 * HOUR_HEIGHT,
+          }}
+        >
+          <div className="relative border-r border-border">
             {HOURS.map((hour) => (
               <div
                 key={hour}
-                className="absolute inset-x-0 border-t border-border/70"
-                style={{ top: hour * HOUR_HEIGHT, height: HOUR_HEIGHT }}
-              />
+                className="absolute right-2 -translate-y-1/2 text-[10px] text-muted"
+                style={{ top: hour * HOUR_HEIGHT }}
+              >
+                {formatHourLabel(hour)}
+              </div>
             ))}
-            {timed.map((activity) => {
-              const due = new Date(activity.due_at!);
-              const end = activity.end_at ? new Date(activity.end_at) : new Date(due.getTime() + 30 * 60_000);
-              const startMinutes = Math.max(0, minutesSinceMidnight(due));
-              const endMinutes = Math.min(24 * 60, minutesSinceMidnight(end) || startMinutes + 30);
-              const top = (startMinutes / 60) * HOUR_HEIGHT;
-              const height = Math.max(22, ((endMinutes - startMinutes) / 60) * HOUR_HEIGHT);
-              return (
-                <div key={activity.id} className="absolute inset-x-1 z-10" style={{ top, height }}>
-                  <ActivityChip
-                    activity={activity}
-                    onRequestMarkDone={onRequestMarkDone}
-                    accentColor={isGoogleCalendarActivity(activity) ? myCalendarEventColor : null}
-                  />
-                </div>
-              );
-            })}
           </div>
-        ))}
 
-        {showNow ? (
-          <div
-            className="pointer-events-none absolute z-20"
-            style={{
-              left: GUTTER_WIDTH,
-              right: 0,
-              top: nowTop,
-            }}
-          >
-            <div className="relative h-px bg-red-500">
-              <span className="absolute -left-1.5 -top-1.5 h-3 w-3 rounded-full bg-red-500" />
+          {byDay.map(({ day, timed }) => (
+            <div key={`col-${day.toISOString()}`} className="relative border-r border-border last:border-r-0">
+              {HOURS.map((hour) => (
+                <div
+                  key={hour}
+                  className="absolute inset-x-0 border-t border-border/70"
+                  style={{ top: hour * HOUR_HEIGHT, height: HOUR_HEIGHT }}
+                />
+              ))}
+              {timed.map((activity) => {
+                const due = new Date(activity.due_at!);
+                const end = activity.end_at
+                  ? new Date(activity.end_at)
+                  : new Date(due.getTime() + 30 * 60_000);
+                const startMinutes = Math.max(0, minutesSinceMidnight(due));
+                const endMinutes = Math.min(24 * 60, minutesSinceMidnight(end) || startMinutes + 30);
+                const top = (startMinutes / 60) * HOUR_HEIGHT;
+                const height = Math.max(22, ((endMinutes - startMinutes) / 60) * HOUR_HEIGHT);
+                return (
+                  <div key={activity.id} className="absolute inset-x-1 z-10" style={{ top, height }}>
+                    <ActivityChip
+                      activity={activity}
+                      onRequestMarkDone={onRequestMarkDone}
+                      accentColor={isGoogleCalendarActivity(activity) ? myCalendarEventColor : null}
+                    />
+                  </div>
+                );
+              })}
             </div>
-          </div>
-        ) : null}
+          ))}
+
+          {showNow ? (
+            <div
+              className="pointer-events-none absolute z-20"
+              style={{
+                left: GUTTER_WIDTH,
+                right: 0,
+                top: nowTop,
+              }}
+            >
+              <div className="relative h-px bg-red-500">
+                <span className="absolute -left-1.5 -top-1.5 h-3 w-3 rounded-full bg-red-500" />
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
