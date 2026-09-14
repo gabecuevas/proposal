@@ -126,6 +126,7 @@ export const appSections: AppSection[] = [
     items: [
       { label: "Workspace", href: "/app/settings" },
       { label: "Integrations", href: "/app/settings/integrations" },
+      { label: "Marketing templates", href: "/app/settings/marketing-templates" },
       { label: "All users", href: "/app/settings/users" },
       { label: "Calendar Sync", href: "/app/settings/integrations/calendar" },
       { label: "Email Sync", href: "/app/settings/integrations/email" },

@@ -8,6 +8,7 @@ import {
   ActivitiesWeekCalendar,
   startOfWeekSunday,
 } from "@/components/crm/activities-week-calendar";
+import { ActivitiesMonthCalendar } from "@/components/crm/activities-month-calendar";
 import { ActivityTypeIcon } from "@/components/crm/activity-type-icon";
 import { MarkActivityDoneModal } from "@/components/crm/mark-activity-done-modal";
 import { MonthCalendarPicker } from "@/components/crm/month-calendar-picker";
@@ -38,6 +39,7 @@ type WorkspaceMember = {
 };
 
 type ViewMode = "calendar" | "list";
+type CalendarSpan = "day" | "week" | "month";
 type TypeFilter = "all" | CrmActivityType;
 type PeriodFilter = "todo" | "overdue" | "today" | "tomorrow" | "this_week" | "next_week" | "all";
 
@@ -88,6 +90,27 @@ function formatWeekRange(weekStart: Date): string {
     year: "numeric",
   });
   return `${startLabel} – ${endLabel}`;
+}
+
+function formatDayLabel(day: Date): string {
+  return day.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatMonthLabel(day: Date): string {
+  return day.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+}
+
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date: Date, months: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
 }
 
 function toDateKey(date: Date): string {
@@ -191,7 +214,8 @@ function googleEventToActivity(event: CrmCalendarEventDto, currentUserId: string
 
 export default function ContactsCalendarPage() {
   const [view, setView] = useState<ViewMode>("calendar");
-  const [weekStart, setWeekStart] = useState(() => startOfWeekSunday(new Date()));
+  const [calendarSpan, setCalendarSpan] = useState<CalendarSpan>("week");
+  const [anchorDate, setAnchorDate] = useState(() => startOfLocalDay(new Date()));
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("todo");
   const [activities, setActivities] = useState<CrmActivityRecord[]>([]);
@@ -204,13 +228,42 @@ export default function ContactsCalendarPage() {
   const [myCalendarEventColor, setMyCalendarEventColor] = useState(DEFAULT_MY_CALENDAR_EVENT_COLOR);
   const [error, setError] = useState("");
   const [weekPickerOpen, setWeekPickerOpen] = useState(false);
+  const [spanMenuOpen, setSpanMenuOpen] = useState(false);
   const weekPickerRef = useRef<HTMLDivElement>(null);
+  const spanMenuRef = useRef<HTMLDivElement>(null);
   const [markDoneTarget, setMarkDoneTarget] = useState<CrmActivityRecord | null>(null);
   const [markDoneSaving, setMarkDoneSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
   const columnPickerId = useId();
+
+  const weekStart = useMemo(() => startOfWeekSunday(anchorDate), [anchorDate]);
+  const calendarTitle = useMemo(() => {
+    if (calendarSpan === "day") {
+      return formatDayLabel(anchorDate);
+    }
+    if (calendarSpan === "month") {
+      return formatMonthLabel(anchorDate);
+    }
+    return formatWeekRange(weekStart);
+  }, [anchorDate, calendarSpan, weekStart]);
+
+  function goToday() {
+    setAnchorDate(startOfLocalDay(new Date()));
+  }
+
+  function shiftCalendar(direction: -1 | 1) {
+    setAnchorDate((current) => {
+      if (calendarSpan === "day") {
+        return addDays(current, direction);
+      }
+      if (calendarSpan === "month") {
+        return startOfMonth(addMonths(startOfMonth(current), direction));
+      }
+      return addDays(startOfWeekSunday(current), direction * 7);
+    });
+  }
 
   const listColumns = useMemo<ActivityListColumn[]>(
     () => [
@@ -427,17 +480,22 @@ export default function ContactsCalendarPage() {
   }, []);
 
   useEffect(() => {
-    if (!weekPickerOpen) {
+    if (!weekPickerOpen && !spanMenuOpen) {
       return;
     }
     function onPointerDown(event: PointerEvent) {
-      if (!weekPickerRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (weekPickerOpen && !weekPickerRef.current?.contains(target)) {
         setWeekPickerOpen(false);
+      }
+      if (spanMenuOpen && !spanMenuRef.current?.contains(target)) {
+        setSpanMenuOpen(false);
       }
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setWeekPickerOpen(false);
+        setSpanMenuOpen(false);
       }
     }
     document.addEventListener("pointerdown", onPointerDown);
@@ -446,7 +504,31 @@ export default function ContactsCalendarPage() {
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [weekPickerOpen]);
+  }, [spanMenuOpen, weekPickerOpen]);
+
+  useEffect(() => {
+    if (view !== "calendar") {
+      return;
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === "d") {
+        setCalendarSpan("day");
+      } else if (key === "w") {
+        setCalendarSpan("week");
+      } else if (key === "m") {
+        setCalendarSpan("month");
+      } else if (key === "t") {
+        goToday();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [view]);
 
   const loadRange = useCallback(async () => {
     if (!assigneeUserId) {
@@ -458,8 +540,18 @@ export default function ContactsCalendarPage() {
       let to: Date;
       let openOnly = false;
       if (view === "calendar") {
-        from = weekStart;
-        to = addDays(weekStart, 7);
+        if (calendarSpan === "day") {
+          from = startOfLocalDay(anchorDate);
+          to = addDays(from, 1);
+        } else if (calendarSpan === "month") {
+          const monthStart = startOfMonth(anchorDate);
+          // Include leading/trailing grid days so month cells have data.
+          from = addDays(monthStart, -monthStart.getDay());
+          to = addDays(from, 42);
+        } else {
+          from = weekStart;
+          to = addDays(weekStart, 7);
+        }
         openOnly = true;
       } else {
         const bounds = periodBounds(periodFilter);
@@ -502,7 +594,7 @@ export default function ContactsCalendarPage() {
     } catch {
       setError("Failed to load activities.");
     }
-  }, [assigneeUserId, currentUserId, periodFilter, view, weekStart]);
+  }, [anchorDate, assigneeUserId, calendarSpan, currentUserId, periodFilter, view, weekStart]);
 
   useEffect(() => {
     void loadRange();
@@ -573,33 +665,130 @@ export default function ContactsCalendarPage() {
   ];
 
   return (
-    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col bg-surface">
-      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold text-foreground">Activities</h1>
-            <span
-              className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground"
-              title="Calendar and list views for CRM activities"
-            >
-              i
-            </span>
-          </div>
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-surface">
+      {/* Google-style calendar chrome — sits directly under Contacts / Calendar breadcrumb */}
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border bg-surface px-4 py-2.5">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          {view === "calendar" ? (
+            <>
+              <button
+                type="button"
+                onClick={goToday}
+                className="rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium text-foreground hover:bg-slate-50"
+              >
+                Today
+              </button>
+              <div className="inline-flex items-center rounded-md border border-border bg-white">
+                <button
+                  type="button"
+                  className="px-2.5 py-1.5 text-sm text-muted hover:bg-slate-50"
+                  onClick={() => shiftCalendar(-1)}
+                  aria-label={
+                    calendarSpan === "day"
+                      ? "Previous day"
+                      : calendarSpan === "month"
+                        ? "Previous month"
+                        : "Previous week"
+                  }
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  className="border-l border-border px-2.5 py-1.5 text-sm text-muted hover:bg-slate-50"
+                  onClick={() => shiftCalendar(1)}
+                  aria-label={
+                    calendarSpan === "day"
+                      ? "Next day"
+                      : calendarSpan === "month"
+                        ? "Next month"
+                        : "Next week"
+                  }
+                >
+                  ›
+                </button>
+              </div>
+              <div ref={weekPickerRef} className="relative min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setWeekPickerOpen((open) => !open)}
+                  aria-haspopup="dialog"
+                  aria-expanded={weekPickerOpen}
+                  className="inline-flex max-w-full items-center gap-1.5 truncate rounded-md px-1 py-1 text-base font-semibold text-foreground hover:bg-slate-50"
+                >
+                  <span className="truncate">{calendarTitle}</span>
+                  <span className="text-sm font-normal text-muted">▾</span>
+                </button>
+                {weekPickerOpen ? (
+                  <div className="absolute left-0 top-full z-40 mt-1 rounded-md border border-border bg-white shadow-lg">
+                    <MonthCalendarPicker
+                      value={toDateKey(anchorDate)}
+                      onChange={(next) => {
+                        const [year, month, day] = next.split("-").map(Number);
+                        setAnchorDate(startOfLocalDay(new Date(year!, month! - 1, day)));
+                        setWeekPickerOpen(false);
+                      }}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-semibold text-foreground">Activities</h1>
+              <p className="text-sm text-muted">{filtered.length} activities</p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {view === "calendar" ? (
+            <div ref={spanMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setSpanMenuOpen((open) => !open)}
+                aria-haspopup="menu"
+                aria-expanded={spanMenuOpen}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-sm font-medium text-foreground hover:bg-slate-50"
+              >
+                {calendarSpan === "day" ? "Day" : calendarSpan === "month" ? "Month" : "Week"}
+                <span className="text-muted">▾</span>
+              </button>
+              {spanMenuOpen ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-40 mt-1 min-w-[9rem] rounded-md border border-border bg-white py-1 shadow-lg"
+                >
+                  {(
+                    [
+                      { id: "day", label: "Day", shortcut: "D" },
+                      { id: "week", label: "Week", shortcut: "W" },
+                      { id: "month", label: "Month", shortcut: "M" },
+                    ] as const
+                  ).map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="menuitem"
+                      className={cn(
+                        "flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-slate-50",
+                        calendarSpan === option.id ? "font-semibold text-primary" : "text-foreground",
+                      )}
+                      onClick={() => {
+                        setCalendarSpan(option.id);
+                        setSpanMenuOpen(false);
+                      }}
+                    >
+                      <span>{option.label}</span>
+                      <span className="text-xs text-muted">{option.shortcut}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="inline-flex rounded-md border border-border bg-white p-0.5">
-            <button
-              type="button"
-              title="List view"
-              aria-label="List view"
-              onClick={() => setView("list")}
-              className={cn(
-                "inline-flex h-8 w-8 items-center justify-center rounded",
-                view === "list" ? "bg-primary text-primary-foreground" : "text-muted hover:bg-slate-50",
-              )}
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path d="M5 7h14M5 12h14M5 17h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-            </button>
             <button
               type="button"
               title="Calendar view"
@@ -615,65 +804,21 @@ export default function ContactsCalendarPage() {
                 <path d="M8 3.5v3M16 3.5v3M3.5 9.5h17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
               </svg>
             </button>
+            <button
+              type="button"
+              title="List view"
+              aria-label="List view"
+              onClick={() => setView("list")}
+              className={cn(
+                "inline-flex h-8 w-8 items-center justify-center rounded",
+                view === "list" ? "bg-primary text-primary-foreground" : "text-muted hover:bg-slate-50",
+              )}
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d="M5 7h14M5 12h14M5 17h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {view === "calendar" ? (
-            <>
-              <div ref={weekPickerRef} className="relative">
-                <button
-                  type="button"
-                  onClick={() => setWeekPickerOpen((open) => !open)}
-                  aria-haspopup="dialog"
-                  aria-expanded={weekPickerOpen}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-sm text-foreground hover:bg-slate-50"
-                >
-                  <span>{formatWeekRange(weekStart)}</span>
-                  <span className="text-muted">▾</span>
-                </button>
-                {weekPickerOpen ? (
-                  <div className="absolute right-0 top-full z-40 mt-1 rounded-md border border-border bg-white shadow-lg">
-                    <MonthCalendarPicker
-                      value={toDateKey(weekStart)}
-                      onChange={(next) => {
-                        const [year, month, day] = next.split("-").map(Number);
-                        setWeekStart(startOfWeekSunday(new Date(year!, month! - 1, day)));
-                        setWeekPickerOpen(false);
-                      }}
-                    />
-                  </div>
-                ) : null}
-              </div>
-              <div className="inline-flex items-center rounded-md border border-border bg-white">
-                <button
-                  type="button"
-                  className="px-2 py-1.5 text-sm text-muted hover:bg-slate-50"
-                  onClick={() => setWeekStart((value) => addDays(value, -7))}
-                  aria-label="Previous week"
-                >
-                  ‹
-                </button>
-                <button
-                  type="button"
-                  className="border-x border-border px-2.5 py-1.5 text-sm text-foreground hover:bg-slate-50"
-                  onClick={() => setWeekStart(startOfWeekSunday(new Date()))}
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  className="px-2 py-1.5 text-sm text-muted hover:bg-slate-50"
-                  onClick={() => setWeekStart((value) => addDays(value, 7))}
-                  aria-label="Next week"
-                >
-                  ›
-                </button>
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-muted">{filtered.length} activities</p>
-          )}
 
           <select
             className="h-9 rounded-md border border-border bg-white px-2 text-sm"
@@ -686,24 +831,6 @@ export default function ContactsCalendarPage() {
               </option>
             ))}
           </select>
-
-          <Link
-            href="/app/settings/integrations/calendar"
-            className={cn(
-              "rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide hover:opacity-90",
-              calendarSyncStatus === "ACTIVE"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                : calendarSyncStatus === "ERROR"
-                  ? "border-red-200 bg-red-50 text-red-700"
-                  : "border-red-200 bg-red-50 text-red-700",
-            )}
-          >
-            {calendarSyncStatus === "ACTIVE"
-              ? "Sync active"
-              : calendarSyncStatus === "ERROR"
-                ? "Sync error"
-                : "Sync inactive"}
-          </Link>
         </div>
       </div>
 
@@ -750,16 +877,34 @@ export default function ContactsCalendarPage() {
       {error ? <p className="shrink-0 px-4 py-2 text-sm text-red-600">{error}</p> : null}
 
       {view === "calendar" ? (
-        <ActivitiesWeekCalendar
-          weekStart={weekStart}
-          activities={filtered}
-          myCalendarEventColor={myCalendarEventColor}
-          onRequestMarkDone={(activity) => {
-            if (!isGoogleCalendarActivity(activity)) {
-              setMarkDoneTarget(activity);
-            }
-          }}
-        />
+        calendarSpan === "month" ? (
+          <ActivitiesMonthCalendar
+            monthAnchor={anchorDate}
+            activities={filtered}
+            myCalendarEventColor={myCalendarEventColor}
+            onSelectDay={(day) => {
+              setAnchorDate(day);
+              setCalendarSpan("day");
+            }}
+            onRequestMarkDone={(activity) => {
+              if (!isGoogleCalendarActivity(activity)) {
+                setMarkDoneTarget(activity);
+              }
+            }}
+          />
+        ) : (
+          <ActivitiesWeekCalendar
+            rangeStart={calendarSpan === "day" ? anchorDate : weekStart}
+            dayCount={calendarSpan === "day" ? 1 : 7}
+            activities={filtered}
+            myCalendarEventColor={myCalendarEventColor}
+            onRequestMarkDone={(activity) => {
+              if (!isGoogleCalendarActivity(activity)) {
+                setMarkDoneTarget(activity);
+              }
+            }}
+          />
+        )
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
           <table

@@ -20,9 +20,11 @@ export async function GET(request: NextRequest) {
 
     const [counts, templates] = await Promise.all([
       countSampleTemplatesByFolder(),
-      folder
-        ? listSampleTemplates({ folderSlug: folder, query: q, limit: 200 })
-        : Promise.resolve([]),
+      listSampleTemplates({
+        folderSlug: folder,
+        query: q,
+        limit: Number(url.searchParams.get("limit") ?? 200) || 200,
+      }),
     ]);
 
     const folders = SAMPLE_TEMPLATE_FOLDERS.map((item) => ({
@@ -32,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     return jsonWithRequestId(request, {
       folders,
-      templates: folder ? templates : [],
+      templates: folder ? templates.filter((item) => item.sample_folder_slug === folder) : templates,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not load sample templates";

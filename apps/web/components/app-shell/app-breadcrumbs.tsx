@@ -26,7 +26,7 @@ export function AppBreadcrumbs({ section, pathname, tabParam, hash }: AppBreadcr
   return (
     <nav
       aria-label="Breadcrumb"
-      className="sticky top-14 z-10 flex h-11 shrink-0 items-center gap-1.5 border-b border-border bg-surface px-4 text-sm md:px-6"
+      className="relative z-10 flex h-11 shrink-0 items-center gap-1.5 border-b border-border bg-surface px-4 text-sm md:px-6"
     >
       {trail.map((crumb, index) => (
         <Fragment key={`${crumb.label}-${index}`}>

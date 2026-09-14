@@ -53,7 +53,7 @@ export function AppTopBar({
   const initials = (userInitials || "DS").slice(0, 2).toUpperCase();
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center border-b border-border bg-surface pr-2 sm:pr-4">
+    <header className="relative z-30 flex h-14 shrink-0 items-center border-b border-border bg-surface pr-2 sm:pr-4">
       <div
         className={cn(
           "flex h-full shrink-0 items-center gap-1 px-2 sm:gap-3 sm:px-4",

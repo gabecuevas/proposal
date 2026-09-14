@@ -159,7 +159,7 @@ export function AppSidebar({
       id="app-shell-sidebar"
       aria-label={`${section.label} navigation`}
       className={cn(
-        "sticky top-14 z-20 flex h-[calc(100vh-3.5rem)] shrink-0 flex-col overflow-hidden border-r border-border bg-surface transition-[width] duration-200 ease-out",
+        "z-20 flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r border-border bg-surface transition-[width] duration-200 ease-out",
         "max-md:fixed max-md:bottom-0 max-md:left-0 max-md:top-14 max-md:z-40 max-md:h-auto max-md:shadow-xl",
         open ? APP_SIDEBAR_WIDTH_CLASS : "w-0 border-r-0",
       )}
