@@ -222,9 +222,6 @@ export default function ContactsCalendarPage() {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [assigneeUserId, setAssigneeUserId] = useState("");
   const [currentUserId, setCurrentUserId] = useState("");
-  const [calendarSyncStatus, setCalendarSyncStatus] = useState<"ACTIVE" | "INACTIVE" | "ERROR" | null>(
-    null,
-  );
   const [myCalendarEventColor, setMyCalendarEventColor] = useState(DEFAULT_MY_CALENDAR_EVENT_COLOR);
   const [error, setError] = useState("");
   const [weekPickerOpen, setWeekPickerOpen] = useState(false);
@@ -471,10 +468,7 @@ export default function ContactsCalendarPage() {
       if (calendarRes.ok) {
         const payload = (await calendarRes.json()) as { accounts?: CrmCalendarAccountDto[] };
         const account = payload.accounts?.[0];
-        setCalendarSyncStatus(account?.syncStatus ?? "INACTIVE");
         setMyCalendarEventColor(account?.eventColor ?? DEFAULT_MY_CALENDAR_EVENT_COLOR);
-      } else {
-        setCalendarSyncStatus("INACTIVE");
       }
     })();
   }, []);
