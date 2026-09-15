@@ -230,7 +230,8 @@ export function ActivitiesWeekCalendar({
     const focusHour = days.some((day) => sameLocalDay(day, now))
       ? Math.max(0, now.getHours() - 1)
       : 8;
-    scrollRef.current.scrollTop = focusHour * HOUR_HEIGHT;
+    // Skip the sticky weekday row (h-9) so the focus hour sits below it.
+    scrollRef.current.scrollTop = 36 + focusHour * HOUR_HEIGHT;
   }, [days, now]);
 
   const byDay = useMemo(() => {
@@ -268,38 +269,45 @@ export function ActivitiesWeekCalendar({
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-white">
-      {/* Pinned outside the scrollport so Sun–Sat stay visible while hours scroll */}
+      {/*
+        Header + body share one scrollport so column tracks stay aligned.
+        (A pinned header outside the scroll area was wider than the grid once
+        the vertical scrollbar appeared.)
+      */}
       <div
-        className="z-30 grid shrink-0 border-b border-border bg-white"
-        style={{ gridTemplateColumns: columnTemplate }}
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
       >
-        <div className="flex h-9 items-center border-r border-border px-2">
-          <p className="text-sm font-bold uppercase text-foreground">{monthAbbrev(days[0]!)}</p>
-        </div>
-        {days.map((day) => {
-          const isToday = sameLocalDay(day, now);
-          return (
-            <div
-              key={day.toISOString()}
-              className="flex h-9 items-center justify-center gap-1.5 border-r border-border px-1 last:border-r-0"
-            >
-              <span className="whitespace-nowrap text-sm font-bold text-foreground">
-                {weekdayAbbrev(day)}
-              </span>
-              <span
-                className={cn(
-                  "inline-flex h-6 w-6 items-center justify-center text-sm font-bold",
-                  isToday ? "rounded-full bg-primary text-primary-foreground" : "text-foreground",
-                )}
+        <div
+          className="sticky top-0 z-30 grid border-b border-border bg-white"
+          style={{ gridTemplateColumns: columnTemplate }}
+        >
+          <div className="flex h-9 items-center border-r border-border px-2">
+            <p className="text-sm font-bold uppercase text-foreground">{monthAbbrev(days[0]!)}</p>
+          </div>
+          {days.map((day) => {
+            const isToday = sameLocalDay(day, now);
+            return (
+              <div
+                key={day.toISOString()}
+                className="flex h-9 items-center justify-center gap-1.5 border-r border-border px-1 last:border-r-0"
               >
-                {day.getDate()}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+                <span className="whitespace-nowrap text-sm font-bold text-foreground">
+                  {weekdayAbbrev(day)}
+                </span>
+                <span
+                  className={cn(
+                    "inline-flex h-6 w-6 items-center justify-center text-sm font-bold",
+                    isToday ? "rounded-full bg-primary text-primary-foreground" : "text-foreground",
+                  )}
+                >
+                  {day.getDate()}
+                </span>
+              </div>
+            );
+          })}
+        </div>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="grid border-b border-border bg-slate-50/70" style={{ gridTemplateColumns: columnTemplate }}>
           <div className="border-r border-border px-1 py-2 text-[10px] font-semibold text-muted">All day</div>
           {byDay.map(({ day, untimed }) => (

@@ -355,6 +355,8 @@ export default function PeoplePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- openPerson is a stable page action
   }, [people, searchParams]);
 
+  const drawerInitialTab = searchParams.get("tab") === "email" ? "email" : "notes";
+
   function openNew() {
     setSelectedId("");
     setEditor(emptyEditor());
@@ -874,6 +876,7 @@ export default function PeoplePage() {
       <CrmRecordDrawer
         open={drawerOpen}
         variant="person"
+        initialTab={drawerInitialTab}
         recordKey={selectedId ? `${selectedId}-${selected?.updated_at ?? ""}` : "new-person"}
         title={displayName}
         titlePlaceholder="Contact name"

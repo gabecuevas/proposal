@@ -31,6 +31,7 @@ export type CrmEmailListItem = {
   fromName: string;
   fromAddress: string;
   toAddresses: string[];
+  ccAddresses: string[];
   subject: string;
   snippet: string;
   bodyHtml: string | null;
@@ -39,6 +40,9 @@ export type CrmEmailListItem = {
   hasAttachments: boolean;
   messageAt: string;
   pinnedAt: string | null;
+  contactId: string | null;
+  leadId: string | null;
+  companyId: string | null;
 };
 
 function asAddressList(value: unknown): string[] {
@@ -58,6 +62,7 @@ function serializeEmailMessage(row: {
   from_name: string | null;
   from_address: string;
   to_addresses: unknown;
+  cc_addresses?: unknown;
   subject: string;
   snippet: string;
   body_html: string | null;
@@ -66,6 +71,9 @@ function serializeEmailMessage(row: {
   has_attachments: boolean;
   message_at: Date;
   pinned_at?: Date | null;
+  contact_id?: string | null;
+  lead_id?: string | null;
+  company_id?: string | null;
 }): CrmEmailListItem {
   return {
     id: row.id,
@@ -74,6 +82,7 @@ function serializeEmailMessage(row: {
     fromName: row.from_name ?? "",
     fromAddress: row.from_address,
     toAddresses: asAddressList(row.to_addresses),
+    ccAddresses: asAddressList(row.cc_addresses),
     subject: row.subject,
     snippet: row.snippet,
     bodyHtml: row.body_html,
@@ -82,6 +91,9 @@ function serializeEmailMessage(row: {
     hasAttachments: row.has_attachments,
     messageAt: row.message_at.toISOString(),
     pinnedAt: row.pinned_at?.toISOString() ?? null,
+    contactId: row.contact_id ?? null,
+    leadId: row.lead_id ?? null,
+    companyId: row.company_id ?? null,
   };
 }
 
@@ -165,6 +177,32 @@ export async function listCrmEmails(
   });
 
   return rows.map((row) => serializeEmailMessage(row));
+}
+
+export async function listCrmEmailsPage(
+  workspaceId: string,
+  folder: EmailFolderId,
+  options: { limit: number; offset: number },
+): Promise<{ messages: CrmEmailListItem[]; total: number }> {
+  const limit = Math.min(Math.max(1, options.limit), 100);
+  const offset = Math.max(0, options.offset);
+  const where = {
+    workspace_id: workspaceId,
+    folder: toDbEmailFolder(folder),
+  };
+  const [rows, total] = await Promise.all([
+    prisma.crmEmailMessage.findMany({
+      where,
+      orderBy: { message_at: "desc" },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.crmEmailMessage.count({ where }),
+  ]);
+  return {
+    messages: rows.map((row) => serializeEmailMessage(row)),
+    total,
+  };
 }
 
 export async function countUnreadInbox(workspaceId: string): Promise<number> {
@@ -559,7 +597,7 @@ export async function syncPastEmailsForAccount(
         snippet: message.snippet,
         body_text: message.bodyText,
         body_html: message.bodyHtml,
-        is_read: true,
+        is_read: !message.labelIds.includes("UNREAD"),
         has_attachments: message.hasAttachments,
         message_at: message.messageAt,
         external_id: message.externalId,
@@ -580,9 +618,10 @@ export async function syncPastEmailsForAccount(
         body_html: message.bodyHtml,
         has_attachments: message.hasAttachments,
         message_at: message.messageAt,
-        contact_id: links.contactId,
-        lead_id: links.leadId,
-        company_id: links.companyId,
+        // Preserve existing CRM links when this sync pass finds no match.
+        ...(links.contactId ? { contact_id: links.contactId } : {}),
+        ...(links.leadId ? { lead_id: links.leadId } : {}),
+        ...(links.companyId ? { company_id: links.companyId } : {}),
       },
     });
     imported += 1;
@@ -602,6 +641,88 @@ export async function syncPastEmailsForAccount(
     scanned: messageIds.length,
     syncFromAt: syncFromAt.toISOString(),
   };
+}
+
+/** Link recent unlinked messages to Contacts/Leads by from/to address match. */
+export async function relinkUnlinkedEmailsToCrm(workspaceId: string, limit = 200): Promise<number> {
+  if (!prisma.crmEmailMessage) {
+    return 0;
+  }
+
+  const rows = await prisma.crmEmailMessage.findMany({
+    where: {
+      workspace_id: workspaceId,
+      contact_id: null,
+      lead_id: null,
+    },
+    orderBy: { message_at: "desc" },
+    take: Math.min(Math.max(1, limit), 500),
+    select: {
+      id: true,
+      direction: true,
+      from_address: true,
+      to_addresses: true,
+      cc_addresses: true,
+    },
+  });
+
+  let linked = 0;
+  for (const row of rows) {
+    const toAddresses = asAddressList(row.to_addresses);
+    const ccAddresses = asAddressList(row.cc_addresses);
+    const linkAddresses =
+      row.direction === "OUTBOUND"
+        ? [...toAddresses, ...ccAddresses]
+        : [row.from_address, ...toAddresses];
+    const links = await resolveRecordLinksForAddresses(workspaceId, linkAddresses);
+    if (!links.contactId && !links.leadId && !links.companyId) {
+      continue;
+    }
+    await prisma.crmEmailMessage.update({
+      where: { id: row.id },
+      data: {
+        contact_id: links.contactId,
+        lead_id: links.leadId,
+        company_id: links.companyId,
+      },
+    });
+    linked += 1;
+  }
+  return linked;
+}
+
+/** Sync all active Google mailboxes, then backfill CRM contact links. */
+export async function syncActiveEmailAccountsForWorkspace(
+  workspaceId: string,
+  lookback: EmailSyncLookbackId = "3days",
+): Promise<{ accounts: number; imported: number; scanned: number; linked: number }> {
+  if (!prisma.crmEmailAccount) {
+    return { accounts: 0, imported: 0, scanned: 0, linked: 0 };
+  }
+
+  const accounts = await prisma.crmEmailAccount.findMany({
+    where: {
+      workspace_id: workspaceId,
+      sync_status: "ACTIVE",
+      provider: "GOOGLE",
+    },
+    select: { id: true },
+  });
+
+  let imported = 0;
+  let scanned = 0;
+  for (const account of accounts) {
+    try {
+      const result = await syncPastEmailsForAccount(workspaceId, account.id, lookback);
+      imported += result.imported;
+      scanned += result.scanned;
+    } catch {
+      // Keep syncing remaining accounts when one mailbox fails.
+    }
+  }
+
+  const linked = await relinkUnlinkedEmailsToCrm(workspaceId);
+  return { accounts: accounts.length, imported, scanned, linked };
 }
 
 function htmlToSnippet(html: string, max = 160): string {
@@ -647,6 +768,7 @@ export type CreateOutboundEmailInput = {
   bcc?: string[];
   subject: string;
   bodyHtml: string;
+  draftId?: string | null;
   contactId?: string | null;
   leadId?: string | null;
   companyId?: string | null;
@@ -712,7 +834,7 @@ export async function createOutboundEmail(workspaceId: string, input: CreateOutb
   }
 
   const to = input.to.map((item) => item.trim().toLowerCase()).filter(Boolean);
-  if (to.length === 0) {
+  if (input.mode !== "draft" && to.length === 0) {
     throw new Error("Add at least one recipient.");
   }
 
@@ -732,52 +854,77 @@ export async function createOutboundEmail(workspaceId: string, input: CreateOutb
     throw new Error("Choose a valid schedule time.");
   }
 
+  const draftId = input.draftId?.trim() || null;
+  let existingDraft: Awaited<ReturnType<typeof prisma.crmEmailMessage.findFirst>> = null;
+  if (draftId) {
+    existingDraft = await prisma.crmEmailMessage.findFirst({
+      where: {
+        id: draftId,
+        workspace_id: workspaceId,
+        folder: "DRAFTS",
+      },
+    });
+    if (!existingDraft) {
+      throw new Error("Draft not found.");
+    }
+  }
+
+  const sharedFields = {
+    account_id: account.id,
+    direction: "OUTBOUND" as const,
+    from_name: account.sender_name,
+    from_address: account.email,
+    to_addresses: to,
+    cc_addresses: input.cc?.length ? input.cc : undefined,
+    subject,
+    snippet,
+    body_text: bodyText,
+    body_html: bodyHtml,
+    is_read: true,
+    has_attachments: Boolean(input.attachments?.length),
+    contact_id: input.contactId ?? existingDraft?.contact_id ?? null,
+    lead_id: input.leadId ?? existingDraft?.lead_id ?? null,
+    company_id: input.companyId ?? existingDraft?.company_id ?? null,
+  };
+
   if (input.mode === "draft") {
+    if (existingDraft) {
+      return prisma.crmEmailMessage.update({
+        where: { id: existingDraft.id },
+        data: {
+          ...sharedFields,
+          folder: "DRAFTS",
+          message_at: new Date(),
+        },
+      });
+    }
     return prisma.crmEmailMessage.create({
       data: {
         workspace_id: workspaceId,
-        account_id: account.id,
+        ...sharedFields,
         folder: "DRAFTS",
-        direction: "OUTBOUND",
-        from_name: account.sender_name,
-        from_address: account.email,
-        to_addresses: to,
-        cc_addresses: input.cc?.length ? input.cc : undefined,
-        subject,
-        snippet,
-        body_text: bodyText,
-        body_html: bodyHtml,
-        is_read: true,
-        has_attachments: Boolean(input.attachments?.length),
         message_at: new Date(),
-        contact_id: input.contactId ?? null,
-        lead_id: input.leadId ?? null,
-        company_id: input.companyId ?? null,
       },
     });
   }
 
   if (input.mode === "schedule") {
+    if (existingDraft) {
+      return prisma.crmEmailMessage.update({
+        where: { id: existingDraft.id },
+        data: {
+          ...sharedFields,
+          folder: "OUTBOX",
+          message_at: scheduleAt!,
+        },
+      });
+    }
     return prisma.crmEmailMessage.create({
       data: {
         workspace_id: workspaceId,
-        account_id: account.id,
+        ...sharedFields,
         folder: "OUTBOX",
-        direction: "OUTBOUND",
-        from_name: account.sender_name,
-        from_address: account.email,
-        to_addresses: to,
-        cc_addresses: input.cc?.length ? input.cc : undefined,
-        subject,
-        snippet,
-        body_text: bodyText,
-        body_html: bodyHtml,
-        is_read: true,
-        has_attachments: Boolean(input.attachments?.length),
         message_at: scheduleAt!,
-        contact_id: input.contactId ?? null,
-        lead_id: input.leadId ?? null,
-        company_id: input.companyId ?? null,
       },
     });
   }
@@ -798,52 +945,47 @@ export async function createOutboundEmail(workspaceId: string, input: CreateOutb
       attachments: input.attachments,
     });
 
+    if (existingDraft) {
+      return prisma.crmEmailMessage.update({
+        where: { id: existingDraft.id },
+        data: {
+          ...sharedFields,
+          folder: "SENT",
+          message_at: new Date(),
+          external_id: sent.id,
+        },
+      });
+    }
+
     return prisma.crmEmailMessage.create({
       data: {
         workspace_id: workspaceId,
-        account_id: account.id,
+        ...sharedFields,
         folder: "SENT",
-        direction: "OUTBOUND",
-        from_name: account.sender_name,
-        from_address: account.email,
-        to_addresses: to,
-        cc_addresses: input.cc?.length ? input.cc : undefined,
-        subject,
-        snippet,
-        body_text: bodyText,
-        body_html: bodyHtml,
-        is_read: true,
-        has_attachments: Boolean(input.attachments?.length),
         message_at: new Date(),
         external_id: sent.id,
-        contact_id: input.contactId ?? null,
-        lead_id: input.leadId ?? null,
-        company_id: input.companyId ?? null,
       },
     });
   }
 
   // Non-Google providers: queue in Outbox until SMTP sending is wired.
+  if (existingDraft) {
+    return prisma.crmEmailMessage.update({
+      where: { id: existingDraft.id },
+      data: {
+        ...sharedFields,
+        folder: "OUTBOX",
+        message_at: new Date(),
+      },
+    });
+  }
+
   return prisma.crmEmailMessage.create({
     data: {
       workspace_id: workspaceId,
-      account_id: account.id,
+      ...sharedFields,
       folder: "OUTBOX",
-      direction: "OUTBOUND",
-      from_name: account.sender_name,
-      from_address: account.email,
-      to_addresses: to,
-      cc_addresses: input.cc?.length ? input.cc : undefined,
-      subject,
-      snippet,
-      body_text: bodyText,
-      body_html: bodyHtml,
-      is_read: true,
-      has_attachments: Boolean(input.attachments?.length),
       message_at: new Date(),
-      contact_id: input.contactId ?? null,
-      lead_id: input.leadId ?? null,
-      company_id: input.companyId ?? null,
     },
   });
 }
@@ -926,6 +1068,106 @@ export async function setEmailMessagePinned(
   const row = await prisma.crmEmailMessage.update({
     where: { id: existing.id },
     data: { pinned_at: pinned ? new Date() : null },
+  });
+  return serializeEmailMessage(row);
+}
+
+export type CrmEmailBatchAction = "markRead" | "markUnread" | "trash";
+
+export async function updateCrmEmailMessages(
+  workspaceId: string,
+  messageIds: string[],
+  action: CrmEmailBatchAction,
+): Promise<number> {
+  if (!prisma.crmEmailMessage) {
+    throw new Error("Email storage is restarting. Refresh the page and try again.");
+  }
+  const ids = Array.from(new Set(messageIds.map((id) => id.trim()).filter(Boolean)));
+  if (ids.length === 0) {
+    return 0;
+  }
+
+  const data =
+    action === "markRead"
+      ? { is_read: true }
+      : action === "markUnread"
+        ? { is_read: false }
+        : action === "trash"
+          ? { folder: "TRASH" as const }
+          : null;
+  if (!data) {
+    throw new Error("Invalid email action.");
+  }
+
+  const result = await prisma.crmEmailMessage.updateMany({
+    where: {
+      workspace_id: workspaceId,
+      id: { in: ids },
+    },
+    data,
+  });
+  return result.count;
+}
+
+export async function getCrmEmailMessage(
+  workspaceId: string,
+  messageId: string,
+): Promise<CrmEmailListItem | null> {
+  if (!prisma.crmEmailMessage) {
+    return null;
+  }
+  const existing = await prisma.crmEmailMessage.findFirst({
+    where: { id: messageId, workspace_id: workspaceId },
+  });
+  if (!existing) {
+    return null;
+  }
+
+  if (!existing.contact_id && !existing.lead_id) {
+    const toAddresses = asAddressList(existing.to_addresses);
+    const ccAddresses = asAddressList(existing.cc_addresses);
+    const linkAddresses =
+      existing.direction === "OUTBOUND"
+        ? [...toAddresses, ...ccAddresses]
+        : [existing.from_address, ...toAddresses];
+    const links = await resolveRecordLinksForAddresses(workspaceId, linkAddresses);
+    if (links.contactId || links.leadId || links.companyId) {
+      const updated = await prisma.crmEmailMessage.update({
+        where: { id: existing.id },
+        data: {
+          contact_id: links.contactId,
+          lead_id: links.leadId,
+          company_id: links.companyId,
+        },
+      });
+      return serializeEmailMessage(updated);
+    }
+  }
+
+  return serializeEmailMessage(existing);
+}
+
+export async function linkCrmEmailMessage(
+  workspaceId: string,
+  messageId: string,
+  links: { contactId?: string | null; leadId?: string | null; companyId?: string | null },
+): Promise<CrmEmailListItem | null> {
+  if (!prisma.crmEmailMessage) {
+    throw new Error("Email storage is restarting. Refresh the page and try again.");
+  }
+  const existing = await prisma.crmEmailMessage.findFirst({
+    where: { id: messageId, workspace_id: workspaceId },
+  });
+  if (!existing) {
+    return null;
+  }
+  const row = await prisma.crmEmailMessage.update({
+    where: { id: existing.id },
+    data: {
+      ...(links.contactId !== undefined ? { contact_id: links.contactId } : {}),
+      ...(links.leadId !== undefined ? { lead_id: links.leadId } : {}),
+      ...(links.companyId !== undefined ? { company_id: links.companyId } : {}),
+    },
   });
   return serializeEmailMessage(row);
 }

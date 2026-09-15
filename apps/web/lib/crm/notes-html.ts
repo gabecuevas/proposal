@@ -56,3 +56,32 @@ export function sanitizeNoteHtmlForDisplay(html: string): string {
   });
   return parsed.body.innerHTML;
 }
+
+/**
+ * Sanitize inbound email HTML for iframe preview.
+ * Keeps inline styles (common in HTML emails) but strips scripts and event handlers.
+ */
+export function sanitizeEmailHtmlForDisplay(html: string): string {
+  if (!html?.trim()) {
+    return "";
+  }
+  if (typeof DOMParser === "undefined") {
+    return html;
+  }
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  parsed.querySelectorAll("script,iframe,object,embed,form,meta,link").forEach((el) => el.remove());
+  parsed.querySelectorAll("*").forEach((el) => {
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.trim().toLowerCase();
+      if (name.startsWith("on") || value.startsWith("javascript:")) {
+        el.removeAttribute(attr.name);
+      }
+    }
+  });
+  parsed.querySelectorAll("a[href]").forEach((anchor) => {
+    anchor.setAttribute("target", "_blank");
+    anchor.setAttribute("rel", "noopener noreferrer");
+  });
+  return parsed.documentElement.outerHTML;
+}

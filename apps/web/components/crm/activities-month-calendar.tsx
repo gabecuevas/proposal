@@ -99,18 +99,18 @@ export function ActivitiesMonthCalendar({
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-white">
-      <div className="grid shrink-0 grid-cols-7 border-b border-border bg-white">
-        {WEEKDAY_LABELS.map((label) => (
-          <div
-            key={label}
-            className="flex h-9 items-center justify-center border-r border-border text-xs font-bold uppercase text-muted last:border-r-0"
-          >
-            {label}
-          </div>
-        ))}
-      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
+        <div className="sticky top-0 z-30 grid grid-cols-7 border-b border-border bg-white">
+          {WEEKDAY_LABELS.map((label) => (
+            <div
+              key={label}
+              className="flex h-9 items-center justify-center border-r border-border text-xs font-bold uppercase text-muted last:border-r-0"
+            >
+              {label}
+            </div>
+          ))}
+        </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="grid min-h-full grid-cols-7 grid-rows-6">
           {days.map((day) => {
             const key = toDateKey(day);
@@ -126,8 +126,9 @@ export function ActivitiesMonthCalendar({
                 type="button"
                 onClick={() => onSelectDay?.(startOfLocalDay(day))}
                 className={cn(
-                  "flex min-h-[6.5rem] flex-col gap-0.5 border-b border-r border-border p-1.5 text-left align-top last:border-r-0 hover:bg-slate-50/80",
+                  "flex min-h-[6.5rem] flex-col gap-0.5 border-b border-r border-border p-1.5 text-left align-top hover:bg-slate-50/80",
                   !inMonth && "bg-slate-50/50",
+                  day.getDay() === 6 && "border-r-0",
                 )}
               >
                 <span

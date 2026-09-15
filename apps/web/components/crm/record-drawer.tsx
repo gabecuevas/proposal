@@ -27,6 +27,7 @@ import {
   validatePhones,
 } from "@/lib/crm/phones";
 import { isNoteOverLimit, normalizeNoteHtml } from "@/lib/crm/notes-html";
+import { clearEmailReplyDraft, readEmailReplyDraft, type CrmEmailReplyDraft } from "@/lib/crm/email-reply-draft";
 import { normalizeWebsite, websiteHref } from "@/lib/crm/website";
 
 export type DrawerFieldType =
@@ -108,6 +109,7 @@ type CrmRecordDrawerProps = {
   crmRecord?: CrmRecordContext;
   error?: string;
   status?: string;
+  initialTab?: ActivityTab;
   footerSave?: {
     label?: string;
     onSave: () => void;
@@ -819,10 +821,11 @@ export function CrmRecordDrawer({
   crmRecord,
   error,
   status,
+  initialTab = "notes",
   footerSave,
 }: CrmRecordDrawerProps) {
   const titleId = useId();
-  const [tab, setTab] = useState<ActivityTab>("notes");
+  const [tab, setTab] = useState<ActivityTab>(initialTab);
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
   const [draftNotes, setDraftNotes] = useState(notes);
@@ -837,6 +840,7 @@ export function CrmRecordDrawer({
   const [notesEditorKey, setNotesEditorKey] = useState(0);
   const [editingActivity, setEditingActivity] = useState<CrmActivityRecord | null>(null);
   const [recordEmails, setRecordEmails] = useState<CrmEmailListItem[]>([]);
+  const [replyPrefill, setReplyPrefill] = useState<CrmEmailReplyDraft | null>(null);
 
   const emailFieldValues = useMemo(() => {
     const fields = sections.flatMap((section) => section.fields);
@@ -927,15 +931,26 @@ export function CrmRecordDrawer({
   useEffect(() => {
     savedNotesRef.current = notes;
     setDraftNotes(notes);
-    setTab("notes");
+    setTab(initialTab);
     setDraftTitle(title);
     setEditingTitle(!title);
     titleDirtyRef.current = false;
     setFooterMenuOpen(false);
     setEditingActivity(null);
+    if (initialTab === "email") {
+      const draft = readEmailReplyDraft();
+      if (draft) {
+        setReplyPrefill(draft);
+        clearEmailReplyDraft();
+      } else {
+        setReplyPrefill(null);
+      }
+    } else {
+      setReplyPrefill(null);
+    }
     // Reset editor chrome when switching records, not on each keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- recordKey/open are the record identity
-  }, [recordKey, open]);
+  }, [recordKey, open, initialTab]);
 
   useEffect(() => {
     if (!editingTitle || !titleDirtyRef.current) {
@@ -1252,7 +1267,7 @@ export function CrmRecordDrawer({
             {tab === "email" ? (
               <div className="space-y-4">
                 <CrmEmailComposer
-                  key={`${recordKey}-email`}
+                  key={`${recordKey}-email-${replyPrefill?.messageId ?? "blank"}`}
                   recordType={crmRecord?.type ?? "contact"}
                   recordId={crmRecord?.id}
                   companyId={
@@ -1267,7 +1282,15 @@ export function CrmRecordDrawer({
                         ? crmRecord.id
                         : null
                   }
-                  defaultTo={emailFieldValues.email ? [emailFieldValues.email] : []}
+                  defaultTo={
+                    replyPrefill?.to?.length
+                      ? replyPrefill.to
+                      : emailFieldValues.email
+                        ? [emailFieldValues.email]
+                        : []
+                  }
+                  defaultSubject={replyPrefill?.subject}
+                  defaultBodyHtml={replyPrefill?.bodyHtml}
                   mergeFields={{
                     firstName: emailFieldValues.firstName || undefined,
                     lastName: emailFieldValues.lastName || undefined,
