@@ -431,6 +431,8 @@ export default function LeadsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- openLead is a stable page action
   }, [leads, searchParams]);
 
+  const drawerInitialTab = searchParams.get("tab") === "email" ? "email" : "notes";
+
   function openNew() {
     setSelectedId("");
     setEditor(emptyEditor());
@@ -1069,6 +1071,7 @@ export default function LeadsPage() {
       <CrmRecordDrawer
         open={drawerOpen}
         variant="person"
+        initialTab={drawerInitialTab}
         recordKey={selectedId ? `${selectedId}-${selected?.updated_at ?? ""}` : "new-lead"}
         title={contactDisplayName}
         titlePlaceholder="Contact name"

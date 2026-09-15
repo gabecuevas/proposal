@@ -3,9 +3,11 @@ import { jsonWithRequestId } from "@/lib/api/response";
 import { getRequestAuthContext } from "@/lib/auth/request-context";
 import {
   createOutboundEmail,
-  listCrmEmails,
+  listCrmEmailsPage,
   listEmailsForRecord,
   parseEmailFolder,
+  updateCrmEmailMessages,
+  type CrmEmailBatchAction,
   type OutboundEmailMode,
 } from "@/lib/crm/emails";
 
@@ -17,6 +19,13 @@ function asStringArray(value: unknown): string[] {
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function parseBatchAction(value: unknown): CrmEmailBatchAction | null {
+  if (value === "markRead" || value === "markUnread" || value === "trash") {
+    return value;
+  }
+  return null;
 }
 
 export async function GET(request: NextRequest) {
@@ -35,8 +44,38 @@ export async function GET(request: NextRequest) {
   }
 
   const folder = parseEmailFolder(request.nextUrl.searchParams.get("folder"));
-  const messages = await listCrmEmails(auth.workspaceId, folder);
-  return jsonWithRequestId(request, { folder, messages });
+  const limitRaw = Number(request.nextUrl.searchParams.get("limit") ?? "50");
+  const offsetRaw = Number(request.nextUrl.searchParams.get("offset") ?? "0");
+  const limit = Number.isFinite(limitRaw) ? limitRaw : 50;
+  const offset = Number.isFinite(offsetRaw) ? offsetRaw : 0;
+  const { messages, total } = await listCrmEmailsPage(auth.workspaceId, folder, { limit, offset });
+  return jsonWithRequestId(request, { folder, messages, total, limit, offset });
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const auth = await getRequestAuthContext(request);
+    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body || typeof body !== "object") {
+      return jsonWithRequestId(request, { error: "Invalid JSON body." }, { status: 400 });
+    }
+
+    const action = parseBatchAction(body.action);
+    if (!action) {
+      return jsonWithRequestId(request, { error: "Invalid action." }, { status: 400 });
+    }
+
+    const ids = asStringArray(body.ids);
+    if (ids.length === 0) {
+      return jsonWithRequestId(request, { error: "Select at least one email." }, { status: 400 });
+    }
+
+    const updated = await updateCrmEmailMessages(auth.workspaceId, ids, action);
+    return jsonWithRequestId(request, { ok: true, updated });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Could not update emails";
+    return jsonWithRequestId(request, { error: message }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -88,6 +127,7 @@ export async function POST(request: NextRequest) {
       bcc: asStringArray(body.bcc),
       subject: typeof body.subject === "string" ? body.subject : "",
       bodyHtml: typeof body.bodyHtml === "string" ? body.bodyHtml : "",
+      draftId: typeof body.draftId === "string" ? body.draftId : null,
       contactId: typeof body.contactId === "string" ? body.contactId : null,
       leadId: typeof body.leadId === "string" ? body.leadId : null,
       companyId: typeof body.companyId === "string" ? body.companyId : null,

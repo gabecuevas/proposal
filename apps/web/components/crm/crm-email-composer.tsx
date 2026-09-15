@@ -48,15 +48,20 @@ export type CrmEmailRecipientOption = {
 };
 
 export type CrmEmailComposerProps = {
-  recordType: "contact" | "lead" | "company";
+  recordType?: "contact" | "lead" | "company";
   recordId?: string;
   /** Linked company used to load contact recipient options. */
   companyId?: string | null;
   primaryContactId?: string | null;
   defaultTo?: string[];
+  defaultSubject?: string;
+  defaultBodyHtml?: string;
+  /** When set, save/send updates this draft instead of creating a new message. */
+  draftId?: string | null;
   mergeFields?: CrmEmailMergeFields;
   className?: string;
   onSent?: () => void;
+  onDraftSaved?: (draftId: string) => void;
 };
 
 type AttachmentDraft = {
@@ -240,9 +245,13 @@ export function CrmEmailComposer({
   companyId = null,
   primaryContactId = null,
   defaultTo = [],
+  defaultSubject = "",
+  defaultBodyHtml = "<p></p>",
+  draftId = null,
   mergeFields = {},
   className,
   onSent,
+  onDraftSaved,
 }: CrmEmailComposerProps) {
   const [accounts, setAccounts] = useState<CrmEmailAccountDto[]>([]);
   const [templates, setTemplates] = useState<CrmEmailTemplateDto[]>([]);
@@ -265,13 +274,14 @@ export function CrmEmailComposer({
   const [ccInput, setCcInput] = useState("");
   const [bccInput, setBccInput] = useState("");
   const [showCcBcc, setShowCcBcc] = useState(false);
-  const [subject, setSubject] = useState("");
-  const [bodyHtml, setBodyHtml] = useState("<p></p>");
+  const [subject, setSubject] = useState(defaultSubject);
+  const [bodyHtml, setBodyHtml] = useState(defaultBodyHtml || "<p></p>");
   const [attachments, setAttachments] = useState<AttachmentDraft[]>([]);
   const [trackOpens, setTrackOpens] = useState(true);
   const [trackClicks, setTrackClicks] = useState(true);
   const [privateSend, setPrivateSend] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(draftId);
   const [scheduleAt, setScheduleAt] = useState("");
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -316,6 +326,16 @@ export function CrmEmailComposer({
   useEffect(() => {
     setToInitialized(false);
   }, [recordId, companyId, primaryContactId, defaultToKey]);
+
+  useEffect(() => {
+    if (defaultSubject) {
+      setSubject(defaultSubject);
+    }
+    if (defaultBodyHtml && defaultBodyHtml !== "<p></p>") {
+      setBodyHtml(defaultBodyHtml);
+      editor?.commands.setContent(defaultBodyHtml);
+    }
+  }, [defaultSubject, defaultBodyHtml, editor]);
 
   const loadTemplates = useCallback(async (q?: string) => {
     try {
@@ -647,6 +667,7 @@ export function CrmEmailComposer({
         body: JSON.stringify({
           mode,
           accountId,
+          draftId: activeDraftId || undefined,
           to: recipients,
           cc,
           bcc,
@@ -666,11 +687,19 @@ export function CrmEmailComposer({
           })),
         }),
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        message?: { id?: string; folder?: string };
+      };
       if (!response.ok) {
         throw new Error(payload.error || "Could not send email.");
       }
       if (mode === "draft") {
+        const savedId = payload.message?.id || activeDraftId;
+        if (savedId) {
+          setActiveDraftId(savedId);
+          onDraftSaved?.(savedId);
+        }
         setStatus("Draft saved to Drafts.");
       } else if (mode === "schedule") {
         setStatus("Email scheduled in Outbox.");
@@ -681,6 +710,7 @@ export function CrmEmailComposer({
             ? "Email sent."
             : "Email queued in Outbox / Sent.",
         );
+        setActiveDraftId(null);
         resetComposer();
         onSent?.();
       }
