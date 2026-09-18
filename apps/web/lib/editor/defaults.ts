@@ -7,6 +7,12 @@ export const defaultEditorDoc: EditorDoc = {
   content: [{ type: "paragraph" }],
 };
 
+/** Blank Flow Document (continuous body — no Creator text boxes / field canvas). */
+export const defaultFlowEditorDoc: EditorDoc = {
+  type: "doc",
+  content: [{ type: "paragraph" }],
+};
+
 export const defaultVariableRegistry: VariableRegistry = {
   "client.name": { required: true, label: "Client Name" },
   "client.company": { required: true, label: "Client Company" },

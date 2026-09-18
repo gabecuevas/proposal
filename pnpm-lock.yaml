@@ -80,6 +80,12 @@ importers:
       '@tiptap/extension-table-row':
         specifier: ^2.26.4
         version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
+      '@tiptap/extension-task-item':
+        specifier: 2.26.4
+        version: 2.26.4(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)
+      '@tiptap/extension-task-list':
+        specifier: 2.26.4
+        version: 2.26.4(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
       '@tiptap/extension-text-align':
         specifier: ^2.26.4
         version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
@@ -146,6 +152,9 @@ importers:
       tailwind-merge:
         specifier: ^3.3.1
         version: 3.5.0
+      tiptap-pagination-plus:
+        specifier: 2.1.0
+        version: 2.1.0(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)
       zod:
         specifier: ^4.1.11
         version: 4.3.6
@@ -1721,6 +1730,17 @@ packages:
     peerDependencies:
       '@tiptap/core': ^2.7.0
       '@tiptap/pm': ^2.7.0
+
+  '@tiptap/extension-task-item@2.26.4':
+    resolution: {integrity: sha512-uRqN/pxwHPhOZy6GeqlxUtVeWfBduna0Mkq/J6nkHumQ2ObcCfHZCQv1fDrQY2l6umR2N4wVmWBhnlGdEDhimg==}
+    peerDependencies:
+      '@tiptap/core': ^2.7.0
+      '@tiptap/pm': ^2.7.0
+
+  '@tiptap/extension-task-list@2.26.4':
+    resolution: {integrity: sha512-UKYb8rj8ZOzRXUZJA9YaFwrcuHxKlp4O4ah+o+46adw/26TnuKoHQBeEeqQSUSNzITxUa6/+Wq3lkl0YmnHuKQ==}
+    peerDependencies:
+      '@tiptap/core': ^2.7.0
 
   '@tiptap/extension-text-align@2.27.2':
     resolution: {integrity: sha512-0Pyks6Hu+Q/+9+5/osoSv0SP6jIerdWMYbi13aaZLsJoj3lBj5WNaE11JtAwSFN5sx0IbqhDSlp1zkvRnzgZ8g==}
@@ -3361,6 +3381,12 @@ packages:
 
   tippy.js@6.3.7:
     resolution: {integrity: sha512-E1d3oP2emgJ9dRQZdf3Kkn0qJgI6ZLpyS5z6ZkY1DF3kaQaBsGZsndEpHwx+eC+tYM41HaSNvNtLx8tU57FzTQ==}
+
+  tiptap-pagination-plus@2.1.0:
+    resolution: {integrity: sha512-Fk+RYSGG1iHTFZmpJEBLQuaTuOxVRIKvSCZRJGQqzeVt6Rwe19zhiWl1bkbZIxoYDKt0W3VkYZsGof24/pI9Dg==}
+    peerDependencies:
+      '@tiptap/core': ^2.0.0
+      '@tiptap/pm': ^2.0.0
 
   to-regex-range@5.0.1:
     resolution: {integrity: sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ==}
@@ -5114,6 +5140,15 @@ snapshots:
     dependencies:
       '@tiptap/core': 2.27.2(@tiptap/pm@2.27.2)
       '@tiptap/pm': 2.27.2
+
+  '@tiptap/extension-task-item@2.26.4(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)':
+    dependencies:
+      '@tiptap/core': 2.27.2(@tiptap/pm@2.27.2)
+      '@tiptap/pm': 2.27.2
+
+  '@tiptap/extension-task-list@2.26.4(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))':
+    dependencies:
+      '@tiptap/core': 2.27.2(@tiptap/pm@2.27.2)
 
   '@tiptap/extension-text-align@2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))':
     dependencies:
@@ -7102,6 +7137,11 @@ snapshots:
   tippy.js@6.3.7:
     dependencies:
       '@popperjs/core': 2.11.8
+
+  tiptap-pagination-plus@2.1.0(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2):
+    dependencies:
+      '@tiptap/core': 2.27.2(@tiptap/pm@2.27.2)
+      '@tiptap/pm': 2.27.2
 
   to-regex-range@5.0.1:
     dependencies:

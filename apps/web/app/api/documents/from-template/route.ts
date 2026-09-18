@@ -12,6 +12,7 @@ type RecipientBody = {
 type FromTemplateBody = {
   templateId?: string;
   title?: string;
+  kind?: string;
   recipient?: RecipientBody;
   recipients?: RecipientBody[];
 };
@@ -50,9 +51,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const { parseDocumentKind } = await import("@/lib/editor/document-kind");
     const document = await createDocumentFromTemplate(payload.templateId, auth.workspaceId, {
       recipients: recipients.length > 0 ? recipients : undefined,
       title: payload.title?.trim() || undefined,
+      kind: parseDocumentKind(payload.kind),
     });
     return NextResponse.json({ document }, { status: 201 });
   } catch (error) {

@@ -1,7 +1,13 @@
 /** @vitest-environment happy-dom */
 
 import { describe, expect, it } from "vitest";
-import { clampPasteLineHeight, isPastePageFooterText, normalizeFontSize, sanitizePastedHtml } from "../paste";
+import {
+  clampPasteLineHeight,
+  isPastePageFooterText,
+  normalizeFontSize,
+  sanitizeFlowPastedHtml,
+  sanitizePastedHtml,
+} from "../paste";
 
 describe("sanitizePastedHtml", () => {
   it("strips scripts, iframes, and inline handlers", () => {
@@ -69,6 +75,24 @@ describe("sanitizePastedHtml", () => {
     expect(clean).toContain("line-height: 2");
     expect(clean).not.toContain("3.43779");
     expect(clean).toContain('data-line-height="2"');
+  });
+
+  it("converts Google Docs horizontal-line images to hr", () => {
+    const html = `<p><span style="width: 418px; height: 2.67px; display: inline-block;"><img title="horizontal line" src="data:image/png;base64,aaa" style="width: 418px; height: 2.67px;"></span></p>`;
+    const clean = sanitizePastedHtml(html);
+    expect(clean).toContain("<hr");
+    expect(clean).not.toContain("<img");
+  });
+});
+
+describe("sanitizeFlowPastedHtml (editor alias)", () => {
+  it("does not flatten tables (Flow uses lib/flow-document/paste for table fidelity)", () => {
+    const html = `<table><tr><td><p>Left</p></td><td><p>Right</p></td></tr></table>`;
+    const clean = sanitizeFlowPastedHtml(html);
+    // Alias is sanitizePastedHtml — tables remain unless Flow pipeline is used.
+    expect(clean.toLowerCase()).toContain("<table");
+    expect(clean).toContain("Left");
+    expect(clean).toContain("Right");
   });
 });
 

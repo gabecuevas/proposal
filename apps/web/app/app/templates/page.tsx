@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { SheetPage, SheetTable, sheetTd, sheetTh, sheetTr } from "@/components/ui/sheet-table";
 import { UploadDropzone } from "@/components/templates/upload-dropzone";
@@ -16,6 +17,7 @@ import {
   LibraryViewActionsBar,
   type LibraryViewMode,
 } from "@/components/templates/library-view-actions-bar";
+import { useNewDocumentWorkflow } from "@/components/documents/new-document-workflow-context";
 import type { EditorDoc } from "@/lib/editor/types";
 import { assetUrl } from "@/lib/storage/asset-url";
 import {
@@ -141,6 +143,8 @@ function folderLabel(folder: FolderItem): string {
 }
 
 export default function AppTemplatesPage() {
+  const router = useRouter();
+  const { openWorkflow } = useNewDocumentWorkflow();
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [allFolders, setAllFolders] = useState<FolderItem[]>([]);
@@ -741,6 +745,26 @@ export default function AppTemplatesPage() {
         onViewModeChange={setView}
         showNewFolder={browseFolders && !browsingSamples}
         onNewFolder={() => openAction("new-folder")}
+        showCreate={!browsingSamples}
+        onCreateKind={(kind) => {
+          void (async () => {
+            const { createFromDocumentKind } = await import("@/lib/documents/create-from-kind");
+            const result = await createFromDocumentKind(kind, { folderId: currentFolderId });
+            if (result.action === "template") {
+              router.push(result.href);
+              return;
+            }
+            if (result.action === "workflow") {
+              openWorkflow({ kind: result.kind });
+              return;
+            }
+            if (result.action === "flow") {
+              router.push(`/app/documents/${result.documentId}`);
+              return;
+            }
+            window.alert(result.message);
+          })();
+        }}
         selectionMode={selectionMode}
         selectionCount={selected.size}
         sampleMode={browsingSamples}

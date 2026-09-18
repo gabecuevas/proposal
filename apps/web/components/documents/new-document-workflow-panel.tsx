@@ -26,6 +26,10 @@ import { resolveCompanyAssociation } from "@/lib/crm/resolve-company-association
 import { assetUrl } from "@/lib/storage/asset-url";
 import { applyDocumentMetaToDoc, applyTitleToDoc, documentDueDateFromEditorJson } from "@/lib/ui/document-title";
 import { pageCountFromEditor, templateThumbnailKey } from "@/lib/ui/template-meta";
+import {
+  documentKindProfile,
+  type WorkflowDocumentKind,
+} from "@/lib/editor/document-kind";
 
 type StepId = 1 | 2 | 3 | 4;
 
@@ -75,11 +79,13 @@ const STEPS: { id: StepId; label: string }[] = [
 
 type Props = {
   open: boolean;
+  kind?: WorkflowDocumentKind;
   onClose: () => void;
 };
 
-export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
+export function NewDocumentWorkflowPanel({ open, kind = "document", onClose }: Props) {
   const router = useRouter();
+  const profile = documentKindProfile(kind);
   const [step, setStep] = useState<StepId>(1);
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [templateQuery, setTemplateQuery] = useState("");
@@ -102,9 +108,7 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
   const [error, setError] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
   const [deliverySubject, setDeliverySubject] = useState("");
-  const [deliveryMessage, setDeliveryMessage] = useState(
-    "Hi {{recipient_full_name}},\n\nBelow is the link to the proposal. As you look through, please add any comments or questions. I look forward to your feedback!\n\nThanks,\n{{sender_full_name}}",
-  );
+  const [deliveryMessage, setDeliveryMessage] = useState(profile.deliveryIntro);
   const [saveDefaultMessage, setSaveDefaultMessage] = useState(false);
   const [selectedRecipientId, setSelectedRecipientId] = useState("");
 
@@ -129,7 +133,9 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
     setNewPhone("");
     setTemplateQuery("");
     setContactQuery("");
-  }, [open]);
+    setDeliveryMessage(profile.deliveryIntro);
+    setDeliverySubject("");
+  }, [open, kind, profile.deliveryIntro]);
 
   useEffect(() => {
     if (!open) {
@@ -418,7 +424,7 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
         const response = await fetch("/api/documents", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ kind }),
         });
         if (!response.ok) {
           throw new Error("Could not create draft");
@@ -432,7 +438,7 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             editor_json: applyDocumentMetaToDoc(data.document.editor_json, {
-              title: title.trim(),
+              title: title.trim() || profile.blankTitle,
               dueDate: dueDate.trim() || null,
               senderName: sender.senderName || null,
               senderUserId: sender.senderUserId,
@@ -455,7 +461,8 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             templateId: selectedTemplateId,
-            title: title.trim(),
+            title: title.trim() || profile.blankTitle,
+            kind,
             recipients: recipients.map((item) => ({
               name: item.name,
               email: item.email,
@@ -563,7 +570,7 @@ export function NewDocumentWorkflowPanel({ open, onClose }: Props) {
         <header className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-border bg-surface px-4 py-3">
           <div className="min-w-0">
             <h2 id="new-document-workflow-title" className="text-sm font-semibold text-foreground">
-              New Document
+              {profile.workflowTitle}
             </h2>
             <p className="truncate text-xs text-muted">
               {title.trim() || selectedTemplate?.name || "Create and deliver a proposal"}

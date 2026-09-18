@@ -8,7 +8,7 @@ import {
   type SignerFieldValue,
   type VariableContext,
 } from "./types";
-import { defaultEditorDoc, defaultPricingModel } from "./defaults";
+import { defaultEditorDoc, defaultFlowEditorDoc, defaultPricingModel } from "./defaults";
 import { signAssetToken } from "../auth/asset-download";
 import { getDiscountPercent, requiresQuoteApproval } from "../cpq/approval";
 import { computeCompletionHash, computeSnapshotHash } from "./hash";
@@ -24,6 +24,13 @@ import { resolveTemplateVariables } from "./variables";
 import { getContentBlocksByIds } from "./content-block-store";
 import { recordDocumentSentInCrm } from "@/lib/crm/document-sent-crm";
 import { applyTitleToDoc } from "@/lib/ui/document-title";
+import {
+  parseDocumentKind,
+  parseEditorLayout,
+  withDocumentKindVariables,
+  type EditorLayout,
+  type WorkflowDocumentKind,
+} from "@/lib/editor/document-kind";
 import {
   collectContentBlockIds,
   isDraftEditableStatus,
@@ -279,6 +286,7 @@ export async function createDocumentFromTemplate(
     recipient?: CreateDocumentFromTemplateRecipient;
     recipients?: CreateDocumentFromTemplateRecipient[];
     title?: string;
+    kind?: WorkflowDocumentKind;
   },
 ): Promise<DocumentRecord> {
   const template = await prisma.template.findFirst({
@@ -400,6 +408,7 @@ export async function createDocumentFromTemplate(
     normalizedDoc = applyTitleToDoc(normalizedDoc, title);
   }
   const contactId = primary?.contactId || null;
+  const kind = parseDocumentKind(options?.kind);
 
   if (contactId) {
     const contact = crmById.get(contactId) ?? null;
@@ -424,7 +433,7 @@ export async function createDocumentFromTemplate(
         schema_version: CURRENT_DOC_VERSION,
         doc_version: CURRENT_DOC_VERSION,
         status: "DRAFTED",
-        variables_json: {},
+        variables_json: withDocumentKindVariables({}, kind, "creator") as InputJsonValue,
         pricing_json: (template.pricing_json ?? defaultPricingModel) as InputJsonValue,
         recipients_json: recipients,
         recipients: {
@@ -449,6 +458,7 @@ export async function createDocumentFromTemplate(
           templateId: template.id,
           recipientCount: recipients.length,
           hasProvidedRecipient,
+          document_kind: kind,
         },
       },
     });
@@ -526,17 +536,24 @@ export async function listDocuments(
 export async function createBlankDocument(input: {
   workspaceId: string;
   actorUserId: string;
+  kind?: WorkflowDocumentKind;
+  layout?: EditorLayout;
 }): Promise<DocumentRecord> {
+  const kind = parseDocumentKind(input.kind);
+  const layout = input.layout ? parseEditorLayout(input.layout) : undefined;
+  const editorJson = (layout ?? (kind === "document" ? "flow" : "creator")) === "flow"
+    ? defaultFlowEditorDoc
+    : defaultEditorDoc;
   const row = await prisma.$transaction(async (tx) => {
     const created = await tx.document.create({
       data: {
         workspace_id: input.workspaceId,
         template_id: null,
-        editor_json: defaultEditorDoc as InputJsonValue,
+        editor_json: editorJson as InputJsonValue,
         schema_version: CURRENT_DOC_VERSION,
         doc_version: CURRENT_DOC_VERSION,
         status: "DRAFTED",
-        variables_json: {},
+        variables_json: withDocumentKindVariables({}, kind, layout) as InputJsonValue,
         pricing_json: defaultPricingModel as InputJsonValue,
         recipients_json: [
           {
@@ -556,6 +573,8 @@ export async function createBlankDocument(input: {
         actor_user_id: input.actorUserId,
         metadata_json: {
           source: "blank",
+          document_kind: kind,
+          editor_layout: layout ?? (kind === "document" ? "flow" : "creator"),
         },
       },
     });
