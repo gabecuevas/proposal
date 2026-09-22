@@ -10,10 +10,19 @@ import {
   type ReactNode,
 } from "react";
 import { NewDocumentWorkflowPanel } from "./new-document-workflow-panel";
+import type { WorkflowDocumentKind } from "@/lib/editor/document-kind";
+
+type OpenWorkflowOptions = {
+  kind?: WorkflowDocumentKind;
+  /** Existing draft — skips Pick Template and starts at Info (Add Contact). */
+  documentId?: string;
+};
 
 type NewDocumentWorkflowContextValue = {
   open: boolean;
-  openWorkflow: () => void;
+  kind: WorkflowDocumentKind;
+  documentId: string | null;
+  openWorkflow: (options?: OpenWorkflowOptions) => void;
   closeWorkflow: () => void;
 };
 
@@ -21,14 +30,24 @@ const NewDocumentWorkflowContext = createContext<NewDocumentWorkflowContextValue
 
 export function NewDocumentWorkflowProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<WorkflowDocumentKind>("document");
+  const [documentId, setDocumentId] = useState<string | null>(null);
 
-  const openWorkflow = useCallback(() => setOpen(true), []);
-  const closeWorkflow = useCallback(() => setOpen(false), []);
+  const openWorkflow = useCallback((options?: OpenWorkflowOptions) => {
+    setKind(options?.kind ?? "document");
+    setDocumentId(options?.documentId?.trim() || null);
+    setOpen(true);
+  }, []);
+  const closeWorkflow = useCallback(() => {
+    setOpen(false);
+    setDocumentId(null);
+  }, []);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape" && open) {
         setOpen(false);
+        setDocumentId(null);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -36,14 +55,19 @@ export function NewDocumentWorkflowProvider({ children }: { children: ReactNode 
   }, [open]);
 
   const value = useMemo(
-    () => ({ open, openWorkflow, closeWorkflow }),
-    [open, openWorkflow, closeWorkflow],
+    () => ({ open, kind, documentId, openWorkflow, closeWorkflow }),
+    [open, kind, documentId, openWorkflow, closeWorkflow],
   );
 
   return (
     <NewDocumentWorkflowContext.Provider value={value}>
       {children}
-      <NewDocumentWorkflowPanel open={open} onClose={closeWorkflow} />
+      <NewDocumentWorkflowPanel
+        open={open}
+        kind={kind}
+        seedDocumentId={documentId}
+        onClose={closeWorkflow}
+      />
     </NewDocumentWorkflowContext.Provider>
   );
 }

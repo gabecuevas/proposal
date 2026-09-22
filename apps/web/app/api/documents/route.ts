@@ -3,6 +3,7 @@ import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
 import { getNextCursorFromTimestampPage, parseCursorPagination } from "@/lib/api/pagination";
 import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
 import { createBlankDocument, createDocumentFromTemplate, duplicateDocument, listDocuments } from "@/lib/editor/document-store";
+import { parseDocumentKind, parseEditorLayout } from "@/lib/editor/document-kind";
 
 const validStatuses = [
   "DRAFTED",
@@ -39,6 +40,8 @@ export async function GET(request: NextRequest) {
 type CreateDocumentBody = {
   templateId?: string;
   sourceDocumentId?: string;
+  kind?: string;
+  layout?: string;
   recipient?: {
     name?: string;
     email?: string;
@@ -62,6 +65,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const kind = parseDocumentKind(body.kind);
+    const layout = body.layout != null ? parseEditorLayout(body.layout) : undefined;
+
     const document = body.sourceDocumentId
       ? await duplicateDocument({
           sourceDocumentId: body.sourceDocumentId,
@@ -70,6 +76,7 @@ export async function POST(request: NextRequest) {
         })
       : body.templateId
         ? await createDocumentFromTemplate(body.templateId, auth.workspaceId, {
+            kind,
             recipient:
               recipientName && recipientEmail
                 ? {
@@ -82,6 +89,8 @@ export async function POST(request: NextRequest) {
         : await createBlankDocument({
             workspaceId: auth.workspaceId,
             actorUserId: auth.userId,
+            kind,
+            layout,
           });
     return jsonWithRequestId(request, { document }, { status: 201 });
   } catch (error) {

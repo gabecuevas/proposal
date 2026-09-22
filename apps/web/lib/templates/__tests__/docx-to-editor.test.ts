@@ -4,6 +4,7 @@ import {
   enhanceDocxHtmlForPrint,
   htmlToEditorContent,
   packContinuousTextBlock,
+  toFlowContinuousContent,
   transformDocxParagraph,
 } from "../docx-to-editor";
 
@@ -130,6 +131,19 @@ describe("packContinuousTextBlock", () => {
     const para = packed[0]?.content?.[0];
     const bold = (para?.content ?? []).find((n) => n.text === "World");
     expect(bold?.marks?.some((m) => m.type === "bold")).toBe(true);
+  });
+});
+
+describe("toFlowContinuousContent", () => {
+  it("keeps body copy as top-level blocks without textBox", () => {
+    const packed = toFlowContinuousContent(
+      htmlToEditorContent(
+        `<p class="doc-title">TITLE</p><p>Intro</p><p><strong>1. Section</strong></p><p style="padding-left:20px">(a) Detail</p>`,
+      ),
+    );
+    expect(packed.map((n) => n.type)).toEqual(["paragraph", "paragraph", "paragraph", "paragraph"]);
+    expect(packed.some((n) => n.type === "textBox")).toBe(false);
+    expect(packed[0]?.attrs?.textAlign).toBe("center");
   });
 });
 

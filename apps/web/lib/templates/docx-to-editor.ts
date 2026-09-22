@@ -224,11 +224,10 @@ function applyItalicToInline(nodes: EditorNode[]): EditorNode[] {
 }
 
 /**
- * Normalize blocks that cannot nest in a TipTap Text Block, then pack consecutive
- * body copy into a single continuous textBox (PandaDoc-style import).
- * Tables and other structural siblings stay outside the text block.
+ * Normalize blocks that cannot nest in a TipTap Text Block (blockquote → body,
+ * HR → signature fill). Shared by Creator pack and Flow continuous import.
  */
-export function packContinuousTextBlock(blocks: EditorNode[]): EditorNode[] {
+export function normalizeDocxImportBlocks(blocks: EditorNode[]): EditorNode[] {
   const normalized: EditorNode[] = [];
 
   for (const block of blocks) {
@@ -254,7 +253,24 @@ export function packContinuousTextBlock(blocks: EditorNode[]): EditorNode[] {
     normalized.push(block);
   }
 
-  const laidOut = applyImportLayoutHeuristics(normalized);
+  return applyImportLayoutHeuristics(normalized);
+}
+
+/**
+ * Flow Document import: continuous top-level blocks (no Creator textBox wrapper).
+ * PaginationPlus paginates these like Google Docs.
+ */
+export function toFlowContinuousContent(blocks: EditorNode[]): EditorNode[] {
+  const laidOut = normalizeDocxImportBlocks(blocks);
+  return laidOut.length > 0 ? laidOut : [{ type: "paragraph" }];
+}
+
+/**
+ * Creator import: pack consecutive body copy into a continuous textBox
+ * (PandaDoc-style). Tables and other structural siblings stay outside.
+ */
+export function packContinuousTextBlock(blocks: EditorNode[]): EditorNode[] {
+  const laidOut = normalizeDocxImportBlocks(blocks);
 
   const result: EditorNode[] = [];
   let run: EditorNode[] = [];
@@ -599,11 +615,12 @@ const mammothOptions = {
   ).transforms.paragraph(transformDocxParagraph),
 };
 
+/** Editable Word import → Flow Document JSON (continuous body, not Creator text boxes). */
 export async function convertDocxBufferToEditorDoc(buffer: Buffer): Promise<EditorDoc> {
   const result = await mammoth.convertToHtml({ buffer }, mammothOptions);
   return {
     type: "doc",
-    content: packContinuousTextBlock(htmlToEditorContent(result.value || "")),
+    content: toFlowContinuousContent(htmlToEditorContent(result.value || "")),
   };
 }
 

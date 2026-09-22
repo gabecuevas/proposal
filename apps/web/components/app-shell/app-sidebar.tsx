@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn } from "@repo/ui/utils";
 import { useNewDocumentWorkflow } from "@/components/documents/new-document-workflow-context";
+import { LibraryCreateSplitButton } from "@/components/templates/library-create-split-button";
 import { documentTrackingCounts } from "@/lib/ui/document-tracking";
+import {
+  type DocumentCreateKind,
+} from "@/lib/editor/document-kind";
 import { SettingsMenu } from "./settings-menu";
 import { sidebarIcons, IconSearch } from "./shell-icons";
 import {
@@ -146,6 +151,7 @@ export function AppSidebar({
   onNavigate,
 }: AppSidebarProps) {
   const { openWorkflow } = useNewDocumentWorkflow();
+  const router = useRouter();
   const counts = useShellCounts(section.id);
   const teamMemberCount = useTeamMemberCount(
     Boolean(section.filters?.some((filter) => filter.id === "members")),
@@ -153,6 +159,38 @@ export function AppSidebar({
   const navItems = sidebarItemsForSection(section, pathname);
   const extras = sidebarExtrasForSection(section, pathname);
   const inboxShelf = isEmailInboxPath(pathname);
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  async function handleCreateKind(kind: DocumentCreateKind) {
+    if (createBusy) {
+      return;
+    }
+    setCreateError(null);
+    setCreateBusy(true);
+    try {
+      const { createFromDocumentKind } = await import("@/lib/documents/create-from-kind");
+      const result = await createFromDocumentKind(kind);
+      if (result.action === "template") {
+        router.push(result.href);
+        onNavigate();
+        return;
+      }
+      if (result.action === "workflow") {
+        openWorkflow({ kind: result.kind });
+        onNavigate();
+        return;
+      }
+      if (result.action === "flow") {
+        router.push(`/app/documents/${result.documentId}`);
+        onNavigate();
+        return;
+      }
+      setCreateError(result.message);
+    } finally {
+      setCreateBusy(false);
+    }
+  }
 
   return (
     <aside
@@ -183,17 +221,9 @@ export function AppSidebar({
           </div>
         ) : section.createCta ? (
           <div className="shrink-0 px-3 pb-2 pt-3">
-            <button
-              type="button"
-              onClick={() => {
-                openWorkflow();
-                onNavigate();
-              }}
-              className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-95"
-            >
-              <span className="text-base leading-none">+</span>
-              New Document
-            </button>
+            <LibraryCreateSplitButton onSelect={(kind) => void handleCreateKind(kind)} />
+            {createBusy ? <p className="mt-1 text-[11px] text-muted">Creating…</p> : null}
+            {createError ? <p className="mt-1 text-[11px] text-red-600">{createError}</p> : null}
           </div>
         ) : null}
 

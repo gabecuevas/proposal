@@ -30,7 +30,8 @@
     "AI_PROVIDER",
     "AI_API_KEY",
     "AI_BASE_URL",
-    "AI_MODEL"
+    "AI_MODEL",
+    "ALLOW_FLOW_DOCUMENT_PROTOTYPE"
   ],
   "tasks": {
     "build": {

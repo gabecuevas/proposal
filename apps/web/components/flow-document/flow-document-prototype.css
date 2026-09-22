@@ -1,0 +1,1712 @@
+/* Scoped styles for Flow Document (Google Docs–like continuous editor). */
+.flow-document-shell .flow-document-editor {
+  position: relative;
+  z-index: 1;
+  min-height: 1056px;
+  background: transparent;
+  color: #000;
+  box-shadow: none;
+}
+
+.flow-document-shell .flow-document-paper-frame .ProseMirror {
+  outline: none;
+  caret-color: #000;
+}
+
+.flow-document-shell .flow-document-paper-frame .ProseMirror:not(.rm-with-pagination) {
+  padding: 96px;
+}
+
+.flow-document-shell .flow-document-editor .flow-page-break {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  margin: 12px 0;
+  border: 1px dashed #a1a1aa;
+  border-radius: 4px;
+  background: repeating-linear-gradient(
+    -45deg,
+    #fafafa,
+    #fafafa 6px,
+    #f4f4f5 6px,
+    #f4f4f5 12px
+  );
+  color: #71717a;
+  font-size: 11px;
+}
+
+.flow-document-shell .flow-document-editor .flow-page-break::after {
+  content: "Page break";
+}
+
+.flow-document-shell .flow-document-editor table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75rem 0;
+}
+
+/*
+ * PaginationPlus paginates with floated page seams. A real table BFC jumps below
+ * every seam (runaway pages). Unwrap wrappers/table/tbody with display:contents
+ * and lay out each row as a normal-flow block so rows paginate like paragraphs
+ * while cells keep column geometry via inline-block + --flow-cell-width.
+ *
+ * inline-block cells establish BFCs that must not overlap floats, so a row that
+ * cannot fit in the remaining page space drops entirely below the seam.
+ * Never clear floats on rows — that expands the row around every page gap.
+ *
+ * These rules intentionally override PaginationPlus defaults such as
+ * `tbody { display:table; max-height:300px }` and `table > tr { display:grid }`.
+ */
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) .tableWrapper,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table.flow-table,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table {
+  display: contents !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table.flow-table > caption,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table > caption {
+  display: none !important;
+}
+
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table.flow-table > colgroup,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table > colgroup {
+  display: none !important;
+}
+
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table.flow-table > tbody,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table.flow-table > thead,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table.flow-table > tfoot,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table > tbody,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table > thead,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table > tfoot {
+  display: contents !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table.flow-table tr,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table tr,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table > tr,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table tbody > tr {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box;
+  clear: none !important;
+  float: none !important;
+  overflow: visible !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  max-height: none !important;
+}
+
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table.flow-table tr::before,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table.flow-table tr::after,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table tr::before,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table tr::after {
+  content: none !important;
+  display: none !important;
+  clear: none !important;
+}
+
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table.flow-table td,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table.flow-table th,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table td,
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) table th {
+  display: inline-block !important;
+  vertical-align: top !important;
+  box-sizing: border-box !important;
+  /* Width comes from TipTap inline style (prefer % from paste normalize). */
+  max-width: 100%;
+  float: none !important;
+  clear: none !important;
+  max-height: none !important;
+  position: relative;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.flow-document-shell .flow-document-editor td,
+.flow-document-shell .flow-document-editor th {
+  /* Do not invent borders — pasted Docs tables are often borderless. */
+  border-style: none;
+  border-width: 0;
+  padding: 0.35rem 0.5rem;
+  vertical-align: top;
+  position: relative;
+}
+
+/* Structure chrome on hover/selection without overriding pasted border styles. */
+.flow-document-shell .flow-document-editor table:hover td,
+.flow-document-shell .flow-document-editor table:hover th {
+  outline: 1px solid #dadce0;
+  outline-offset: -1px;
+}
+
+.flow-document-shell .flow-document-editor table .selectedCell {
+  outline: 1px solid #1a73e8;
+  outline-offset: -1px;
+}
+
+.flow-document-shell .flow-document-editor .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #1a73e8;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Float-compatible table layout: TipTap resize handles lose their cell containing
+   block and paint a blue line on the page edge — hide until a real table box. */
+.flow-document-shell .rm-with-pagination:not([rm-pagination-disabled]) .column-resize-handle {
+  display: none !important;
+}
+
+.flow-document-shell .flow-document-editor.resize-cursor {
+  cursor: col-resize;
+}
+
+.flow-document-shell .flow-document-editor table .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(26, 115, 232, 0.08);
+  pointer-events: none;
+}
+
+.flow-document-shell .flow-document-editor p {
+  margin: 0 0 0.75rem;
+}
+
+.flow-document-shell .flow-document-editor h1 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+}
+
+.flow-document-shell .flow-document-editor h2 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 1rem 0 0.5rem;
+}
+
+.flow-document-shell .flow-document-editor h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0.85rem 0 0.4rem;
+}
+
+.flow-document-shell .flow-document-editor h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.35rem;
+}
+
+.flow-document-shell .flow-document-editor h5,
+.flow-document-shell .flow-document-editor h6 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0.65rem 0 0.3rem;
+}
+
+.flow-document-shell .flow-task-list {
+  list-style: none;
+  padding-left: 0.25rem;
+  margin: 0 0 0.75rem;
+}
+
+.flow-document-shell .flow-task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.25rem 0;
+}
+
+.flow-document-shell .flow-task-item > label {
+  margin-top: 0.2rem;
+}
+
+.flow-document-shell .flow-task-item > div {
+  flex: 1;
+}
+
+/* Hide empty PaginationPlus header/footer slots; show when they have content. */
+.flow-document-shell .rm-page-header-left:empty,
+.flow-document-shell .rm-page-header-right:empty,
+.flow-document-shell .rm-page-footer-left:empty,
+.flow-document-shell .rm-page-footer-right:empty {
+  display: none !important;
+}
+
+.flow-document-shell .rm-page-header,
+.flow-document-shell .rm-page-footer,
+.flow-document-shell .rm-first-page-header {
+  pointer-events: auto;
+}
+
+.flow-paper-stage {
+  position: relative;
+}
+
+/* Google Docs–style sticky rulers: fixed under chrome + left of workspace. */
+.flow-workspace {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  background: #f9fbfd;
+}
+
+.flow-workspace--rulers {
+  grid-template-columns: 18px 1fr;
+  grid-template-rows: 18px 1fr;
+}
+
+.flow-workspace--rulers .flow-ruler-corner {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.flow-workspace--rulers .flow-ruler-h-viewport {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.flow-workspace--rulers .flow-ruler-v-viewport {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.flow-workspace .flow-scroll-pane {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.flow-workspace--rulers .flow-scroll-pane {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.flow-ruler-corner {
+  width: 18px;
+  height: 18px;
+  background: #f8f9fa;
+  border-right: 1px solid #dadce0;
+  border-bottom: 1px solid #dadce0;
+  box-sizing: border-box;
+  z-index: 6;
+}
+
+.flow-ruler-h-viewport {
+  position: relative;
+  height: 18px;
+  overflow: hidden;
+  background: #f8f9fa;
+  border-bottom: 1px solid #dadce0;
+  z-index: 6;
+}
+
+.flow-ruler-v-viewport {
+  position: relative;
+  width: 18px;
+  overflow: hidden;
+  background: #f8f9fa;
+  border-right: 1px solid #dadce0;
+  z-index: 5;
+}
+
+.flow-ruler-horizontal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 18px;
+  background: #fff;
+  overflow: hidden;
+  user-select: none;
+  will-change: transform;
+}
+
+.flow-ruler-vertical {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 18px;
+  background: #fff;
+  overflow: hidden;
+  user-select: none;
+  will-change: transform;
+}
+
+.flow-scroll-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.flow-ruler-margin {
+  position: absolute;
+  background: #e8eaed;
+  pointer-events: none;
+}
+
+.flow-ruler-margin--h-left {
+  left: 0;
+  top: 0;
+  bottom: 0;
+}
+
+.flow-ruler-margin--h-right {
+  right: 0;
+  top: 0;
+  bottom: 0;
+}
+
+.flow-ruler-margin--v-top {
+  top: 0;
+  left: 0;
+  right: 0;
+}
+
+.flow-ruler-margin--v-bottom {
+  bottom: 0;
+  left: 0;
+  right: 0;
+}
+
+.flow-ruler-ticks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.flow-ruler-tick {
+  position: absolute;
+  background: #80868b;
+}
+
+.flow-ruler-tick--h {
+  top: auto;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-0.5px);
+}
+
+.flow-ruler-tick--h.flow-ruler-tick--major {
+  height: 8px;
+}
+
+.flow-ruler-tick--h.flow-ruler-tick--mid {
+  height: 5px;
+}
+
+.flow-ruler-tick--h.flow-ruler-tick--minor {
+  height: 3px;
+}
+
+.flow-ruler-tick--v {
+  left: auto;
+  right: 0;
+  height: 1px;
+  transform: translateY(-0.5px);
+}
+
+.flow-ruler-tick--v.flow-ruler-tick--major {
+  width: 8px;
+}
+
+.flow-ruler-tick--v.flow-ruler-tick--mid {
+  width: 5px;
+}
+
+.flow-ruler-tick--v.flow-ruler-tick--minor {
+  width: 3px;
+}
+
+.flow-ruler-label {
+  position: absolute;
+  font-size: 8px;
+  line-height: 1;
+  color: #5f6368;
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: 400;
+}
+
+.flow-ruler-tick--h .flow-ruler-label {
+  left: 2px;
+  bottom: 8px;
+}
+
+.flow-ruler-tick--v .flow-ruler-label {
+  right: 8px;
+  top: 1px;
+}
+
+.flow-ruler-handle {
+  position: absolute;
+  z-index: 5;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: ew-resize;
+}
+
+.flow-ruler-handle:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.flow-ruler-handle--left,
+.flow-ruler-handle--right {
+  top: 0;
+  width: 10px;
+  height: 100%;
+  transform: translateX(-5px);
+  cursor: ew-resize;
+}
+
+.flow-ruler-handle--top,
+.flow-ruler-handle--bottom {
+  left: 0;
+  width: 100%;
+  height: 10px;
+  transform: translateY(-5px);
+  cursor: ns-resize;
+}
+
+.flow-ruler-handle--left::after,
+.flow-ruler-handle--right::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 1px;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 6px solid #1a73e8;
+  transform: translateX(-50%);
+}
+
+.flow-ruler-handle--top::after,
+.flow-ruler-handle--bottom::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 6px solid #1a73e8;
+  transform: translateY(-50%);
+}
+
+/* Invisible but hittable double-click zones — no hover chrome. */
+.flow-hf-hotspot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: default;
+  opacity: 1;
+  background: transparent;
+  outline: none;
+}
+
+.flow-hf-hotspot--header {
+  top: 0;
+  height: 72px;
+}
+
+.flow-hf-hotspot--footer {
+  bottom: 0;
+  height: 72px;
+}
+
+.flow-hf-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(60, 64, 67, 0.45);
+}
+
+.flow-hf-modal {
+  width: min(420px, calc(100vw - 32px));
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.3), 0 4px 8px 3px rgba(60, 64, 67, 0.15);
+  padding: 28px 28px 20px;
+  color: #202124;
+}
+
+.flow-hf-modal-title {
+  margin: 0 0 24px;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1.3;
+  color: #202124;
+}
+
+.flow-hf-modal-section {
+  margin-bottom: 22px;
+}
+
+.flow-hf-modal-section-title {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #202124;
+}
+
+.flow-hf-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: #3c4043;
+}
+
+.flow-hf-modal-input {
+  height: 40px;
+  width: 100%;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  padding: 0 12px;
+  font-size: 14px;
+  color: #202124;
+  outline: none;
+}
+
+.flow-hf-modal-input:focus {
+  border-color: #1a73e8;
+  box-shadow: inset 0 0 0 1px #1a73e8;
+}
+
+.flow-hf-modal-check {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #202124;
+  cursor: pointer;
+  user-select: none;
+}
+
+.flow-hf-modal-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: #1a73e8;
+}
+
+.flow-hf-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.flow-hf-modal-cancel {
+  border: 0;
+  background: transparent;
+  color: #1a73e8;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 10px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.flow-hf-modal-cancel:hover {
+  background: #f6fafe;
+}
+
+.flow-hf-modal-apply {
+  border: 0;
+  background: #1a73e8;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 10px 24px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.flow-hf-modal-apply:hover {
+  background: #1765cc;
+}
+
+.flow-table-options-modal {
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(90vh, 720px);
+  overflow: auto;
+}
+
+.flow-table-options-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.flow-table-align-fieldset {
+  border: 0;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.flow-table-align-fieldset legend {
+  font-size: 13px;
+  color: #5f6368;
+  margin-bottom: 6px;
+}
+
+.flow-table-color-input {
+  width: 100%;
+  height: 36px;
+  padding: 2px;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.flow-table-context-menu {
+  position: fixed;
+  z-index: 90;
+  min-width: 220px;
+  padding: 6px 0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow:
+    0 1px 3px rgba(60, 64, 67, 0.3),
+    0 4px 8px 3px rgba(60, 64, 67, 0.15);
+}
+
+.flow-table-context-menu button {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 8px 16px;
+  font-size: 14px;
+  color: #202124;
+  cursor: pointer;
+}
+
+.flow-table-context-menu button:hover {
+  background: #f1f3f4;
+}
+
+.flow-table-context-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: #eee;
+}
+
+/* When pagination is off, restore a real table box for measurement/print fallbacks. */
+.flow-document-shell .rm-with-pagination[rm-pagination-disabled] .tableWrapper {
+  display: block !important;
+  width: 100%;
+  overflow-x: auto;
+}
+
+.flow-document-shell .rm-with-pagination[rm-pagination-disabled] table {
+  display: table !important;
+  width: 100% !important;
+  border-collapse: collapse !important;
+}
+
+.flow-document-shell .rm-with-pagination[rm-pagination-disabled] table tbody,
+.flow-document-shell .rm-with-pagination[rm-pagination-disabled] table thead,
+.flow-document-shell .rm-with-pagination[rm-pagination-disabled] table tfoot {
+  display: table-row-group !important;
+}
+
+.flow-document-shell .rm-with-pagination[rm-pagination-disabled] table tr {
+  display: table-row !important;
+}
+
+.flow-document-shell .rm-with-pagination[rm-pagination-disabled] table td,
+.flow-document-shell .rm-with-pagination[rm-pagination-disabled] table th {
+  display: table-cell !important;
+  width: auto !important;
+  max-width: none !important;
+}
+
+.flow-hf-editor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+}
+
+.flow-hf-editor--header {
+  top: 0;
+}
+
+.flow-hf-editor--footer {
+  bottom: 0;
+  flex-direction: column-reverse;
+}
+
+.flow-hf-editor-card {
+  position: relative;
+  z-index: 2;
+  background: #fff;
+  padding: 12px 48px 0;
+}
+
+.flow-hf-editor--footer .flow-hf-editor-card {
+  padding: 0 48px 12px;
+}
+
+.flow-hf-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 40px;
+  border: 0;
+  outline: none;
+  font: inherit;
+  font-size: 11pt;
+  line-height: 1.4;
+  color: #000;
+  background: transparent;
+  padding: 4px 0;
+}
+
+.flow-hf-textarea--secondary {
+  margin-top: 8px;
+  border-top: 1px dashed #dadce0;
+  padding-top: 8px;
+}
+
+.flow-hf-page-hint {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: #5f6368;
+}
+
+.flow-hf-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 4px;
+  padding: 6px 0 8px;
+  border-top: 1px solid #dadce0;
+  font-size: 13px;
+  color: #3c4043;
+  position: relative;
+}
+
+.flow-hf-editor--footer .flow-hf-bar {
+  margin-top: 0;
+  margin-bottom: 4px;
+  border-top: 0;
+  border-bottom: 1px solid #dadce0;
+  padding-top: 8px;
+}
+
+.flow-hf-bar-label {
+  font-weight: 500;
+  min-width: 3.5rem;
+}
+
+.flow-hf-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  cursor: pointer;
+  user-select: none;
+}
+
+.flow-hf-checkbox input {
+  width: 14px;
+  height: 14px;
+}
+
+.flow-hf-options-wrap {
+  position: relative;
+}
+
+.flow-hf-options {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: #1a73e8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+.flow-hf-options:hover,
+.flow-hf-options.is-open {
+  background: #e8f0fe;
+}
+
+.flow-hf-options-caret {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.flow-hf-options-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  min-width: 11rem;
+  padding: 6px 0;
+  background: #fff;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(60, 64, 67, 0.15), 0 8px 24px rgba(60, 64, 67, 0.12);
+}
+
+.flow-hf-editor--footer .flow-hf-options-menu {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+.flow-hf-options-menu button {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: #202124;
+  cursor: pointer;
+}
+
+.flow-hf-options-menu button:hover {
+  background: #f1f3f4;
+}
+
+.flow-hf-done {
+  border: 0;
+  background: transparent;
+  color: #1a73e8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.flow-hf-done:hover {
+  background: #e8f0fe;
+}
+
+.flow-hf-dismiss {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.flow-page-backgrounds {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.flow-page-overlays {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.flow-page-chrome {
+  position: absolute;
+  left: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.flow-page-background {
+  position: absolute;
+  left: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #fff;
+  box-shadow:
+    0 0 0 1px #dadce0,
+    0 1px 3px rgba(60, 64, 67, 0.15),
+    0 4px 8px rgba(60, 64, 67, 0.1);
+}
+
+.flow-page-background-color,
+.flow-page-background-image {
+  position: absolute;
+  inset: 0;
+}
+
+.flow-page-index {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  /* Center in the gap above this page (half gap + half own height). */
+  transform: translate(-50%, calc(-0.5 * var(--flow-page-gap, 32px) - 50%));
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: #94a3b8;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.flow-page-menu {
+  position: absolute;
+  right: 8px;
+  top: 0;
+  /* Match page-count vertical centering in the same gap. */
+  transform: translateY(calc(-0.5 * var(--flow-page-gap, 32px) - 50%));
+  pointer-events: auto;
+  z-index: 6;
+}
+
+.flow-page-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+.flow-page-menu-trigger:hover,
+.flow-page-menu-trigger.is-open,
+.flow-page-menu-trigger.is-active {
+  background: #fff;
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+.flow-page-menu-dots {
+  font-size: 18px;
+  line-height: 1;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+
+.flow-page-menu-dropdown {
+  position: absolute;
+  right: 0;
+  top: 28px;
+  z-index: 50;
+  min-width: 180px;
+  padding: 4px 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.flow-page-menu-item {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 13px;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.flow-page-menu-item:hover {
+  background: #f8fafc;
+}
+
+.flow-page-properties {
+  display: flex;
+  flex-direction: column;
+  width: 288px;
+  max-width: 288px;
+  flex-shrink: 0;
+  height: 100%;
+  overflow-y: auto;
+  border-left: 1px solid #e2e8f0;
+  background: #fff;
+  color: #0f172a;
+}
+
+.flow-page-properties-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.flow-page-properties-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.flow-page-properties-close {
+  border: 0;
+  background: transparent;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-size: 20px;
+  line-height: 1;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.flow-page-properties-close:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.flow-page-properties-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.flow-page-properties-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 12px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.flow-page-properties-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.flow-page-properties-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 28px;
+}
+
+.flow-page-properties-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.flow-page-properties-control {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.flow-page-properties-control select {
+  max-width: 9.5rem;
+  border: 0;
+  border-bottom: 1px solid #cbd5e1;
+  background: transparent;
+  padding: 4px 2px;
+  font-size: 12px;
+  color: #0f172a;
+  outline: none;
+}
+
+.flow-page-properties-control select:disabled {
+  opacity: 0.4;
+}
+
+.flow-page-properties-swatch {
+  position: relative;
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+}
+
+.flow-page-properties-swatch-face {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04);
+}
+
+.flow-page-properties-swatch input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.flow-page-properties-opacity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.flow-page-properties-opacity input {
+  width: 3rem;
+  border: 0;
+  border-bottom: 1px solid #cbd5e1;
+  background: transparent;
+  text-align: right;
+  font-size: 12px;
+  color: #0f172a;
+  outline: none;
+}
+
+.flow-page-properties-opacity input:disabled {
+  opacity: 0.4;
+}
+
+.flow-page-properties-image-btn {
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 0;
+  cursor: pointer;
+}
+
+.flow-page-properties-image-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.flow-page-properties-no-image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #f87171;
+  font-size: 16px;
+}
+
+.flow-page-properties-layout-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.flow-page-properties-layout-size {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.flow-page-properties-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  padding: 4px 0;
+  font-size: 13px;
+  color: #0f172a;
+  cursor: pointer;
+  text-align: left;
+}
+
+.flow-page-properties-action:hover:not(:disabled) {
+  color: #1d4ed8;
+}
+
+.flow-page-properties-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.flow-page-properties-action--muted {
+  color: #64748b;
+}
+
+.flow-page-properties-action-icon {
+  display: inline-flex;
+  width: 18px;
+  justify-content: center;
+  color: #64748b;
+  font-size: 12px;
+}
+
+/* Left Document Preview thumbnails (cloned ProseMirror pages). */
+.flow-page-thumb {
+  pointer-events: none;
+  user-select: none;
+}
+
+.flow-page-thumb [contenteditable] {
+  caret-color: transparent;
+  outline: none;
+}
+
+.flow-page-thumb .ProseMirror-focused {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.flow-page-thumb .flow-page-overlays,
+.flow-page-thumb .flow-hf-layer,
+.flow-page-thumb .ProseMirror-gapcursor,
+.flow-page-thumb .ProseMirror-selectednode {
+  display: none !important;
+}
+
+.flow-workspace-main {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.flow-workspace-main .flow-workspace {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Right icon shelf — expands Variables / Page panels. */
+.flow-tool-shelf {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 44px;
+  flex-shrink: 0;
+  padding: 8px 0;
+  border-left: 1px solid #e2e8f0;
+  background: #fff;
+  z-index: 8;
+}
+
+.flow-tool-shelf-toggle,
+.flow-tool-shelf-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.flow-tool-shelf-toggle:hover,
+.flow-tool-shelf-icon:hover,
+.flow-tool-shelf-icon.is-active {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.flow-tool-shelf-icon.is-active {
+  box-shadow: inset 0 0 0 1px #cbd5e1;
+}
+
+.flow-tool-shelf-glyph {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1;
+}
+
+.flow-tool-shelf-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+
+/* Variables expandable panel */
+.flow-variables-panel {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  max-width: 300px;
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  border-left: 1px solid #e2e8f0;
+  background: #fff;
+  color: #0f172a;
+}
+
+.flow-variables-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.flow-variables-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.flow-variables-title-icon {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.flow-variables-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.flow-variables-close {
+  border: 0;
+  background: transparent;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  font-size: 20px;
+  line-height: 1;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.flow-variables-close:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.flow-variables-toolbar {
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.flow-variables-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f1f5f9;
+}
+
+.flow-variables-search-icon {
+  color: #94a3b8;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.flow-variables-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+  color: #0f172a;
+  outline: none;
+}
+
+.flow-variables-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+}
+
+.flow-variables-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0 16px;
+}
+
+.flow-variables-group {
+  padding: 8px 0 4px;
+}
+
+.flow-variables-group-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  padding: 6px 14px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.flow-variables-group-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.flow-variables-group-chevron {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.flow-variables-group-desc {
+  margin: 0 14px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #94a3b8;
+}
+
+.flow-variables-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.flow-variables-row {
+  padding: 10px 14px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.flow-variables-row-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.flow-variables-key {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  color: #0f172a;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-variables-key:hover:not(:disabled) {
+  color: #1d4ed8;
+}
+
+.flow-variables-key:disabled {
+  cursor: default;
+}
+
+.flow-variables-mark {
+  background: #fef08a;
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+
+.flow-variables-count {
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 600;
+  tabular-nums: true;
+}
+
+.flow-variables-row-menu {
+  position: relative;
+}
+
+.flow-variables-row-more {
+  border: 0;
+  background: transparent;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: 1px;
+}
+
+.flow-variables-row-more:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.flow-variables-row-dropdown {
+  position: absolute;
+  right: 0;
+  top: 24px;
+  z-index: 20;
+  min-width: 160px;
+  padding: 4px 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.flow-variables-row-dropdown button {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 12px;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.flow-variables-row-dropdown button:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
+.flow-variables-row-dropdown button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.flow-variables-value {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: #f1f5f9;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: #0f172a;
+  outline: none;
+}
+
+.flow-variables-value::placeholder {
+  color: #94a3b8;
+}
+
+.flow-variables-value:disabled {
+  opacity: 0.6;
+}
+
+.flow-variables-empty {
+  margin: 16px 14px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.flow-document-shell .variable-token {
+  display: inline-block;
+  border-radius: 4px;
+  background: #eff6ff;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: #1d4ed8;
+  white-space: nowrap;
+}
+
+@media print {
+  .flow-docs-chrome,
+  .flow-hf-hotspot,
+  .flow-hf-editor,
+  .flow-ruler-corner,
+  .flow-ruler-h-viewport,
+  .flow-ruler-v-viewport,
+  .flow-page-overlays,
+  .flow-page-properties,
+  .flow-tool-shelf,
+  .flow-variables-panel,
+  .flow-page-nav {
+    display: none !important;
+  }
+  .flow-workspace,
+  .flow-workspace--rulers {
+    display: block !important;
+  }
+  .flow-scroll-pane {
+    overflow: visible !important;
+  }
+  .flow-document-shell {
+    background: #fff !important;
+  }
+  .flow-document-shell .flow-document-editor {
+    box-shadow: none !important;
+  }
+}

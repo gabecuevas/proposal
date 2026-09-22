@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import { TemplateEditor } from "@/components/editor/template-editor";
+import { FlowDocumentEditor } from "@/components/flow-document/flow-document-editor";
 import { listContentBlocks } from "@/lib/editor/content-block-store";
-import { getSampleTemplate, getTemplate } from "@/lib/editor/template-store";
+import { getSampleTemplate, getTemplate, templateUsesFlowEditor } from "@/lib/editor/template-store";
 import { getServerSession } from "@/lib/auth/server-session";
+import { unwrapTextBoxesInEditorDoc } from "@/lib/flow-document/normalize-content";
 
 type Params = {
   params: Promise<{ templateId: string }>;
@@ -39,6 +41,18 @@ export default async function TemplateDetailPage({ params, searchParams }: Param
       ? `/app/templates?samples=1&folder=${encodeURIComponent(sampleFolder)}`
       : "/app/templates?samples=1"
     : "/app/templates";
+
+  if (templateUsesFlowEditor(template)) {
+    return (
+      <FlowDocumentEditor
+        templateId={template.id}
+        initialName={template.name}
+        initialDoc={unwrapTextBoxesInEditorDoc(template.editor_json)}
+        closeHref={closeHref}
+        masterPreview={masterPreview}
+      />
+    );
+  }
 
   return (
     <TemplateEditor

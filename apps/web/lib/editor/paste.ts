@@ -275,6 +275,15 @@ function normalizeElement(el: Element): void {
       el.remove();
       return;
     }
+    // Google Docs pastes section dividers as tiny base64 "horizontal line" images
+    // with fixed px widths; those inflate PaginationPlus height math.
+    const title = (el.getAttribute("title") ?? "").toLowerCase();
+    const alt = (el.getAttribute("alt") ?? "").toLowerCase();
+    if (title.includes("horizontal line") || alt.includes("horizontal line")) {
+      const hr = el.ownerDocument.createElement("hr");
+      el.replaceWith(hr);
+      return;
+    }
     // Let our image node view size to the page; keep aspect via CSS.
     el.setAttribute("style", "max-width: 100%; height: auto;");
   }
@@ -313,6 +322,50 @@ export function sanitizePastedHtml(html: string): string {
   }
   const parsed = new DOMParser().parseFromString(html, "text/html");
   normalizePastedDocument(parsed.body);
+  return parsed.body.innerHTML;
+}
+
+/**
+ * @deprecated Flow should use sanitizeFlowPastedHtml from `@/lib/flow-document/paste`
+ * which preserves tables. This alias keeps Creator-era imports compiling.
+ */
+export function sanitizeFlowPastedHtml(html: string): string {
+  return sanitizePastedHtml(html);
+}
+
+/**
+ * @deprecated Prefer Flow paste path; kept for tests that still exercise flattening.
+ * PaginationPlus float seams + tables = runaway pages; flattening was the emergency fix.
+ */
+export function flattenTablesForFlowPagination(html: string): string {
+  if (!html || typeof DOMParser === "undefined") {
+    return html;
+  }
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const tables = [...parsed.body.querySelectorAll("table")];
+  for (const table of tables) {
+    const fragment = parsed.createDocumentFragment();
+    const rows = [...table.querySelectorAll("tr")];
+    for (const row of rows) {
+      const cells = [...row.querySelectorAll("th, td")];
+      if (cells.length === 0) {
+        continue;
+      }
+      for (const cell of cells) {
+        const kids = [...cell.childNodes];
+        if (kids.length === 0) {
+          const empty = parsed.createElement("p");
+          empty.append(parsed.createElement("br"));
+          fragment.append(empty);
+          continue;
+        }
+        for (const kid of kids) {
+          fragment.append(kid.cloneNode(true));
+        }
+      }
+    }
+    table.replaceWith(fragment);
+  }
   return parsed.body.innerHTML;
 }
 

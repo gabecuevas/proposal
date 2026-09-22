@@ -137,7 +137,7 @@ async function createTemplateFromEditorJson(
     body: JSON.stringify({
       name,
       editor_json,
-      tags: sample.tags ?? ["uploaded", "docx"],
+      tags: sample.tags ?? ["uploaded", "docx", "flow"],
       folder_id: sample.folder_id,
       is_sample: sample.is_sample,
       sample_folder_slug: sample.sample_folder_slug,
@@ -393,11 +393,11 @@ export function UploadDropzone({ onUploaded, folderId = null, sampleFolderSlug =
           ? {
               isSample: true,
               sampleFolderSlug,
-              tags: ["sample", `sample-folder:${sampleFolderSlug}`, "docx"],
+              tags: ["sample", `sample-folder:${sampleFolderSlug}`, "docx", "flow"],
             }
           : {
               folderId,
-              tags: ["uploaded", "docx"],
+              tags: ["uploaded", "docx", "flow"],
             });
         editorTemplateId = editorTemplate.id;
       }

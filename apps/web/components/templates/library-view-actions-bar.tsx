@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { LibraryCreateSplitButton } from "@/components/templates/library-create-split-button";
+import type { DocumentCreateKind } from "@/lib/editor/document-kind";
 
 export type LibraryViewMode = "list" | "preview";
 
@@ -58,6 +60,9 @@ type Props = {
   leading?: ReactNode;
   /** Sample Templates mode: Copy to My Library instead of personal library actions. */
   sampleMode?: boolean;
+  /** Library create split button (New Document / Template / Proposal / Quote). */
+  showCreate?: boolean;
+  onCreateKind?: (kind: import("@/lib/editor/document-kind").DocumentCreateKind) => void;
 };
 
 export function LibraryViewActionsBar({
@@ -78,6 +83,8 @@ export function LibraryViewActionsBar({
   menuHint,
   leading,
   sampleMode = false,
+  showCreate = false,
+  onCreateKind,
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -120,6 +127,14 @@ export function LibraryViewActionsBar({
       <div className="ml-auto flex flex-wrap items-center gap-2">
         {selectionMode && selectionCount > 0 ? (
           <p className="text-xs text-muted">{selectionCount} selected</p>
+        ) : null}
+
+        {showCreate && onCreateKind ? (
+          <LibraryCreateSplitButton
+            variant="toolbar"
+            primaryKind="template"
+            onSelect={(kind: DocumentCreateKind) => onCreateKind(kind)}
+          />
         ) : null}
 
         {showNewFolder ? (

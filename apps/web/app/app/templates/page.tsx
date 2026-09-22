@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { SheetPage, SheetTable, sheetTd, sheetTh, sheetTr } from "@/components/ui/sheet-table";
 import { UploadDropzone } from "@/components/templates/upload-dropzone";
@@ -16,6 +17,8 @@ import {
   LibraryViewActionsBar,
   type LibraryViewMode,
 } from "@/components/templates/library-view-actions-bar";
+import { TemplateTypeCell } from "@/components/documents/document-type-icon";
+import { useNewDocumentWorkflow } from "@/components/documents/new-document-workflow-context";
 import type { EditorDoc } from "@/lib/editor/types";
 import { assetUrl } from "@/lib/storage/asset-url";
 import {
@@ -33,7 +36,7 @@ const FAVORITES_KEY = "senddox-template-favorites";
 const VIEW_KEY = "senddox-template-view";
 const SUGGESTED_LIMIT = 8;
 
-type TemplateKind = "PDF" | "DOCX" | "Custom";
+type TemplateKind = "PDF" | "DOCX" | "Custom" | "Doc";
 
 type TemplateItem = {
   id: string;
@@ -141,6 +144,8 @@ function folderLabel(folder: FolderItem): string {
 }
 
 export default function AppTemplatesPage() {
+  const router = useRouter();
+  const { openWorkflow } = useNewDocumentWorkflow();
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [allFolders, setAllFolders] = useState<FolderItem[]>([]);
@@ -741,6 +746,26 @@ export default function AppTemplatesPage() {
         onViewModeChange={setView}
         showNewFolder={browseFolders && !browsingSamples}
         onNewFolder={() => openAction("new-folder")}
+        showCreate={!browsingSamples}
+        onCreateKind={(kind) => {
+          void (async () => {
+            const { createFromDocumentKind } = await import("@/lib/documents/create-from-kind");
+            const result = await createFromDocumentKind(kind, { folderId: currentFolderId });
+            if (result.action === "template") {
+              router.push(result.href);
+              return;
+            }
+            if (result.action === "workflow") {
+              openWorkflow({ kind: result.kind });
+              return;
+            }
+            if (result.action === "flow") {
+              router.push(`/app/documents/${result.documentId}`);
+              return;
+            }
+            window.alert(result.message);
+          })();
+        }}
         selectionMode={selectionMode}
         selectionCount={selected.size}
         sampleMode={browsingSamples}
@@ -882,8 +907,8 @@ export default function AppTemplatesPage() {
                   ) : null}
                   <th className={sheetTh()}>Document Title</th>
                   <th className={sheetTh()}>{activeSampleFolder ? "Date Added" : "Description"}</th>
-                  <th className={sheetTh()}>{activeSampleFolder ? "Last Modified" : "Templates"}</th>
-                  <th className={sheetTh()}>{activeSampleFolder ? "Type" : "Category"}</th>
+                  <th className={sheetTh()}>{activeSampleFolder ? "Type" : "Templates"}</th>
+                  <th className={sheetTh()}>{activeSampleFolder ? "Last Modified" : "Category"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -948,8 +973,10 @@ export default function AppTemplatesPage() {
                             </div>
                           </td>
                           <td className={sheetTd()}>{formatDate(template.created_at)}</td>
+                          <td className={sheetTd()}>
+                            <TemplateTypeCell kind={template.kind} />
+                          </td>
                           <td className={sheetTd()}>{formatDate(template.updated_at)}</td>
-                          <td className={sheetTd()}>{template.kind}</td>
                         </tr>
                       );
                     })}
@@ -998,7 +1025,7 @@ export default function AppTemplatesPage() {
                         >
                           <Link href={previewHref} className="flex flex-1 flex-col">
                             <div className="relative flex aspect-[4/5] items-center justify-center overflow-hidden bg-slate-100">
-                              <span className="text-sm font-medium text-muted">{template.kind}</span>
+                              <TemplateTypeCell kind={template.kind} />
                             </div>
                             <div className="border-t border-border p-3">
                               <p className="truncate font-semibold text-foreground">{template.name}</p>
@@ -1055,9 +1082,9 @@ export default function AppTemplatesPage() {
               ) : null}
               <th className={sheetTh()}>Document Title</th>
               <th className={sheetTh()}>Date Added</th>
+              <th className={sheetTh()}>Type</th>
               <th className={sheetTh()}>Last Modified</th>
               <th className={sheetTh()}>Shared</th>
-              <th className={sheetTh()}>Type</th>
               <th className={sheetTh()}>Owner</th>
               <th className={sheetTh()}>Last Modified By</th>
             </tr>
@@ -1078,6 +1105,7 @@ export default function AppTemplatesPage() {
                       </button>
                     </td>
                     <td className={sheetTd()} />
+                    <td className={sheetTd()}>Folder</td>
                     <td className={sheetTd()} />
                     <td className={sheetTd()}>
                       <button
@@ -1088,7 +1116,6 @@ export default function AppTemplatesPage() {
                         {sharedLabel(folder.shared_with)}
                       </button>
                     </td>
-                    <td className={sheetTd()}>Folder</td>
                     <td className={sheetTd()} />
                     <td className={sheetTd()} />
                   </tr>
@@ -1124,9 +1151,11 @@ export default function AppTemplatesPage() {
                     </div>
                   </td>
                   <td className={sheetTd()}>{formatDate(template.created_at)}</td>
+                  <td className={sheetTd()}>
+                    <TemplateTypeCell kind={template.kind} />
+                  </td>
                   <td className={sheetTd()}>{formatDate(template.updated_at)}</td>
                   <td className={sheetTd()}>{sharedLabel(template.shared_with)}</td>
-                  <td className={sheetTd()}>{template.kind}</td>
                   <td className={sheetTd()}>{template.owner_name}</td>
                   <td className={sheetTd()}>{template.updated_by_name ?? template.owner_name}</td>
                 </tr>
@@ -1205,8 +1234,10 @@ export default function AppTemplatesPage() {
                   </div>
                   <div className="border-t border-border p-3">
                     <p className="truncate font-semibold text-foreground">{template.name}</p>
-                    <p className="mt-0.5 text-sm text-muted">
-                      {subtitle} · {template.kind}
+                    <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted">
+                      <span className="truncate">{subtitle}</span>
+                      <span aria-hidden>·</span>
+                      <TemplateTypeCell kind={template.kind} />
                     </p>
                   </div>
                 </Link>
