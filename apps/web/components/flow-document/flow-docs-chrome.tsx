@@ -328,6 +328,9 @@ export function FlowDocsChrome({
     }
     const q = menuQuery.trim().toLowerCase();
     return all.filter((item) => item.label.toLowerCase().includes(q));
+    // Clipboard actions close over the current editor; listing them as deps would
+    // invalidate this memo every render because they are plain function declarations.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- clipboard fns intentionally omitted
   }, [editor, menuQuery, onInsertImage, onInsertPageBreak, onInsertTable, onPrint, onSave]);
 
   return (

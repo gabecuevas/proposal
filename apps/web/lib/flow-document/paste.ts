@@ -229,7 +229,9 @@ export function normalizeTableWidthsToPercents(root: ParentNode): void {
     // Fix rounding so percentages sum to 100.
     const sum = percents.reduce((a, b) => a + b, 0);
     if (percents.length > 0 && Math.abs(sum - 100) > 0.01) {
-      percents[percents.length - 1] = Math.round((percents[percents.length - 1] + (100 - sum)) * 100) / 100;
+      const lastIndex = percents.length - 1;
+      const last = percents[lastIndex] ?? 0;
+      percents[lastIndex] = Math.round((last + (100 - sum)) * 100) / 100;
     }
 
     table.querySelectorAll("tr").forEach((row) => {

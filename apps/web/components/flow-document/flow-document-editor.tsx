@@ -627,12 +627,13 @@ export function FlowDocumentEditor({
   );
 
   const variableUsageTotal = useMemo(() => {
-    if (!editor) {
+    try {
+      const counts = countVariableUsages(JSON.parse(serializedDoc) as EditorDoc);
+      return Object.values(counts).reduce((sum, n) => sum + n, 0);
+    } catch {
       return 0;
     }
-    const counts = countVariableUsages(editor.getJSON() as EditorDoc);
-    return Object.values(counts).reduce((sum, n) => sum + n, 0);
-  }, [editor, serializedDoc]);
+  }, [serializedDoc]);
 
   const handleBackgroundFile = useCallback(
     async (file: File | undefined) => {

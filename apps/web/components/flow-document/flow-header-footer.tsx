@@ -71,6 +71,7 @@ export function FlowHeaderFooterLayer({
     }
     root.addEventListener("dblclick", onDblClick);
     return () => root.removeEventListener("dblclick", onDblClick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- openRegion closes over latest chrome
   }, [editor, chrome, locked]);
 
   useEffect(() => {

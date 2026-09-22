@@ -1,7 +1,7 @@
 /** @vitest-environment happy-dom */
 
 import { describe, expect, it } from "vitest";
-import { inlineGoogleDocsClassStyles, sanitizeFlowPastedHtml } from "../paste";
+import { sanitizeFlowPastedHtml } from "../paste";
 
 describe("sanitizeFlowPastedHtml", () => {
   it("keeps tables and column widths from Docs-style class CSS", () => {
