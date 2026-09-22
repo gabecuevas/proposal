@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { NewDocumentWorkflowProvider } from "@/components/documents/new-document-workflow-context";
+import { CommercialBuilderProvider } from "@/components/commercial/commercial-builder-context";
 import { AppBreadcrumbs } from "./app-breadcrumbs";
 import { AppSidebar } from "./app-sidebar";
 import { AppTopBar } from "./app-top-bar";
@@ -145,7 +146,9 @@ export function AppShellLayout(props: AppShellLayoutProps) {
   return (
     <Suspense fallback={<div className="app-theme min-h-screen bg-background" />}>
       <NewDocumentWorkflowProvider>
-        <AppShellChrome {...props} />
+        <CommercialBuilderProvider>
+          <AppShellChrome {...props} />
+        </CommercialBuilderProvider>
       </NewDocumentWorkflowProvider>
     </Suspense>
   );

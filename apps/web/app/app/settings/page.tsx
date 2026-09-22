@@ -310,9 +310,9 @@ export default function SettingsPage() {
     <SheetPadded>
     <main className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Workspace settings</h1>
+        <h1 className="text-2xl font-semibold">Company settings</h1>
         <p className="mt-2 text-sm text-muted">
-          Workspace identity, compliance, API keys, and webhook trust policy.
+          Company identity, compliance, API keys, and webhook trust policy.
         </p>
         {status ? <p className="mt-2 text-sm text-green-600">{status}</p> : null}
         {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
