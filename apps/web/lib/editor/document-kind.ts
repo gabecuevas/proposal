@@ -130,3 +130,22 @@ export function withDocumentKindVariables(
     [EDITOR_LAYOUT_VARIABLE_KEY]: resolvedLayout,
   };
 }
+
+/**
+ * Choose Flow vs Creator when spawning a document from a template.
+ * Page-backed PDFs stay on Creator. Flow-tagged / editable DOCX templates open in Flow.
+ */
+export function editorLayoutForTemplateSource(input: {
+  kind: WorkflowDocumentKind;
+  tags?: string[] | null;
+  pageBacked: boolean;
+}): EditorLayout {
+  if (input.pageBacked) {
+    return "creator";
+  }
+  const lower = (input.tags ?? []).map((tag) => tag.toLowerCase());
+  if (lower.includes("flow") || lower.includes("docx")) {
+    return "flow";
+  }
+  return defaultEditorLayoutForKind(input.kind);
+}

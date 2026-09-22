@@ -111,8 +111,10 @@ export function inchesToPx(inches: number): number {
 
 type ApplyChromeOptions = {
   pageCount?: number;
-  marginLeftPx?: number;
+  marginTopPx?: number;
   marginRightPx?: number;
+  marginBottomPx?: number;
+  marginLeftPx?: number;
 };
 
 function headerHtmlForPage(chrome: FlowPageChromeState, page: number): string {
@@ -172,11 +174,13 @@ export function applyFlowPageChromeToEditor(
   chrome: FlowPageChromeState,
   options: ApplyChromeOptions = {},
 ): void {
+  const marginTop = options.marginTopPx ?? inchesToPx(chrome.headerMarginInches);
+  const marginBottom = options.marginBottomPx ?? inchesToPx(chrome.footerMarginInches);
   const marginLeft = options.marginLeftPx ?? 96;
   const marginRight = options.marginRightPx ?? 96;
   editor.commands.updateMargins({
-    top: inchesToPx(chrome.headerMarginInches),
-    bottom: inchesToPx(chrome.footerMarginInches),
+    top: marginTop,
+    bottom: marginBottom,
     left: marginLeft,
     right: marginRight,
   });

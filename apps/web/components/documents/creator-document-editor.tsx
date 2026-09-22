@@ -24,7 +24,10 @@ import { renderComputedHtml } from "@/lib/editor/render";
 import { SaveQueue } from "@/lib/editor/save-queue";
 import type { SignerFieldEditorType } from "@/lib/editor/signer-field-attrs";
 import { serializeStable } from "@/lib/editor/stable";
-import { crmToDocumentVariables } from "@/lib/crm/variables";
+import {
+  contactRecordToVariableContext,
+  mergeCrmVariablesIntoContext,
+} from "@/lib/crm/variables";
 import type { EditorDoc, PricingModel, VariableContext, VariableRegistry } from "@/lib/editor/types";
 import { resolveTemplateVariables } from "@/lib/editor/variables";
 import { applyTitleToDoc, documentTitleFromEditorJson } from "@/lib/ui/document-title";
@@ -82,50 +85,6 @@ function asJsonObject(value: string, fallback: VariableContext): VariableContext
   } catch {
     return fallback;
   }
-}
-
-function contactToVariables(contact: Contact): VariableContext {
-  const addressFull = [
-    contact.address_line_1,
-    contact.address_line_2,
-    [contact.city, contact.state, contact.postal_code].filter(Boolean).join(" "),
-    contact.country,
-  ]
-    .filter(Boolean)
-    .join(", ");
-
-  const tokens = crmToDocumentVariables(contact, {
-    name: contact.company_name,
-    phone: contact.phone,
-    city: contact.city,
-    address_line_1: contact.address_line_1,
-    address_line_2: contact.address_line_2,
-    state: contact.state,
-    postal_code: contact.postal_code,
-    country: contact.country,
-  });
-
-  return {
-    ...tokens,
-    contact: {
-      id: contact.id,
-      first_name: contact.first_name,
-      last_name: contact.last_name,
-      full_name: contact.full_name,
-      email: contact.email,
-      company_name: contact.company_name ?? "",
-      phone: contact.phone ?? "",
-      address: {
-        line_1: contact.address_line_1 ?? "",
-        line_2: contact.address_line_2 ?? "",
-        city: contact.city ?? "",
-        state: contact.state ?? "",
-        postal_code: contact.postal_code ?? "",
-        country: contact.country ?? "",
-        full: addressFull,
-      },
-    },
-  };
 }
 
 function statusLabel(status: string | undefined): string {
@@ -829,7 +788,13 @@ export function CreatorDocumentEditor({ documentId: documentIdProp }: CreatorDoc
                   const selected = contacts.find((contact) => contact.id === nextContactId);
                   if (selected) {
                     const current = asJsonObject(variablesText, {});
-                    setVariablesText(JSON.stringify({ ...current, ...contactToVariables(selected) }, null, 2));
+                    setVariablesText(
+                      JSON.stringify(
+                        mergeCrmVariablesIntoContext(current, contactRecordToVariableContext(selected)),
+                        null,
+                        2,
+                      ),
+                    );
                   }
                 }}
               >

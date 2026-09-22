@@ -16,9 +16,11 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { Node } from "@tiptap/core";
 import { PaginationPlus, PAGE_SIZES, type PaginationPlusOptions } from "tiptap-pagination-plus";
+import { FillBlank } from "@/lib/editor/extensions/fill-blank";
 import { FontSize } from "@/lib/editor/extensions/font-size";
 import { Indent } from "@/lib/editor/extensions/indent";
 import { LineHeight } from "@/lib/editor/extensions/line-height";
+import { VariableToken } from "@/lib/editor/extensions/variable-token";
 import { FLOW_DEFAULT_FONT } from "@/lib/flow-document/google-fonts";
 
 /** Explicit manual page break — atom block, continuous document. */
@@ -61,10 +63,12 @@ export function flowPaginationOptions(
   const preset = FLOW_PAPER_PRESETS[paper].size;
   return {
     ...preset,
-    // Docs-like default: 0.5" header/footer margins from page edges.
-    marginTop: 48,
-    marginBottom: 48,
-    pageGap: 24,
+    // Docs-like default Letter margins: 1" all sides (overridden by saved page margins).
+    marginTop: 96,
+    marginBottom: 96,
+    marginLeft: 96,
+    marginRight: 96,
+    pageGap: 32,
     pageGapBorderSize: 1,
     pageGapBorderColor: "#d4d4d8",
     pageBreakBackground: "#f4f4f5",
@@ -92,6 +96,7 @@ export function createFlowDocumentExtensions(options?: {
       heading: { levels: [1, 2, 3, 4, 5, 6] },
     }),
     Underline,
+    FillBlank,
     TextStyle,
     FontFamily.configure({ types: ["textStyle"] }),
     Color.configure({ types: ["textStyle"] }),
@@ -118,6 +123,7 @@ export function createFlowDocumentExtensions(options?: {
     FlowTableHeader,
     FlowTableCell,
     FlowPageBreak,
+    VariableToken,
     ...(withPagination
       ? [
           PaginationPlus.configure(

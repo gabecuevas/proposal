@@ -23,14 +23,21 @@ import { normalizeEditorDoc } from "./stable";
 import { resolveTemplateVariables } from "./variables";
 import { getContentBlocksByIds } from "./content-block-store";
 import { recordDocumentSentInCrm } from "@/lib/crm/document-sent-crm";
+import {
+  contactRecordToVariableContext,
+  mergeCrmVariablesIntoContext,
+} from "@/lib/crm/variables";
 import { applyTitleToDoc } from "@/lib/ui/document-title";
 import {
   parseDocumentKind,
   parseEditorLayout,
   withDocumentKindVariables,
+  editorLayoutForTemplateSource,
   type EditorLayout,
   type WorkflowDocumentKind,
 } from "@/lib/editor/document-kind";
+import { isPageBackedEditorJson } from "@/lib/editor/extensions/field-canvas";
+import { unwrapTextBoxesInEditorDoc } from "@/lib/flow-document/normalize-content";
 import {
   collectContentBlockIds,
   isDraftEditableStatus,
@@ -320,7 +327,7 @@ export async function createDocumentFromTemplate(
     contactIds.length > 0
       ? await prisma.contact.findMany({
           where: { workspace_id: workspaceId, id: { in: contactIds } },
-          include: { company: { select: { name: true } } },
+          include: { company: true },
         })
       : [];
   const crmById = new Map(crmContacts.map((contact) => [contact.id, contact]));
@@ -409,17 +416,36 @@ export async function createDocumentFromTemplate(
   }
   const contactId = primary?.contactId || null;
   const kind = parseDocumentKind(options?.kind);
+  const templateTags = Array.isArray(template.tags) ? (template.tags as string[]) : [];
+  const layout = editorLayoutForTemplateSource({
+    kind,
+    tags: templateTags,
+    pageBacked: isPageBackedEditorJson(normalizedDoc),
+  });
+  if (layout === "flow") {
+    normalizedDoc = unwrapTextBoxesInEditorDoc(normalizedDoc);
+  }
 
+  let variablesBase: VariableContext = withDocumentKindVariables({}, kind, layout) as VariableContext;
   if (contactId) {
     const contact = crmById.get(contactId) ?? null;
     if (!contact) {
       const existing = await prisma.contact.findFirst({
         where: { id: contactId, workspace_id: workspaceId },
-        select: { id: true },
+        include: { company: true },
       });
       if (!existing) {
         throw new Error("Contact not found");
       }
+      variablesBase = mergeCrmVariablesIntoContext(
+        variablesBase,
+        contactRecordToVariableContext(existing),
+      ) as VariableContext;
+    } else {
+      variablesBase = mergeCrmVariablesIntoContext(
+        variablesBase,
+        contactRecordToVariableContext(contact),
+      ) as VariableContext;
     }
   }
 
@@ -433,7 +459,7 @@ export async function createDocumentFromTemplate(
         schema_version: CURRENT_DOC_VERSION,
         doc_version: CURRENT_DOC_VERSION,
         status: "DRAFTED",
-        variables_json: withDocumentKindVariables({}, kind, "creator") as InputJsonValue,
+        variables_json: variablesBase as InputJsonValue,
         pricing_json: (template.pricing_json ?? defaultPricingModel) as InputJsonValue,
         recipients_json: recipients,
         recipients: {
@@ -459,6 +485,7 @@ export async function createDocumentFromTemplate(
           recipientCount: recipients.length,
           hasProvidedRecipient,
           document_kind: kind,
+          editor_layout: layout,
         },
       },
     });
@@ -833,16 +860,24 @@ export async function updateDocumentDraft(
     throw new SentDocumentImmutableError();
   }
 
+  let nextVariables = (input.variables_json ?? existing.variables_json) as VariableContext;
   if (input.contact_id !== undefined && input.contact_id !== null) {
     const contact = await prisma.contact.findFirst({
       where: {
         id: input.contact_id,
         workspace_id: workspaceId,
       },
-      select: { id: true },
+      include: { company: true },
     });
     if (!contact) {
       throw new Error("Contact not found");
+    }
+    // Only re-hydrate when the linked contact changes so manual variable edits survive autosave.
+    if (input.contact_id !== existing.contact_id) {
+      nextVariables = mergeCrmVariablesIntoContext(
+        nextVariables,
+        contactRecordToVariableContext(contact),
+      ) as VariableContext;
     }
   }
 
@@ -854,7 +889,7 @@ export async function updateDocumentDraft(
     },
     data: {
       editor_json: input.editor_json ? normalizeEditorDoc(input.editor_json) : existing.editor_json,
-      variables_json: (input.variables_json ?? existing.variables_json) as InputJsonValue,
+      variables_json: nextVariables as InputJsonValue,
       pricing_json: (input.pricing_json ?? existing.pricing_json) as InputJsonValue,
       recipients_json: (input.recipients_json ?? existing.recipients_json) as InputJsonValue,
       contact_id: input.contact_id !== undefined ? input.contact_id : existing.contact_id,

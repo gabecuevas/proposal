@@ -22,14 +22,17 @@ import {
   type SignerFieldEditorType,
 } from "@/lib/editor/signer-field-attrs";
 import type { EditorDoc } from "@/lib/editor/types";
-import { resolveCompanyAssociation } from "@/lib/crm/resolve-company-association";
+import { DocumentInfoRecipientsHeading } from "@/components/documents/document-info-recipients-heading";
+import { NewContactModal } from "@/components/documents/new-contact-modal";
 import { assetUrl } from "@/lib/storage/asset-url";
-import { applyDocumentMetaToDoc, applyTitleToDoc, documentDueDateFromEditorJson } from "@/lib/ui/document-title";
+import { applyDocumentMetaToDoc, applyTitleToDoc, documentDueDateFromEditorJson, documentTitleFromEditorJson } from "@/lib/ui/document-title";
 import { pageCountFromEditor, templateThumbnailKey } from "@/lib/ui/template-meta";
 import {
+  documentKindFromVariables,
   documentKindProfile,
   type WorkflowDocumentKind,
 } from "@/lib/editor/document-kind";
+import type { VariableContext } from "@/lib/editor/types";
 
 type StepId = 1 | 2 | 3 | 4;
 
@@ -61,12 +64,14 @@ type DocumentPayload = {
   id: string;
   status: string;
   editor_json: EditorDoc;
+  variables_json?: VariableContext;
   recipients_json: Array<{
     id: string;
     name: string;
     email: string;
     role: string;
     company_name?: string | null;
+    contact_id?: string | null;
   }>;
 };
 
@@ -80,12 +85,20 @@ const STEPS: { id: StepId; label: string }[] = [
 type Props = {
   open: boolean;
   kind?: WorkflowDocumentKind;
+  /** When set, skip Pick Template and start at Info with this draft. */
+  seedDocumentId?: string | null;
   onClose: () => void;
 };
 
-export function NewDocumentWorkflowPanel({ open, kind = "document", onClose }: Props) {
+export function NewDocumentWorkflowPanel({
+  open,
+  kind = "document",
+  seedDocumentId = null,
+  onClose,
+}: Props) {
   const router = useRouter();
   const profile = documentKindProfile(kind);
+  const skipTemplateStep = Boolean(seedDocumentId);
   const [step, setStep] = useState<StepId>(1);
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [templateQuery, setTemplateQuery] = useState("");
@@ -96,12 +109,6 @@ export function NewDocumentWorkflowPanel({ open, kind = "document", onClose }: P
   const [contactQuery, setContactQuery] = useState("");
   const [contacts, setContacts] = useState<ContactItem[]>([]);
   const [recentContacts, setRecentContacts] = useState<ContactItem[]>([]);
-  const [showNewContact, setShowNewContact] = useState(false);
-  const [newFirst, setNewFirst] = useState("");
-  const [newLast, setNewLast] = useState("");
-  const [newEmail, setNewEmail] = useState("");
-  const [newCompany, setNewCompany] = useState("");
-  const [newPhone, setNewPhone] = useState("");
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [document, setDocument] = useState<DocumentPayload | null>(null);
   const [busy, setBusy] = useState(false);
@@ -116,26 +123,65 @@ export function NewDocumentWorkflowPanel({ open, kind = "document", onClose }: P
     if (!open) {
       return;
     }
-    setStep(1);
-    setSelectedTemplateId(null);
+    setStep(skipTemplateStep ? 2 : 1);
+    setSelectedTemplateId(skipTemplateStep ? "blank" : null);
     setTitle("");
     setDueDate("");
     setRecipients([]);
-    setDocumentId(null);
+    setDocumentId(skipTemplateStep ? seedDocumentId : null);
     setDocument(null);
     setError("");
     setSaveStatus("");
-    setShowNewContact(false);
-    setNewFirst("");
-    setNewLast("");
-    setNewEmail("");
-    setNewCompany("");
-    setNewPhone("");
     setTemplateQuery("");
     setContactQuery("");
     setDeliveryMessage(profile.deliveryIntro);
     setDeliverySubject("");
-  }, [open, kind, profile.deliveryIntro]);
+
+    if (!seedDocumentId) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const response = await fetch(`/api/documents/${seedDocumentId}`);
+      if (!response.ok || cancelled) {
+        if (!cancelled) {
+          setError("Could not load document for delivery");
+        }
+        return;
+      }
+      const data = (await response.json()) as { document?: DocumentPayload };
+      const doc = data.document;
+      if (!doc || cancelled) {
+        return;
+      }
+      setDocumentId(doc.id);
+      setDocument(doc);
+      setTitle(documentTitleFromEditorJson(doc.editor_json, profile.blankTitle));
+      setDueDate(documentDueDateFromEditorJson(doc.editor_json));
+      setRecipients(
+        (doc.recipients_json ?? [])
+          .filter((item) => item.email?.trim())
+          .map((item) => ({
+            id: item.contact_id || item.id,
+            name: item.name,
+            email: item.email,
+            companyName: item.company_name ?? null,
+            contactId: item.contact_id ?? null,
+          })),
+      );
+      setSelectedRecipientId(doc.recipients_json[0]?.id ?? "");
+      setDeliverySubject(`New proposal: ${documentTitleFromEditorJson(doc.editor_json, profile.blankTitle)}`);
+      const kindFromDoc = documentKindFromVariables(doc.variables_json);
+      if (kindFromDoc) {
+        // Keep delivery copy aligned with the document kind when seeded.
+        setDeliveryMessage(documentKindProfile(kindFromDoc).deliveryIntro || profile.deliveryIntro);
+      }
+      setStep(2);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, kind, profile.blankTitle, profile.deliveryIntro, seedDocumentId, skipTemplateStep]);
 
   useEffect(() => {
     if (!open) {
@@ -256,65 +302,6 @@ export function NewDocumentWorkflowPanel({ open, kind = "document", onClose }: P
         },
       ];
     });
-  }
-
-  async function createNewContact() {
-    const name = `${newFirst.trim()} ${newLast.trim()}`.trim();
-    if (!newFirst.trim() || !newLast.trim() || !newEmail.trim()) {
-      setError("First name, last name, and email are required");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      const companyName = newCompany.trim();
-      const company = companyName
-        ? await resolveCompanyAssociation(companyName, "", {
-            phone: newPhone.trim() || undefined,
-          })
-        : { company_id: null as string | null, company_name: null as string | null };
-
-      const response = await fetch("/api/contacts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          first_name: newFirst.trim(),
-          last_name: newLast.trim(),
-          email: newEmail.trim(),
-          phone: newPhone.trim() || undefined,
-          company_name: company.company_name ?? undefined,
-          company_id: company.company_id ?? undefined,
-          source: "new-document-workflow",
-        }),
-      });
-      if (!response.ok) {
-        const data = (await response.json().catch(() => ({}))) as { message?: string; error?: string };
-        throw new Error(data.message || data.error || "Could not create contact");
-      }
-      const data = (await response.json()) as { contact?: ContactItem };
-      const contact = data.contact;
-      if (contact) {
-        addRecipient({
-          id: contact.id,
-          name: contact.full_name,
-          email: contact.email,
-          companyName: contact.company_name ?? company.company_name,
-        });
-        setRecentContacts((current) => [contact, ...current.filter((c) => c.id !== contact.id)].slice(0, 20));
-      } else {
-        addRecipient({ name, email: newEmail.trim(), companyName: company.company_name });
-      }
-      setShowNewContact(false);
-      setNewFirst("");
-      setNewLast("");
-      setNewEmail("");
-      setNewCompany("");
-      setNewPhone("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create contact");
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function persistDraftDetails(options?: {
@@ -577,7 +564,7 @@ export function NewDocumentWorkflowPanel({ open, kind = "document", onClose }: P
             </p>
           </div>
           <nav className="flex flex-wrap items-center justify-center gap-1" aria-label="Workflow steps">
-            {STEPS.map((item, index) => {
+            {(skipTemplateStep ? STEPS.filter((item) => item.id !== 1) : STEPS).map((item, index, list) => {
               const active = step === item.id;
               const done = step > item.id;
               return (
@@ -587,6 +574,9 @@ export function NewDocumentWorkflowPanel({ open, kind = "document", onClose }: P
                   disabled={item.id > step && !documentId && item.id > 2}
                   onClick={() => {
                     if (item.id <= step || (documentId && item.id <= 4)) {
+                      if (skipTemplateStep && item.id === 1) {
+                        return;
+                      }
                       setStep(item.id);
                     }
                   }}
@@ -599,7 +589,7 @@ export function NewDocumentWorkflowPanel({ open, kind = "document", onClose }: P
                   }`}
                 >
                   {item.label}
-                  {index < STEPS.length - 1 ? <span className="ml-1 opacity-50">›</span> : null}
+                  {index < list.length - 1 ? <span className="ml-1 opacity-50">›</span> : null}
                 </button>
               );
             })}
@@ -628,7 +618,7 @@ export function NewDocumentWorkflowPanel({ open, kind = "document", onClose }: P
             </p>
           ) : null}
 
-          {step === 1 ? (
+          {step === 1 && !skipTemplateStep ? (
             <StepPickTemplate
               templates={templates}
               query={templateQuery}
@@ -662,21 +652,46 @@ export function NewDocumentWorkflowPanel({ open, kind = "document", onClose }: P
               recipients={recipients}
               onAddRecipient={addRecipient}
               onRemoveRecipient={(id) => setRecipients((current) => current.filter((item) => item.id !== id))}
-              showNewContact={showNewContact}
-              onToggleNewContact={() => setShowNewContact((value) => !value)}
-              newFirst={newFirst}
-              newLast={newLast}
-              newEmail={newEmail}
-              newCompany={newCompany}
-              newPhone={newPhone}
-              onNewFirst={setNewFirst}
-              onNewLast={setNewLast}
-              onNewEmail={setNewEmail}
-              onNewCompany={setNewCompany}
-              onNewPhone={setNewPhone}
-              onCreateContact={() => void createNewContact()}
+              onContactCreated={(contact) => {
+                addRecipient({
+                  id: contact.id,
+                  name: contact.full_name,
+                  email: contact.email,
+                  companyName: contact.company_name,
+                });
+                setRecentContacts((current) =>
+                  [
+                    {
+                      id: contact.id,
+                      full_name: contact.full_name,
+                      email: contact.email,
+                      company_name: contact.company_name ?? null,
+                      updated_at: new Date().toISOString(),
+                    },
+                    ...current.filter((item) => item.id !== contact.id),
+                  ].slice(0, 20),
+                );
+                setContacts((current) =>
+                  [
+                    {
+                      id: contact.id,
+                      full_name: contact.full_name,
+                      email: contact.email,
+                      company_name: contact.company_name ?? null,
+                      updated_at: new Date().toISOString(),
+                    },
+                    ...current.filter((item) => item.id !== contact.id),
+                  ].slice(0, 50),
+                );
+              }}
               busy={busy}
-              onBack={() => setStep(1)}
+              onBack={() => {
+                if (skipTemplateStep) {
+                  void flushAndClose();
+                  return;
+                }
+                setStep(1);
+              }}
               onNext={() => void createDraftAndEdit()}
             />
           ) : null}
@@ -1003,19 +1018,7 @@ function StepRecipients({
   recipients,
   onAddRecipient,
   onRemoveRecipient,
-  showNewContact,
-  onToggleNewContact,
-  newFirst,
-  newLast,
-  newEmail,
-  newCompany,
-  newPhone,
-  onNewFirst,
-  onNewLast,
-  onNewEmail,
-  onNewCompany,
-  onNewPhone,
-  onCreateContact,
+  onContactCreated,
   busy,
   onBack,
   onNext,
@@ -1036,42 +1039,30 @@ function StepRecipients({
     companyName?: string | null;
   }) => void;
   onRemoveRecipient: (id: string) => void;
-  showNewContact: boolean;
-  onToggleNewContact: () => void;
-  newFirst: string;
-  newLast: string;
-  newEmail: string;
-  newCompany: string;
-  newPhone: string;
-  onNewFirst: (value: string) => void;
-  onNewLast: (value: string) => void;
-  onNewEmail: (value: string) => void;
-  onNewCompany: (value: string) => void;
-  onNewPhone: (value: string) => void;
-  onCreateContact: () => void;
+  onContactCreated: (contact: {
+    id: string;
+    full_name: string;
+    email: string;
+    company_name?: string | null;
+  }) => void;
   busy: boolean;
   onBack: () => void;
   onNext: () => void;
 }) {
+  const [newContactOpen, setNewContactOpen] = useState(false);
   const tableContacts = contactQuery.trim() ? contacts : recentContacts;
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-1 flex-col gap-5 overflow-auto">
-      <div>
-        <h3 className="text-base font-semibold text-foreground">2. Document info & recipients</h3>
-        <p className="text-sm text-muted">
-          Name the document and add at least one signer from CRM People. A draft is saved only after a
-          recipient is added.
-        </p>
-      </div>
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-1 flex-col gap-3 overflow-hidden">
+      <DocumentInfoRecipientsHeading className="shrink-0" />
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block text-xs font-medium text-muted sm:col-span-2">
+      <div className="grid shrink-0 gap-3 sm:grid-cols-2">
+        <label className="block text-xs font-medium text-muted">
           Document title
           <input
             value={title}
             onChange={(event) => onTitleChange(event.target.value)}
-            className="mt-1 h-10 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-primary/40"
+            className="mt-1 h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-primary/40"
             placeholder="e.g. Master Services Agreement"
           />
         </label>
@@ -1081,14 +1072,14 @@ function StepRecipients({
             type="date"
             value={dueDate}
             onChange={(event) => onDueDateChange(event.target.value)}
-            className="mt-1 h-10 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-primary/40"
+            className="mt-1 h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-primary/40"
           />
         </label>
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <label className="block min-w-[14rem] flex-1 text-xs font-medium text-muted">
+      <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-border bg-surface p-3 shadow-sm">
+        <div className="flex shrink-0 flex-wrap items-end gap-2">
+          <label className="block min-w-[12rem] flex-1 text-xs font-medium text-muted">
             Search contacts
             <input
               value={contactQuery}
@@ -1099,63 +1090,17 @@ function StepRecipients({
           </label>
           <button
             type="button"
-            onClick={onToggleNewContact}
-            className="mt-5 rounded-md border border-primary bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-95"
+            onClick={() => setNewContactOpen(true)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-primary bg-primary px-3 text-sm font-medium text-primary-foreground hover:opacity-95"
           >
-            + New Contact
+            <span aria-hidden>+</span>
+            New Contact
           </button>
         </div>
 
-        {showNewContact ? (
-          <div className="mt-3 grid gap-2 rounded-lg border border-border bg-background p-3 md:grid-cols-3">
-            <input
-              value={newFirst}
-              onChange={(event) => onNewFirst(event.target.value)}
-              placeholder="First name"
-              className="h-9 rounded-md border border-border px-2 text-sm"
-            />
-            <input
-              value={newLast}
-              onChange={(event) => onNewLast(event.target.value)}
-              placeholder="Last name"
-              className="h-9 rounded-md border border-border px-2 text-sm"
-            />
-            <input
-              value={newEmail}
-              onChange={(event) => onNewEmail(event.target.value)}
-              placeholder="Email"
-              type="email"
-              className="h-9 rounded-md border border-border px-2 text-sm"
-            />
-            <input
-              value={newCompany}
-              onChange={(event) => onNewCompany(event.target.value)}
-              placeholder="Company Name"
-              className="h-9 rounded-md border border-border px-2 text-sm"
-            />
-            <input
-              value={newPhone}
-              onChange={(event) => onNewPhone(event.target.value)}
-              placeholder="Phone Number"
-              type="tel"
-              className="h-9 rounded-md border border-border px-2 text-sm md:col-span-2"
-            />
-            <div className="md:col-span-3 flex justify-end">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={onCreateContact}
-                className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
-              >
-                Add contact
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        <div className="mt-4 overflow-hidden rounded-lg border border-border">
+        <div className="mt-3 min-h-0 flex-1 overflow-auto rounded-lg border border-border">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-muted">
+            <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-muted">
               <tr>
                 <th className="px-3 py-2 font-medium">Name</th>
                 <th className="px-3 py-2 font-medium">Email</th>
@@ -1173,10 +1118,10 @@ function StepRecipients({
               ) : (
                 tableContacts.map((contact) => (
                   <tr key={contact.id} className="border-t border-border">
-                    <td className="px-3 py-2 font-medium text-foreground">{contact.full_name}</td>
-                    <td className="px-3 py-2 text-muted">{contact.email}</td>
-                    <td className="px-3 py-2 text-muted">{contact.company_name || ""}</td>
-                    <td className="px-3 py-2 text-right">
+                    <td className="px-3 py-1.5 font-medium text-foreground">{contact.full_name}</td>
+                    <td className="px-3 py-1.5 text-muted">{contact.email}</td>
+                    <td className="px-3 py-1.5 text-muted">{contact.company_name || ""}</td>
+                    <td className="px-3 py-1.5 text-right">
                       <button
                         type="button"
                         className="text-xs font-medium text-primary hover:underline"
@@ -1200,24 +1145,26 @@ function StepRecipients({
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+      <div className="shrink-0 rounded-xl border border-border bg-surface px-3 py-2.5 shadow-sm">
         <h4 className="text-sm font-semibold text-foreground">
           Recipients <span className="text-red-600">*</span>
         </h4>
-        <p className="mt-1 text-xs text-muted">Required — add at least one recipient to continue and save a draft.</p>
+        <p className="mt-0.5 text-xs text-muted">
+          Required — add at least one recipient to continue and save a draft.
+        </p>
         {recipients.length === 0 ? (
-          <p className="mt-2 text-sm text-muted">Selected contacts will appear here as signers.</p>
+          <p className="mt-1.5 text-sm text-muted">Selected contacts will appear here as recipients.</p>
         ) : (
-          <ul className="mt-2 divide-y divide-border">
+          <ul className="mt-1.5 max-h-24 divide-y divide-border overflow-y-auto">
             {recipients.map((recipient) => (
-              <li key={recipient.id} className="flex items-center justify-between gap-3 py-2">
-                <div>
-                  <p className="text-sm font-medium text-foreground">{recipient.name}</p>
-                  <p className="text-xs text-muted">{recipient.email}</p>
+              <li key={recipient.id} className="flex items-center justify-between gap-3 py-1.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">{recipient.name}</p>
+                  <p className="truncate text-xs text-muted">{recipient.email}</p>
                 </div>
                 <button
                   type="button"
-                  className="text-xs text-muted hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="shrink-0 text-xs text-muted hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
                   disabled={recipients.length <= 1}
                   title={recipients.length <= 1 ? "At least one recipient is required" : "Remove"}
                   onClick={() => onRemoveRecipient(recipient.id)}
@@ -1230,7 +1177,7 @@ function StepRecipients({
         )}
       </div>
 
-      <div className="mt-auto flex shrink-0 justify-between pt-2">
+      <div className="flex shrink-0 justify-between pt-1">
         <button
           type="button"
           onClick={onBack}
@@ -1248,6 +1195,13 @@ function StepRecipients({
           {busy ? "Creating draft…" : "Next Step"}
         </button>
       </div>
+
+      <NewContactModal
+        open={newContactOpen}
+        source="new-document-workflow"
+        onClose={() => setNewContactOpen(false)}
+        onCreated={onContactCreated}
+      />
     </div>
   );
 }

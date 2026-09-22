@@ -137,8 +137,8 @@ export function MarketingHomePage() {
         <div className="mt-10 grid gap-6 md:grid-cols-2">
           <MockWindow title="Contacts · Calendar">
             <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-[#94a3b8]">
-              {["S", "M", "T", "W", "T", "F", "S"].map((day) => (
-                <span key={day}>{day}</span>
+              {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
+                <span key={`${day}-${index}`}>{day}</span>
               ))}
               {Array.from({ length: 21 }, (_, index) => (
                 <div key={index} className="min-h-12 rounded-md border border-[#eef2f6] p-1 text-left">

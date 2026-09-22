@@ -365,7 +365,9 @@ export async function createContact(input: {
     workspaceId: input.workspaceId,
     actorUserId: input.ownerUserId,
     record: { contactId: row.id },
-    summary: "Person created",
+    summary: input.source?.trim()
+      ? `Person created (${input.source.trim()})`
+      : "Person created",
   });
 
   const linkedCompanyId = input.company_id?.trim() || null;

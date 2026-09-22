@@ -42,6 +42,10 @@ import {
   openFlowTableOptionsEvent,
 } from "@/lib/flow-document/table-commands";
 import { formatEditorSaveStatus, isEditorSaving } from "@/lib/editor/autosave";
+import {
+  FlowActionsMenu,
+  type FlowActionsMenuItem,
+} from "@/components/flow-document/flow-actions-menu";
 
 type MenuId = "file" | "edit" | "view" | "insert" | "format" | "tools" | "help" | null;
 
@@ -74,6 +78,9 @@ type Props = {
   onAddComment: () => void;
   zoom: number;
   onZoomChange: (zoom: number) => void;
+  showRulers?: boolean;
+  onShowRulersChange?: (show: boolean) => void;
+  actionsItems?: FlowActionsMenuItem[];
 };
 
 const BLOCK_STYLES: { id: BlockStyleId | "h4" | "h5" | "h6"; label: string }[] = [
@@ -109,6 +116,9 @@ export function FlowDocsChrome({
   onAddComment,
   zoom,
   onZoomChange,
+  showRulers = true,
+  onShowRulersChange,
+  actionsItems,
 }: Props) {
   const tick = useEditorEventTick(editor);
   void tick;
@@ -322,11 +332,12 @@ export function FlowDocsChrome({
 
   return (
     <div ref={rootRef} className="flow-docs-chrome shrink-0 border-b border-[#dadce0] bg-white">
+      <div className="h-[7px] w-full bg-[#002868]" aria-hidden />
       {/* Title row */}
       <div className="flex items-center gap-2 px-3 pt-2">
         <Link
           href={closeHref}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-[#f1f3f4]"
+          className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full hover:bg-[#f1f3f4]"
           title="Back to Documents"
           aria-label="Back to Documents"
         >
@@ -404,6 +415,14 @@ export function FlowDocsChrome({
                 ) : null}
                 {menu === "view" ? (
                   <>
+                    <MenuItem
+                      label={showRulers ? "Hide ruler" : "Show ruler"}
+                      onClick={() => {
+                        onShowRulersChange?.(!showRulers);
+                        setMenu(null);
+                      }}
+                    />
+                    <div className="my-1 border-t border-[#eee]" />
                     {ZOOM_OPTIONS.map((value) => (
                       <MenuItem
                         key={value}
@@ -569,6 +588,18 @@ export function FlowDocsChrome({
               </div>
             ) : null}
           </div>
+        </div>
+        <div className="mr-1 flex shrink-0 items-start gap-2 self-start pt-1">
+          <Link
+            href={closeHref}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-[#202124] hover:bg-[#f1f3f4]"
+          >
+            <span aria-hidden>←</span>
+            Back
+          </Link>
+          {actionsItems && actionsItems.length > 0 ? (
+            <FlowActionsMenu items={actionsItems} disabled={locked} />
+          ) : null}
         </div>
       </div>
 
@@ -1101,11 +1132,15 @@ function Chevron() {
 
 function DocsIcon() {
   return (
-    <svg width="36" height="36" viewBox="0 0 48 48" aria-hidden>
-      <path fill="#1a73e8" d="M10 4h20l10 10v30a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
-      <path fill="#fff" d="M30 4v10h10" opacity=".35" />
-      <path fill="#fff" d="M16 22h16v2H16zm0 5h16v2H16zm0 5h12v2H16z" />
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element -- static brand asset; avoid next/image config for public PNG
+    <img
+      src="/brand/flow-doc-icon.png"
+      alt=""
+      width={72}
+      height={72}
+      className="h-[72px] w-[72px] object-contain"
+      draggable={false}
+    />
   );
 }
 

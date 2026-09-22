@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ConfirmStatusChangeModal,
 } from "@/components/documents/document-status-modals";
+import { DocumentTypeCell } from "@/components/documents/document-type-icon";
 import {
   DocumentsViewActionsBar,
   type DocumentStatusChangeTarget,
@@ -20,7 +21,7 @@ import {
   sheetTr,
 } from "@/components/ui/sheet-table";
 import { useResizableColumns, type ResizableColumnDef } from "@/components/ui/use-resizable-columns";
-import type { EditorDoc } from "@/lib/editor/types";
+import type { EditorDoc, VariableContext } from "@/lib/editor/types";
 import { applyTitleToDoc, documentDueDateFromEditorJson, documentSenderFromEditorJson, documentTitleFromEditorJson } from "@/lib/ui/document-title";
 import {
   documentStatusDisplayLabel,
@@ -43,6 +44,7 @@ type DocumentItem = {
   status: string;
   template_id: string | null;
   editor_json: EditorDoc;
+  variables_json?: VariableContext;
   recipients_json: Recipient[];
   created_at: string;
   updated_at: string;
@@ -105,6 +107,7 @@ const DOCUMENT_TABLE_COLUMNS: ResizableColumnDef[] = [
   { id: "email", defaultWidth: 180 },
   { id: "status", defaultWidth: 100 },
   { id: "created", defaultWidth: 120 },
+  { id: "type", defaultWidth: 72 },
   { id: "sender", defaultWidth: 130 },
   { id: "due", defaultWidth: 120 },
   { id: "updated", defaultWidth: 110 },
@@ -124,7 +127,7 @@ export default function DocumentsPage() {
   const [statusTarget, setStatusTarget] = useState<DocumentStatusChangeTarget | null>(null);
   const [renameTarget, setRenameTarget] = useState<DocumentItem | null>(null);
   const { widthFor, tableMinWidth, beginResize, onResizeMove, endResize } = useResizableColumns(
-    "documents-table-v1",
+    "documents-table-v3",
     DOCUMENT_TABLE_COLUMNS,
   );
 
@@ -446,6 +449,14 @@ export default function DocumentsPage() {
               Created date
             </ResizableSheetTh>
             <ResizableSheetTh
+              width={widthFor("type")}
+              onResizeStart={(event) => beginResize(event, "type")}
+              onResizeMove={onResizeMove}
+              onResizeEnd={endResize}
+            >
+              Type
+            </ResizableSheetTh>
+            <ResizableSheetTh
               width={widthFor("sender")}
               onResizeStart={(event) => beginResize(event, "sender")}
               onResizeMove={onResizeMove}
@@ -504,15 +515,6 @@ export default function DocumentsPage() {
                     href={`/app/documents/${document.id}`}
                     className="flex min-w-0 items-center gap-2 font-medium text-primary"
                   >
-                    <span className="shrink-0 text-muted" aria-hidden>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                        <path
-                          d="M8 4h8l4 4v12a1 1 0 01-1 1H8a1 1 0 01-1-1V5a1 1 0 011-1z"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
-                      </svg>
-                    </span>
                     <span className="truncate" title={title}>
                       {title}
                     </span>
@@ -552,6 +554,9 @@ export default function DocumentsPage() {
                   style={{ width: widthFor("created"), maxWidth: widthFor("created") }}
                 >
                   {formatShortDate(document.created_at)}
+                </td>
+                <td className={sheetTd()} style={{ width: widthFor("type"), maxWidth: widthFor("type") }}>
+                  <DocumentTypeCell variables={document.variables_json} />
                 </td>
                 <td
                   className={sheetTd("truncate text-foreground")}

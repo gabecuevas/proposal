@@ -9,6 +9,8 @@ type Props = {
   initialName: string;
   saving?: boolean;
   error?: string;
+  /** Overrides the default helper text under the name field. */
+  hint?: string;
   onClose: () => void;
   onSave: (name: string) => void | Promise<void>;
 };
@@ -19,12 +21,18 @@ export function SaveAsModal({
   initialName,
   saving = false,
   error = "",
+  hint,
   onClose,
   onSave,
 }: Props) {
   const [name, setName] = useState(initialName);
   const inputRef = useRef<HTMLInputElement>(null);
   const noun = kind === "template" ? "template" : "document";
+  const helper =
+    hint ??
+    (kind === "template"
+      ? "Saves a copy to your Library. Content stays the same."
+      : `This updates the ${noun} title. Content stays the same.`);
 
   useEffect(() => {
     if (!open) {
@@ -104,7 +112,7 @@ export function SaveAsModal({
             placeholder={`Untitled ${noun}`}
             className="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none ring-primary/15 focus:ring-2"
           />
-          <p className="mt-2 text-xs text-muted">This updates the {noun} title. Content stays the same.</p>
+          <p className="mt-2 text-xs text-muted">{helper}</p>
           {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
           <div className="mt-4 flex justify-end gap-2">
             <button

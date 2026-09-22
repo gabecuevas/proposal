@@ -3,11 +3,21 @@
 import "@/components/flow-document/flow-document-prototype.css";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNewDocumentWorkflow } from "@/components/documents/new-document-workflow-context";
+import { SaveAsModal } from "@/components/editor/creator/save-as-modal";
 import { FlowDocsChrome } from "@/components/flow-document/flow-docs-chrome";
+import type { FlowActionsMenuItem } from "@/components/flow-document/flow-actions-menu";
 import { FlowHeaderFooterLayer } from "@/components/flow-document/flow-header-footer";
 import { HeadersFootersModal } from "@/components/flow-document/headers-footers-modal";
+import { FlowMarginRulers } from "@/components/flow-document/flow-margin-rulers";
+import { FlowPageNav, readFlowVisiblePage } from "@/components/flow-document/flow-page-nav";
+import { FlowPageOverlays } from "@/components/flow-document/flow-page-overlays";
+import { FlowPagePropertiesPanel } from "@/components/flow-document/flow-page-properties";
+import { FlowToolShelf } from "@/components/flow-document/flow-tool-shelf";
+import { FlowVariablesPanel } from "@/components/flow-document/flow-variables-panel";
 import { FlowTableContextMenu } from "@/components/flow-document/flow-table-context-menu";
 import { TableOptionsModal } from "@/components/flow-document/table-options-modal";
 import {
@@ -19,6 +29,17 @@ import {
 import { flowGoogleFontsStylesheetHref } from "@/lib/flow-document/google-fonts";
 import { measurePaginationPlusPageCount } from "@/lib/flow-document/measure-pages";
 import {
+  duplicateFlowPage,
+  insertBlankFlowPageAfter,
+} from "@/lib/flow-document/page-actions";
+import type { FlowPageBand } from "@/lib/flow-document/page-bands";
+import {
+  flowPageBackgroundsFromDoc,
+  patchFlowPageBackground,
+  withFlowPageBackgrounds,
+} from "@/lib/flow-document/page-backgrounds";
+import { countVariableUsages } from "@/lib/flow-document/variable-catalog";
+import {
   applyFlowPageChromeToEditor,
   chromeNeedsPerPageSlots,
   DEFAULT_FLOW_PAGE_CHROME,
@@ -26,6 +47,22 @@ import {
   withFlowPageChrome,
   type FlowPageChromeState,
 } from "@/lib/flow-document/page-chrome";
+import {
+  clampFlowPageMargins,
+  DEFAULT_FLOW_PAGE_MARGINS,
+  detectMarginsFromPastedHtml,
+  flowPageMarginsFromDoc,
+  marginsToPaginationPx,
+  withFlowPageMargins,
+  type FlowPageMargins,
+} from "@/lib/flow-document/page-margins";
+import {
+  BACKGROUND_IMAGE_EXTENSIONS,
+  duplicatePageBackgrounds,
+  type PageBackground,
+  type PageBackgrounds,
+} from "@/lib/editor/page-backgrounds";
+import { isSupportedImage, uploadAsset } from "@/lib/editor/insert-elements";
 import {
   applyFlowTableOptions,
   clearAllFlowTableBorders,
@@ -52,6 +89,7 @@ import {
 import {
   disableFlowPagination,
   enableFlowPagination,
+  forceFlowPaginationRefresh,
 } from "@/lib/flow-document/pagination-control";
 import { AUTOSAVE_DELAY_MS } from "@/lib/editor/autosave";
 import {
@@ -64,6 +102,8 @@ import { serializeStable } from "@/lib/editor/stable";
 import type { EditorDoc, VariableContext } from "@/lib/editor/types";
 import { applyTitleToDoc, documentTitleFromEditorJson } from "@/lib/ui/document-title";
 import { documentKindProfile, editorLayoutFromVariables } from "@/lib/editor/document-kind";
+import { unwrapTextBoxesInEditorDoc } from "@/lib/flow-document/normalize-content";
+import { UseTemplateRecipientModal } from "@/components/templates/use-template-recipient-modal";
 
 /** Soft cap — if float seams still runaway, pause briefly then recover. */
 const FLOW_PAGE_RUNAWAY_THRESHOLD = 40;
@@ -77,7 +117,13 @@ type DocumentDetail = {
 };
 
 type Props = {
-  documentId: string;
+  documentId?: string;
+  /** When set, load/save a Library template in Flow (editable DOCX / Flow saves). */
+  templateId?: string;
+  initialName?: string;
+  initialDoc?: EditorDoc;
+  closeHref?: string;
+  masterPreview?: boolean;
 };
 
 function statusLabel(status: string | undefined): string {
@@ -89,30 +135,83 @@ function statusLabel(status: string | undefined): string {
 
 /**
  * Production Flow Document editor — Google Docs–style chrome + continuous body.
+ * Also edits continuous Library templates (DOCX import / Save as Template).
  */
-export function FlowDocumentEditor({ documentId }: Props) {
-  const [document, setDocument] = useState<DocumentDetail | null>(null);
+export function FlowDocumentEditor({
+  documentId,
+  templateId,
+  initialName,
+  initialDoc,
+  closeHref = "/app/documents",
+  masterPreview = false,
+}: Props) {
+  const router = useRouter();
+  const { openWorkflow } = useNewDocumentWorkflow();
+  const isTemplate = Boolean(templateId);
+  const [document, setDocument] = useState<DocumentDetail | null>(() => {
+    if (templateId && initialDoc) {
+      return {
+        id: templateId,
+        status: "DRAFTED",
+        editor_json: initialDoc,
+        variables_json: {},
+        updated_at: new Date().toISOString(),
+      };
+    }
+    return null;
+  });
   const [error, setError] = useState("");
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialName ?? "");
   const [paper] = useState<FlowPaperId>("letter");
   const [pageCount, setPageCount] = useState(1);
-  const [status, setStatus] = useState("Loading…");
+  const [status, setStatus] = useState(initialDoc ? "Ready" : "Loading…");
   const [zoom, setZoom] = useState(100);
+  const [showRulers, setShowRulers] = useState(true);
+  const [pageMargins, setPageMargins] = useState<FlowPageMargins>({ ...DEFAULT_FLOW_PAGE_MARGINS });
   const [pageChrome, setPageChrome] = useState<FlowPageChromeState>(DEFAULT_FLOW_PAGE_CHROME);
+  const [pageBackgrounds, setPageBackgrounds] = useState<PageBackgrounds>({});
+  const [propertiesPage, setPropertiesPage] = useState<number | null>(null);
+  const [activeShelfPanel, setActiveShelfPanel] = useState<"variables" | "page" | null>(null);
+  const [variablesContext, setVariablesContext] = useState<VariableContext>({});
   const [headersModalOpen, setHeadersModalOpen] = useState(false);
   const [tableOptionsOpen, setTableOptionsOpen] = useState(false);
   const [tableOptionsInitial, setTableOptionsInitial] =
     useState<FlowTableOptionsState>(DEFAULT_FLOW_TABLE_OPTIONS);
   const [paginationPaused, setPaginationPaused] = useState(false);
+  const [saveAsTemplateOpen, setSaveAsTemplateOpen] = useState(false);
+  const [saveAsTemplateBusy, setSaveAsTemplateBusy] = useState(false);
+  const [saveAsTemplateError, setSaveAsTemplateError] = useState("");
+  const [useTemplateOpen, setUseTemplateOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const pageChromeRef = useRef(pageChrome);
   pageChromeRef.current = pageChrome;
+  const pageMarginsRef = useRef(pageMargins);
+  pageMarginsRef.current = pageMargins;
+  const pageBackgroundsRef = useRef(pageBackgrounds);
+  pageBackgroundsRef.current = pageBackgrounds;
+  const paperStageRef = useRef<HTMLDivElement | null>(null);
+  const variablesContextRef = useRef(variablesContext);
+  variablesContextRef.current = variablesContext;
+  const backgroundFileRef = useRef<HTMLInputElement>(null);
+  const pendingPasteMarginsRef = useRef<Partial<FlowPageMargins> | null>(null);
+  const scrollPaneRef = useRef<HTMLDivElement>(null);
   const pageCountRef = useRef(1);
   const saveQueueRef = useRef(new SaveQueue());
   const expectedUpdatedAtRef = useRef("");
   const lastSavedSnapshotRef = useRef("");
   const nameRef = useRef(name);
   nameRef.current = name;
-  const [serializedDoc, setSerializedDoc] = useState(() => serializeStable({ type: "doc", content: [] }));
+  const [serializedDoc, setSerializedDoc] = useState(() =>
+    serializeStable(initialDoc ?? { type: "doc", content: [] }),
+  );
+  const locked = masterPreview || Boolean(document && !isTemplate && document.status !== "DRAFTED");
+
+  const stampFlowAttrs = useCallback((doc: EditorDoc) => {
+    return withFlowPageBackgrounds(
+      withFlowPageMargins(withFlowPageChrome(doc, pageChromeRef.current), pageMarginsRef.current),
+      pageBackgroundsRef.current,
+    );
+  }, []);
 
   const extensions = useMemo(
     () => createFlowDocumentExtensions({ paper, pagination: true }),
@@ -129,6 +228,10 @@ export function FlowDocumentEditor({ documentId }: Props) {
         // Same Docs/Word paste pipeline as Creator — without this, layout styles,
         // fixed image sizes, and table widths from Google Docs blow PaginationPlus.
         transformPastedHTML(html) {
+          const detected = detectMarginsFromPastedHtml(html);
+          if (detected) {
+            pendingPasteMarginsRef.current = detected;
+          }
           const clean = sanitizeFlowPastedHtml(html);
           if (isFlowPaginationDebugEnabled()) {
             logFlowPasteDebug(summarizePastedHtml(html, clean));
@@ -137,7 +240,26 @@ export function FlowDocumentEditor({ documentId }: Props) {
         },
       },
       onUpdate({ editor: next }) {
-        const json = withFlowPageChrome(next.getJSON() as EditorDoc, pageChromeRef.current);
+        const pending = pendingPasteMarginsRef.current;
+        if (pending) {
+          pendingPasteMarginsRef.current = null;
+          const paperSize = FLOW_PAPER_PRESETS[paper].size;
+          const merged = clampFlowPageMargins(
+            { ...pageMarginsRef.current, ...pending },
+            paperSize.pageWidth / 96,
+            paperSize.pageHeight / 96,
+          );
+          pageMarginsRef.current = merged;
+          setPageMargins(merged);
+          applyFlowPageChromeToEditor(next, pageChromeRef.current, {
+            pageCount: pageCountRef.current,
+            marginTopPx: marginsToPaginationPx(merged).top,
+            marginRightPx: marginsToPaginationPx(merged).right,
+            marginBottomPx: marginsToPaginationPx(merged).bottom,
+            marginLeftPx: marginsToPaginationPx(merged).left,
+          });
+        }
+        const json = stampFlowAttrs(next.getJSON() as EditorDoc);
         setSerializedDoc(serializeStable(json));
         syncFlowTableColumnLayout(next.view.dom);
         if (isFlowPaginationDebugEnabled()) {
@@ -148,7 +270,7 @@ export function FlowDocumentEditor({ documentId }: Props) {
         }
       },
     },
-    [extensions],
+    [extensions, paper, stampFlowAttrs],
   );
 
   useEffect(() => {
@@ -180,25 +302,126 @@ export function FlowDocumentEditor({ documentId }: Props) {
       setStatus("Error");
       return;
     }
-    setDocument(doc);
+    const editorJson = unwrapTextBoxesInEditorDoc(doc.editor_json);
+    setDocument({ ...doc, editor_json: editorJson });
     expectedUpdatedAtRef.current = doc.updated_at;
-    const title = documentTitleFromEditorJson(doc.editor_json) || documentKindProfile("document").blankTitle;
+    const title = documentTitleFromEditorJson(editorJson) || documentKindProfile("document").blankTitle;
     setName(title);
-    const chrome = flowPageChromeFromDoc(doc.editor_json);
+    const chrome = flowPageChromeFromDoc(editorJson);
     setPageChrome(chrome);
-    const snapshot = serializeStable(withFlowPageChrome(doc.editor_json, chrome));
+    const backgrounds = flowPageBackgroundsFromDoc(editorJson);
+    setPageBackgrounds(backgrounds);
+    pageBackgroundsRef.current = backgrounds;
+    setVariablesContext(doc.variables_json ?? {});
+    variablesContextRef.current = doc.variables_json ?? {};
+    const snapshot = serializeStable(
+      withFlowPageBackgrounds(withFlowPageChrome(editorJson, chrome), backgrounds),
+    );
+    lastSavedSnapshotRef.current = snapshot;
+    setSerializedDoc(snapshot);
+    setStatus("Ready");
+  }, []);
+
+  const loadTemplate = useCallback(async (id: string) => {
+    setStatus("Loading…");
+    setError("");
+    const response = await fetch(`/api/templates/${id}`);
+    if (!response.ok) {
+      setError("Template not found");
+      setStatus("Error");
+      return;
+    }
+    const payload = (await response.json()) as {
+      template: { id: string; name: string; editor_json: EditorDoc; updated_at?: string };
+    };
+    const tpl = payload.template;
+    const editorJson = unwrapTextBoxesInEditorDoc(tpl.editor_json);
+    const detail: DocumentDetail = {
+      id: tpl.id,
+      status: "DRAFTED",
+      editor_json: editorJson,
+      variables_json: {},
+      updated_at: tpl.updated_at ?? new Date().toISOString(),
+    };
+    setDocument(detail);
+    expectedUpdatedAtRef.current = detail.updated_at;
+    const title =
+      tpl.name?.trim() ||
+      documentTitleFromEditorJson(editorJson) ||
+      "Untitled Template";
+    setName(title);
+    const chrome = flowPageChromeFromDoc(editorJson);
+    setPageChrome(chrome);
+    const backgrounds = flowPageBackgroundsFromDoc(editorJson);
+    setPageBackgrounds(backgrounds);
+    pageBackgroundsRef.current = backgrounds;
+    setVariablesContext({});
+    variablesContextRef.current = {};
+    const snapshot = serializeStable(
+      withFlowPageBackgrounds(withFlowPageChrome(editorJson, chrome), backgrounds),
+    );
     lastSavedSnapshotRef.current = snapshot;
     setSerializedDoc(snapshot);
     setStatus("Ready");
   }, []);
 
   useEffect(() => {
-    void loadDocument(documentId);
-  }, [documentId, loadDocument]);
+    if (templateId) {
+      if (initialDoc) {
+        const editorJson = unwrapTextBoxesInEditorDoc(initialDoc);
+        const chrome = flowPageChromeFromDoc(editorJson);
+        setPageChrome(chrome);
+        const backgrounds = flowPageBackgroundsFromDoc(editorJson);
+        setPageBackgrounds(backgrounds);
+        pageBackgroundsRef.current = backgrounds;
+        const snapshot = serializeStable(
+          withFlowPageBackgrounds(withFlowPageChrome(editorJson, chrome), backgrounds),
+        );
+        lastSavedSnapshotRef.current = snapshot;
+        setSerializedDoc(snapshot);
+        setStatus("Ready");
+        return;
+      }
+      void loadTemplate(templateId);
+      return;
+    }
+    if (documentId) {
+      void loadDocument(documentId);
+    }
+  }, [documentId, templateId, initialDoc, loadDocument, loadTemplate]);
 
   useEffect(() => {
     pageCountRef.current = pageCount;
   }, [pageCount]);
+
+  useEffect(() => {
+    const scroller = scrollPaneRef.current;
+    const stage = paperStageRef.current;
+    if (!scroller || !stage) {
+      return;
+    }
+    const pageHeightPx = FLOW_PAPER_PRESETS[paper].size.pageHeight;
+    const update = () => {
+      const stageEl = paperStageRef.current;
+      const pane = scrollPaneRef.current;
+      if (!stageEl || !pane) {
+        return;
+      }
+      const visible = readFlowVisiblePage(pane, stageEl, pageHeightPx, 32, zoom);
+      setCurrentPage((prev) => {
+        const next = Math.min(Math.max(1, visible), Math.max(1, pageCount));
+        return prev === next ? prev : next;
+      });
+    };
+    update();
+    scroller.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(stage);
+    return () => {
+      scroller.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, [pageCount, paper, zoom, serializedDoc]);
 
   useEffect(() => {
     function onOpenModal() {
@@ -220,18 +443,20 @@ export function FlowDocumentEditor({ documentId }: Props) {
   }, [editor]);
 
   const applyChrome = useCallback(
-    (next: FlowPageChromeState) => {
+    (next: FlowPageChromeState, margins: FlowPageMargins = pageMarginsRef.current) => {
       if (!editor) {
         return;
       }
-      const paperSize = FLOW_PAPER_PRESETS[paper].size;
+      const px = marginsToPaginationPx(margins);
       applyFlowPageChromeToEditor(editor, next, {
         pageCount: pageCountRef.current,
-        marginLeftPx: paperSize.marginLeft,
-        marginRightPx: paperSize.marginRight,
+        marginTopPx: px.top,
+        marginRightPx: px.right,
+        marginBottomPx: px.bottom,
+        marginLeftPx: px.left,
       });
     },
-    [editor, paper],
+    [editor],
   );
 
   useEffect(() => {
@@ -239,6 +464,9 @@ export function FlowDocumentEditor({ documentId }: Props) {
       return;
     }
     const chrome = flowPageChromeFromDoc(document.editor_json);
+    const margins = flowPageMarginsFromDoc(document.editor_json);
+    setPageMargins(margins);
+    pageMarginsRef.current = margins;
     const content = document.editor_json;
     editor.commands.setContent(content);
     enableFlowPagination(editor);
@@ -249,8 +477,10 @@ export function FlowDocumentEditor({ documentId }: Props) {
     });
     applyFlowPageChromeToEditor(editor, chrome, {
       pageCount: 1,
-      marginLeftPx: FLOW_PAPER_PRESETS[paper].size.marginLeft,
-      marginRightPx: FLOW_PAPER_PRESETS[paper].size.marginRight,
+      marginTopPx: marginsToPaginationPx(margins).top,
+      marginRightPx: marginsToPaginationPx(margins).right,
+      marginBottomPx: marginsToPaginationPx(margins).bottom,
+      marginLeftPx: marginsToPaginationPx(margins).left,
     });
   }, [editor, document?.id, paper]); // eslint-disable-line react-hooks/exhaustive-deps -- load once per doc
 
@@ -262,10 +492,172 @@ export function FlowDocumentEditor({ documentId }: Props) {
       if (!editor) {
         return;
       }
-      const json = withFlowPageChrome(editor.getJSON() as EditorDoc, next);
+      const json = stampFlowAttrs(editor.getJSON() as EditorDoc);
       setSerializedDoc(serializeStable(json));
     },
-    [applyChrome, editor],
+    [applyChrome, editor, stampFlowAttrs],
+  );
+
+  const handleMarginsChange = useCallback(
+    (next: FlowPageMargins) => {
+      const paperSize = FLOW_PAPER_PRESETS[paper].size;
+      const clamped = clampFlowPageMargins(
+        next,
+        paperSize.pageWidth / 96,
+        paperSize.pageHeight / 96,
+      );
+      setPageMargins(clamped);
+      pageMarginsRef.current = clamped;
+      applyChrome(pageChromeRef.current, clamped);
+      if (!editor) {
+        return;
+      }
+      const json = stampFlowAttrs(editor.getJSON() as EditorDoc);
+      setSerializedDoc(serializeStable(json));
+      requestAnimationFrame(() => {
+        syncFlowTableColumnLayout(editor.view.dom);
+        forceFlowPaginationRefresh(editor);
+      });
+    },
+    [applyChrome, editor, paper, stampFlowAttrs],
+  );
+
+  const commitBackgrounds = useCallback(
+    (next: PageBackgrounds) => {
+      setPageBackgrounds(next);
+      pageBackgroundsRef.current = next;
+      if (!editor) {
+        return;
+      }
+      setSerializedDoc(serializeStable(stampFlowAttrs(editor.getJSON() as EditorDoc)));
+    },
+    [editor, stampFlowAttrs],
+  );
+
+  const handleBackgroundPatch = useCallback(
+    (pageIndex: number, patch: Partial<PageBackground>) => {
+      commitBackgrounds(patchFlowPageBackground(pageBackgroundsRef.current, pageIndex, patch));
+    },
+    [commitBackgrounds],
+  );
+
+  const handleClearBackground = useCallback(
+    (pageIndex: number) => {
+      commitBackgrounds(
+        patchFlowPageBackground(pageBackgroundsRef.current, pageIndex, {
+          color: null,
+          imageKey: null,
+        }),
+      );
+    },
+    [commitBackgrounds],
+  );
+
+  const handleAddBlankPage = useCallback(
+    (pageIndex: number, band: FlowPageBand) => {
+      if (!editor || locked) {
+        return;
+      }
+      insertBlankFlowPageAfter(editor, pageIndex, band.top, band.height);
+    },
+    [editor, locked],
+  );
+
+  const handleDuplicatePage = useCallback(() => {
+    if (!editor || locked || propertiesPage == null) {
+      return;
+    }
+    const pageIndex = propertiesPage - 1;
+    const pageHeight = FLOW_PAPER_PRESETS[paper].size.pageHeight;
+    const ok = duplicateFlowPage(editor, pageIndex, pageIndex * pageHeight, pageHeight);
+    if (ok) {
+      commitBackgrounds(duplicatePageBackgrounds(pageBackgroundsRef.current, pageIndex));
+      setPropertiesPage(propertiesPage + 1);
+    }
+  }, [commitBackgrounds, editor, locked, paper, propertiesPage]);
+
+  const handleImportBackground = useCallback(() => {
+    backgroundFileRef.current?.click();
+  }, []);
+
+  const openPageProperties = useCallback((page: number) => {
+    setPropertiesPage(page);
+    setActiveShelfPanel("page");
+  }, []);
+
+  const handleVariablesChange = useCallback(
+    (next: VariableContext) => {
+      setVariablesContext(next);
+      variablesContextRef.current = next;
+      // Trigger autosave via serializedDoc bump while keeping editor JSON stable.
+      if (editor) {
+        setSerializedDoc(serializeStable(stampFlowAttrs(editor.getJSON() as EditorDoc)));
+      }
+      setStatus("Saving…");
+      window.setTimeout(() => {
+        void saveQueueRef.current
+          .run(async () => {
+            if (!document) {
+              return;
+            }
+            const response = await fetch(`/api/documents/${document.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                variables_json: next,
+                expectedUpdatedAt: expectedUpdatedAtRef.current || undefined,
+              }),
+            });
+            if (!response.ok) {
+              const payload = (await response.json().catch(() => ({}))) as { error?: string };
+              throw new Error(payload.error || "Save failed");
+            }
+            const payload = (await response.json()) as { document: DocumentDetail };
+            expectedUpdatedAtRef.current = payload.document.updated_at;
+            setDocument(payload.document);
+          })
+          .then(() => setStatus("Saved"))
+          .catch((err: unknown) => {
+            setError(err instanceof Error ? err.message : "Save failed");
+            setStatus("Error");
+          });
+      }, 0);
+    },
+    [document, editor, stampFlowAttrs],
+  );
+
+  const variableUsageTotal = useMemo(() => {
+    if (!editor) {
+      return 0;
+    }
+    const counts = countVariableUsages(editor.getJSON() as EditorDoc);
+    return Object.values(counts).reduce((sum, n) => sum + n, 0);
+  }, [editor, serializedDoc]);
+
+  const handleBackgroundFile = useCallback(
+    async (file: File | undefined) => {
+      if (!file || propertiesPage == null) {
+        return;
+      }
+      if (!isSupportedImage(file)) {
+        setError("Use a PNG, JPEG, or WebP image for the page background.");
+        return;
+      }
+      try {
+        const asset = await uploadAsset(file);
+        handleBackgroundPatch(propertiesPage - 1, {
+          imageKey: asset.key,
+          imageFit: "fill",
+          imagePosition: "top-left",
+          imageRepeat: false,
+          imageOpacity: 100,
+        });
+        setError("");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Background upload failed");
+      }
+    },
+    [handleBackgroundPatch, propertiesPage],
   );
 
   useEffect(() => {
@@ -359,13 +751,44 @@ export function FlowDocumentEditor({ documentId }: Props) {
       if (!document) {
         return;
       }
-      const withChrome = withFlowPageChrome(editorJson, pageChromeRef.current);
-      const withTitle = applyTitleToDoc(withChrome, nextName.trim() || documentKindProfile("document").blankTitle);
+      const stamped = stampFlowAttrs(editorJson);
+      const withTitle = applyTitleToDoc(
+        stamped,
+        nextName.trim() || (isTemplate ? "Untitled Template" : documentKindProfile("document").blankTitle),
+      );
+      if (isTemplate) {
+        const response = await fetch(`/api/templates/${document.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: nextName.trim() || "Untitled Template",
+            editor_json: withTitle,
+          }),
+        });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(payload.error || "Save failed");
+        }
+        const payload = (await response.json()) as {
+          template: { id: string; name: string; editor_json: EditorDoc; updated_at?: string };
+        };
+        expectedUpdatedAtRef.current = payload.template.updated_at ?? new Date().toISOString();
+        setDocument({
+          id: payload.template.id,
+          status: "DRAFTED",
+          editor_json: payload.template.editor_json,
+          variables_json: {},
+          updated_at: expectedUpdatedAtRef.current,
+        });
+        lastSavedSnapshotRef.current = serializeStable(withTitle);
+        return;
+      }
       const response = await fetch(`/api/documents/${document.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           editor_json: withTitle,
+          variables_json: variablesContextRef.current,
           expectedUpdatedAt: expectedUpdatedAtRef.current || undefined,
         }),
       });
@@ -378,11 +801,11 @@ export function FlowDocumentEditor({ documentId }: Props) {
       setDocument(payload.document);
       lastSavedSnapshotRef.current = serializeStable(withTitle);
     },
-    [document],
+    [document, isTemplate, stampFlowAttrs],
   );
 
   useEffect(() => {
-    if (!document || !editor || document.status !== "DRAFTED") {
+    if (!document || !editor || locked) {
       return;
     }
     if (serializedDoc === lastSavedSnapshotRef.current) {
@@ -399,7 +822,7 @@ export function FlowDocumentEditor({ documentId }: Props) {
         });
     }, AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(handle);
-  }, [serializedDoc, document, editor, persist]);
+  }, [serializedDoc, document, editor, persist, locked]);
 
   const renameDocument = useCallback(
     (next: string) => {
@@ -407,11 +830,11 @@ export function FlowDocumentEditor({ documentId }: Props) {
       if (!editor) {
         return;
       }
-      const json = applyTitleToDoc(editor.getJSON() as EditorDoc, next);
+      const json = applyTitleToDoc(stampFlowAttrs(editor.getJSON() as EditorDoc), next);
       editor.commands.setContent(json);
       setSerializedDoc(serializeStable(json));
     },
-    [editor],
+    [editor, stampFlowAttrs],
   );
 
   const saveNow = useCallback(async () => {
@@ -428,7 +851,120 @@ export function FlowDocumentEditor({ documentId }: Props) {
     }
   }, [editor, persist]);
 
-  const locked = Boolean(document && document.status !== "DRAFTED");
+  const handleSaveAsTemplate = useCallback(
+    async (templateName: string) => {
+      if (!editor || !document) {
+        return;
+      }
+      setSaveAsTemplateBusy(true);
+      setSaveAsTemplateError("");
+      try {
+        await saveQueueRef.current.run(() => persist(editor.getJSON() as EditorDoc, nameRef.current));
+        const stamped = stampFlowAttrs(editor.getJSON() as EditorDoc);
+        const response = await fetch("/api/templates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: templateName.trim() || nameRef.current.trim() || "Untitled Template",
+            editor_json: stamped,
+            tags: ["flow"],
+          }),
+        });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
+          throw new Error(payload.error || payload.message || "Could not save template");
+        }
+        setSaveAsTemplateOpen(false);
+        setStatus("Saved to Library");
+        router.push("/app/templates");
+      } catch (err) {
+        setSaveAsTemplateError(err instanceof Error ? err.message : "Could not save template");
+      } finally {
+        setSaveAsTemplateBusy(false);
+      }
+    },
+    [document, editor, persist, router, stampFlowAttrs],
+  );
+
+  const handleUseTemplate = useCallback(async () => {
+    if (!document || !editor) {
+      return;
+    }
+    try {
+      await saveQueueRef.current.run(() => persist(editor.getJSON() as EditorDoc, nameRef.current));
+      setStatus("Saved");
+      if (isTemplate) {
+        setUseTemplateOpen(true);
+        return;
+      }
+      openWorkflow({ kind: "document", documentId: document.id });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+      setStatus("Error");
+    }
+  }, [document, editor, isTemplate, openWorkflow, persist]);
+
+  const handleSaveDraft = useCallback(async () => {
+    if (!editor) {
+      return;
+    }
+    try {
+      await saveQueueRef.current.run(() => persist(editor.getJSON() as EditorDoc, nameRef.current));
+      setStatus("Saved");
+      router.push(isTemplate ? closeHref : "/app/documents?tab=draft");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+      setStatus("Error");
+    }
+  }, [closeHref, editor, isTemplate, persist, router]);
+
+  const actionsItems = useMemo<FlowActionsMenuItem[]>(
+    () =>
+      isTemplate
+        ? [
+            {
+              id: "use-template",
+              label: "Use Template",
+              description: "Start a new document from this template.",
+              onSelect: () => void handleUseTemplate(),
+              disabled: locked,
+            },
+            {
+              id: "save-draft",
+              label: "Done",
+              description: "Save and return to the Library.",
+              onSelect: () => void handleSaveDraft(),
+              disabled: locked,
+            },
+          ]
+        : [
+            {
+              id: "save-as-template",
+              label: "Save as Template",
+              description: "Save a copy to the Library for reuse.",
+              onSelect: () => {
+                setSaveAsTemplateError("");
+                setSaveAsTemplateOpen(true);
+              },
+              disabled: locked,
+            },
+            {
+              id: "use-template",
+              label: "Use Template",
+              description: "Add a contact, review, and deliver this document.",
+              onSelect: () => void handleUseTemplate(),
+              disabled: locked || !document,
+            },
+            {
+              id: "save-draft",
+              label: "Save Draft",
+              description: "Save to Drafts and pick up where you left off later.",
+              onSelect: () => void handleSaveDraft(),
+              disabled: locked,
+            },
+          ],
+    [document, handleSaveDraft, handleUseTemplate, isTemplate, locked],
+  );
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -520,7 +1056,7 @@ export function FlowDocumentEditor({ documentId }: Props) {
   }, [editor]);
 
   const addComment = useCallback(async () => {
-    if (!document) {
+    if (!document || isTemplate) {
       return;
     }
     const body = window.prompt("Add a comment");
@@ -537,7 +1073,7 @@ export function FlowDocumentEditor({ documentId }: Props) {
       return;
     }
     setStatus("Comment added");
-  }, [document]);
+  }, [document, isTemplate]);
 
   useEffect(() => {
     if (!editor) {
@@ -549,7 +1085,7 @@ export function FlowDocumentEditor({ documentId }: Props) {
   if (!document && !error) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#f9fbfd]">
-        <p className="text-sm text-[#5f6368]">Loading document…</p>
+        <p className="text-sm text-[#5f6368]">Loading {isTemplate ? "template" : "document"}…</p>
       </div>
     );
   }
@@ -558,8 +1094,8 @@ export function FlowDocumentEditor({ documentId }: Props) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-3 bg-[#f9fbfd]">
         <p className="text-sm text-red-600">{error}</p>
-        <Link href="/app/documents" className="text-sm text-[#1a73e8] underline">
-          Back to Documents
+        <Link href={closeHref} className="text-sm text-[#1a73e8] underline">
+          {isTemplate ? "Back to Library" : "Back to Documents"}
         </Link>
       </div>
     );
@@ -572,16 +1108,20 @@ export function FlowDocumentEditor({ documentId }: Props) {
         name={name}
         onNameChange={renameDocument}
         saveStatus={status}
-        statusLabel={statusLabel(document?.status)}
+        statusLabel={isTemplate ? "Template" : statusLabel(document?.status)}
         locked={locked}
+        closeHref={closeHref}
         onSave={() => void saveNow()}
         onPrint={() => window.print()}
         onInsertImage={insertImage}
         onInsertTable={insertTable}
         onInsertPageBreak={insertPageBreak}
-        onAddComment={() => void addComment()}
+        onAddComment={isTemplate ? () => undefined : () => void addComment()}
         zoom={zoom}
         onZoomChange={setZoom}
+        showRulers={showRulers}
+        onShowRulersChange={setShowRulers}
+        actionsItems={actionsItems}
       />
 
       {error ? <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">{error}</p> : null}
@@ -615,36 +1155,120 @@ export function FlowDocumentEditor({ documentId }: Props) {
         </p>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-auto">
-        <div
-          className="flow-document-paper-frame mx-auto origin-top px-4 py-8"
-          style={{
-            width: `${Math.round(816 * (zoom / 100) + 32)}px`,
-            maxWidth: "100%",
-          }}
-        >
-          <div
-            className="flow-paper-stage relative"
-            style={{
-              transform: `scale(${zoom / 100})`,
-              transformOrigin: "top center",
-              width: "816px",
-              margin: "0 auto",
-            }}
-          >
-            <FlowHeaderFooterLayer
-              editor={editor}
-              chrome={pageChrome}
-              onChromeChange={handlePageChromeChange}
-              locked={locked}
+      <div className="flow-workspace-main">
+        <FlowPageNav
+          paperRef={paperStageRef}
+          scrollerRef={scrollPaneRef}
+          pageCount={pageCount}
+          currentPage={currentPage}
+          pageWidthPx={FLOW_PAPER_PRESETS[paper].size.pageWidth}
+          pageHeightPx={FLOW_PAPER_PRESETS[paper].size.pageHeight}
+          zoom={zoom}
+          name={name.trim() || "Untitled Document"}
+          pageGapPx={32}
+        />
+        <div className={`flow-workspace${showRulers ? " flow-workspace--rulers" : ""}`}>
+          {showRulers ? (
+            <FlowMarginRulers
+              scrollRef={scrollPaneRef}
+              pageWidthPx={FLOW_PAPER_PRESETS[paper].size.pageWidth}
+              pageHeightPx={FLOW_PAPER_PRESETS[paper].size.pageHeight}
+              pageCount={pageCount}
               zoom={zoom}
+              margins={pageMargins}
+              locked={locked}
+              onChange={handleMarginsChange}
             />
-            {editor ? <EditorContent editor={editor} /> : null}
-            <FlowTableContextMenu editor={editor} locked={locked} />
+          ) : null}
+          <div ref={scrollPaneRef} className="flow-scroll-pane">
+            <div
+              className="flow-document-paper-frame mx-auto origin-top px-4 py-8"
+              style={{
+                width: `${Math.round(FLOW_PAPER_PRESETS[paper].size.pageWidth * (zoom / 100) + 32)}px`,
+                maxWidth: "100%",
+              }}
+            >
+              <div
+                ref={paperStageRef}
+                className="flow-paper-stage relative"
+                style={{
+                  transform: `scale(${zoom / 100})`,
+                  transformOrigin: "top center",
+                  width: `${FLOW_PAPER_PRESETS[paper].size.pageWidth}px`,
+                  margin: "0 auto",
+                  ["--flow-page-gap" as string]: "32px",
+                }}
+              >
+                <FlowPageOverlays
+                  editor={editor}
+                  pageCount={pageCount}
+                  pageHeightPx={FLOW_PAPER_PRESETS[paper].size.pageHeight}
+                  pageWidthPx={FLOW_PAPER_PRESETS[paper].size.pageWidth}
+                  backgrounds={pageBackgrounds}
+                  locked={locked}
+                  propertiesPage={propertiesPage}
+                  onOpenProperties={openPageProperties}
+                  onAddBlankPage={handleAddBlankPage}
+                />
+                <FlowHeaderFooterLayer
+                  editor={editor}
+                  chrome={pageChrome}
+                  onChromeChange={handlePageChromeChange}
+                  locked={locked}
+                  zoom={zoom}
+                />
+                {editor ? <EditorContent editor={editor} /> : null}
+                <FlowTableContextMenu editor={editor} locked={locked} />
+              </div>
+            </div>
+            <p className="sr-only">{pageCount} pages</p>
           </div>
         </div>
-        <p className="sr-only">{pageCount} pages</p>
+        {activeShelfPanel === "variables" ? (
+          <FlowVariablesPanel
+            editor={editor}
+            variables={variablesContext}
+            locked={locked}
+            onClose={() => setActiveShelfPanel(null)}
+            onChangeVariables={handleVariablesChange}
+          />
+        ) : null}
+        {activeShelfPanel === "page" && propertiesPage != null ? (
+          <FlowPagePropertiesPanel
+            currentPage={propertiesPage}
+            paper={paper}
+            backgrounds={pageBackgrounds}
+            locked={locked}
+            onClose={() => {
+              setActiveShelfPanel(null);
+              setPropertiesPage(null);
+            }}
+            onPatch={handleBackgroundPatch}
+            onImportBackground={handleImportBackground}
+            onDuplicate={handleDuplicatePage}
+            onClear={handleClearBackground}
+          />
+        ) : null}
+        <FlowToolShelf
+          activePanel={activeShelfPanel}
+          variableCount={variableUsageTotal}
+          propertiesPage={propertiesPage}
+          onSelect={(panel) => setActiveShelfPanel(panel)}
+          onCollapse={() => setActiveShelfPanel(null)}
+        />
       </div>
+
+      <input
+        ref={backgroundFileRef}
+        type="file"
+        accept={BACKGROUND_IMAGE_EXTENSIONS}
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          void handleBackgroundFile(file);
+        }}
+      />
 
       <HeadersFootersModal
         open={headersModalOpen}
@@ -663,6 +1287,28 @@ export function FlowDocumentEditor({ documentId }: Props) {
           applyFlowTableOptions(editor, next);
         }}
       />
+      <SaveAsModal
+        open={!isTemplate && saveAsTemplateOpen}
+        kind="template"
+        initialName={name.trim() || "Untitled Template"}
+        saving={saveAsTemplateBusy}
+        error={saveAsTemplateError}
+        hint="Saves a copy to your Library for reuse later."
+        onClose={() => {
+          if (!saveAsTemplateBusy) {
+            setSaveAsTemplateOpen(false);
+          }
+        }}
+        onSave={handleSaveAsTemplate}
+      />
+      {isTemplate && templateId ? (
+        <UseTemplateRecipientModal
+          open={useTemplateOpen}
+          templateId={templateId}
+          templateName={name}
+          onClose={() => setUseTemplateOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

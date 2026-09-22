@@ -12,6 +12,32 @@ type PmNode = {
   marks?: Array<{ type: string; attrs?: Record<string, JSONValue> }>;
 };
 
+/**
+ * Legacy DOCX imports wrapped body copy in Creator `textBox` nodes. Flow has no
+ * textBox schema — unwrap continuous (empty boxId) boxes into top-level blocks.
+ * Positioned overlay boxes (non-empty boxId) become sequential body content too
+ * so the text is not dropped when opening in Flow.
+ */
+export function unwrapTextBoxesInEditorDoc(doc: EditorDoc): EditorDoc {
+  const next = structuredClone(doc) as PmNode & EditorDoc;
+  const source = (doc.content as PmNode[] | undefined) ?? [];
+  const out: PmNode[] = [];
+  for (const node of source) {
+    if (node.type === "textBox") {
+      const inner = node.content ?? [];
+      if (inner.length === 0) {
+        out.push({ type: "paragraph" });
+        continue;
+      }
+      out.push(...inner.map((child) => structuredClone(child)));
+      continue;
+    }
+    out.push(structuredClone(node));
+  }
+  next.content = out.length > 0 ? out : [{ type: "paragraph" }];
+  return next;
+}
+
 function flattenTableNode(table: PmNode): PmNode[] {
   const out: PmNode[] = [];
   for (const row of table.content ?? []) {

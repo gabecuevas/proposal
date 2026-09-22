@@ -9,7 +9,7 @@ import { defaultEditorDoc, defaultPricingModel, defaultVariableRegistry } from "
 import { normalizeEditorDoc } from "./stable";
 import { isPageBackedEditorJson } from "./extensions/field-canvas";
 
-export type TemplateKind = "PDF" | "DOCX" | "Custom";
+export type TemplateKind = "PDF" | "DOCX" | "Custom" | "Doc";
 
 export type TemplateEditorRecord = {
   id: string;
@@ -34,13 +34,29 @@ export type TemplateEditorRecord = {
 
 function inferKind(tags: string[], editor: EditorDoc): TemplateKind {
   const lower = tags.map((t) => t.toLowerCase());
+  // Editable Word imports carry both docx + flow; prefer DOCX for the type column.
   if (lower.includes("docx") || lower.includes("word")) {
     return "DOCX";
+  }
+  if (lower.includes("flow") || lower.includes("doc")) {
+    return "Doc";
   }
   if (lower.includes("pdf") || isPageBackedEditorJson(editor)) {
     return "PDF";
   }
   return "Custom";
+}
+
+/** Continuous Flow / editable DOCX templates open in the Flow Document editor. */
+export function templateUsesFlowEditor(template: {
+  tags?: string[] | null;
+  editor_json?: EditorDoc | null;
+}): boolean {
+  if (isPageBackedEditorJson(template.editor_json ?? null)) {
+    return false;
+  }
+  const lower = (template.tags ?? []).map((tag) => tag.toLowerCase());
+  return lower.includes("flow") || lower.includes("docx");
 }
 
 function parseTemplateJson(
