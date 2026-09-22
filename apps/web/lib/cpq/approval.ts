@@ -4,8 +4,19 @@ import type { PricingModel } from "@/lib/editor/types";
 export const MIN_CPQ_APPROVAL_THRESHOLD = 0;
 export const MAX_CPQ_APPROVAL_THRESHOLD = 100;
 
-export function getDiscountPercent(pricing: PricingModel): number {
-  const raw = Number(pricing.discountPercent ?? 0);
+export function getDiscountPercent(pricing: PricingModel | Record<string, unknown>): number {
+  if (pricing && typeof pricing === "object" && (pricing as { schema?: string }).schema === "commercial_v1") {
+    const discount = (pricing as { discount?: { enabled?: boolean; mode?: string; valueScaled?: number } }).discount;
+    if (!discount?.enabled) {
+      return 0;
+    }
+    if (discount.mode === "percent") {
+      const raw = Number(discount.valueScaled ?? 0) / 100;
+      return Number.isFinite(raw) ? Math.max(0, raw) : 0;
+    }
+    return 0;
+  }
+  const raw = Number((pricing as PricingModel).discountPercent ?? 0);
   if (!Number.isFinite(raw)) {
     return 0;
   }

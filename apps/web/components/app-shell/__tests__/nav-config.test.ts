@@ -54,6 +54,23 @@ describe("top nav and contacts", () => {
     ]);
   });
 
+  it("lists Catalog as a Library nav item alongside Templates and Content Blocks", () => {
+    const library = appSections.find((section) => section.id === "library")!;
+    expect(library.items.map((item) => item.label)).toEqual([
+      "Templates",
+      "Content Blocks",
+      "Catalog",
+    ]);
+    const catalog = library.items.find((item) => item.label === "Catalog")!;
+    expect(catalog.href).toBe("/app/catalog");
+    expect(catalog.matchPrefix).toBe(true);
+    expect(library.prefixes).toContain("/app/catalog");
+    expect(isNavItemActive(catalog, "/app/catalog", null, "")).toBe(true);
+    expect(isNavItemActive(catalog, "/app/catalog/products", null, "")).toBe(true);
+    expect(isNavItemActive(catalog, "/app/catalog/services", null, "")).toBe(true);
+    expect(isNavItemActive(catalog, "/app/templates", null, "")).toBe(false);
+  });
+
   it("swaps Contacts shelf to mail folders on Inbox", () => {
     const contacts = appSections.find((section) => section.id === "contacts")!;
     expect(sidebarItemsForSection(contacts, "/app/contacts/inbox").map((item) => item.label)).toEqual([

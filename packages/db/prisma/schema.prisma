@@ -10,6 +10,7 @@ datasource db {
 model Workspace {
   id            String   @id @default(cuid())
   name          String
+  logo_asset_key String?
   owner_user_id String?
   audit_retention_days Int @default(90)
   audit_export_token_ttl_minutes Int @default(15)
@@ -43,6 +44,8 @@ model Workspace {
   crmCalendarAccounts CrmCalendarAccount[]
   crmCalendarEvents CrmCalendarEvent[]
   sentVersions  DocumentSentVersion[]
+  documentNumberSequences DocumentNumberSequence[]
+  documentIssuedNumbers DocumentIssuedNumber[]
   owner         User?            @relation("workspace_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
 }
 
@@ -143,6 +146,7 @@ model Document {
   payments      DocumentPayment[]
   quoteApprovals QuoteApprovalRequest[]
   sentVersions  DocumentSentVersion[]
+  issuedNumber  DocumentIssuedNumber?
 }
 
 model DocumentPayment {
@@ -211,6 +215,32 @@ model DocumentSentVersion {
   @@unique([document_id, version_number])
   @@index([document_id, sent_at])
   @@index([workspace_id, created_at])
+}
+
+model DocumentNumberSequence {
+  id           String   @id @default(cuid())
+  workspace_id String
+  kind         String
+  next_number  Int      @default(1)
+  updated_at   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@unique([workspace_id, kind])
+}
+
+model DocumentIssuedNumber {
+  id              String   @id @default(cuid())
+  workspace_id    String
+  kind            String
+  document_number String
+  document_id     String   @unique
+  created_at      DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  document  Document  @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@unique([workspace_id, kind, document_number])
 }
 
 model ContentBlockFolder {
@@ -739,6 +769,7 @@ enum QuoteApprovalStatus {
 
 enum PaymentProvider {
   STRIPE
+  MANUAL
 }
 
 enum DocumentPaymentStatus {

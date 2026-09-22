@@ -15,7 +15,7 @@ type SettingsMenuProps = {
 
 const menuGroups = [
   [
-    { label: "Workspace settings", href: "/app/settings" },
+    { label: "Company settings", href: "/app/settings" },
     { label: "Integrations", href: "/app/settings/integrations" },
   ],
   [

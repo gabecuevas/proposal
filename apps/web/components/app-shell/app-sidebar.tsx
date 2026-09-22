@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn } from "@repo/ui/utils";
 import { useNewDocumentWorkflow } from "@/components/documents/new-document-workflow-context";
+import { useCommercialBuilder } from "@/components/commercial/commercial-builder-context";
 import { LibraryCreateSplitButton } from "@/components/templates/library-create-split-button";
 import { documentTrackingCounts } from "@/lib/ui/document-tracking";
 import {
@@ -151,6 +152,7 @@ export function AppSidebar({
   onNavigate,
 }: AppSidebarProps) {
   const { openWorkflow } = useNewDocumentWorkflow();
+  const { openBuilder } = useCommercialBuilder();
   const router = useRouter();
   const counts = useShellCounts(section.id);
   const teamMemberCount = useTeamMemberCount(
@@ -178,6 +180,11 @@ export function AppSidebar({
       }
       if (result.action === "workflow") {
         openWorkflow({ kind: result.kind });
+        onNavigate();
+        return;
+      }
+      if (result.action === "commercial") {
+        openBuilder({ type: result.kind });
         onNavigate();
         return;
       }

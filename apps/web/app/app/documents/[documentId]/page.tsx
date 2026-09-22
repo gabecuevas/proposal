@@ -3,20 +3,28 @@
 import { useEffect, useState } from "react";
 import { CreatorDocumentEditor } from "@/components/documents/creator-document-editor";
 import { FlowDocumentEditor } from "@/components/flow-document/flow-document-editor";
-import { editorLayoutFromVariables, type EditorLayout } from "@/lib/editor/document-kind";
+import { CommercialBuilderModal } from "@/components/commercial/commercial-builder-modal";
+import {
+  documentKindFromVariables,
+  editorLayoutFromVariables,
+  type EditorLayout,
+  type WorkflowDocumentKind,
+} from "@/lib/editor/document-kind";
 import type { VariableContext } from "@/lib/editor/types";
+import { isCommercialDocument } from "@/lib/commercial/schema";
 
 type Params = {
   params: Promise<{ documentId: string }>;
 };
 
 /**
- * Routes to Flow (Google Docs–style) or Creator based on variables_json.editor_layout.
+ * Routes to Flow, Creator, or Commercial (Quote/Invoice) builder.
  * Existing documents without a layout stay on Creator.
  */
 export default function DocumentDetailPage({ params }: Params) {
   const [documentId, setDocumentId] = useState("");
   const [layout, setLayout] = useState<EditorLayout | null>(null);
+  const [kind, setKind] = useState<WorkflowDocumentKind>("document");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -37,12 +45,19 @@ export default function DocumentDetailPage({ params }: Params) {
           return;
         }
         const payload = (await response.json()) as {
-          document?: { variables_json?: VariableContext };
+          document?: { variables_json?: VariableContext; pricing_json?: unknown };
         };
         if (!active) {
           return;
         }
-        setLayout(editorLayoutFromVariables(payload.document?.variables_json));
+        const variables = payload.document?.variables_json;
+        const docKind = documentKindFromVariables(variables);
+        setKind(docKind);
+        if (isCommercialDocument(payload.document?.pricing_json) || docKind === "quote" || docKind === "invoice") {
+          setLayout("commercial");
+        } else {
+          setLayout(editorLayoutFromVariables(variables));
+        }
       } catch {
         if (active) {
           setError("Could not load document");
@@ -60,6 +75,22 @@ export default function DocumentDetailPage({ params }: Params) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <p className="text-sm text-muted">{error || "Loading document…"}</p>
+      </div>
+    );
+  }
+
+  if (layout === "commercial") {
+    return (
+      <div className="h-screen w-full bg-[#eef1f5]">
+        <CommercialBuilderModal
+          open
+          type={kind === "invoice" ? "invoice" : "quote"}
+          documentId={documentId}
+          onClose={() => {
+            window.location.href = "/app/documents";
+          }}
+          onDocumentId={() => undefined}
+        />
       </div>
     );
   }

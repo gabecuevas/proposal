@@ -1,13 +1,13 @@
-export const DOCUMENT_CREATE_KINDS = ["document", "template", "proposal", "quote"] as const;
+export const DOCUMENT_CREATE_KINDS = ["document", "template", "proposal", "quote", "invoice"] as const;
 
 export type DocumentCreateKind = (typeof DOCUMENT_CREATE_KINDS)[number];
 
 /** Kinds that open the New Document workflow (not the template editor). */
-export const WORKFLOW_DOCUMENT_KINDS = ["document", "proposal", "quote"] as const;
+export const WORKFLOW_DOCUMENT_KINDS = ["document", "proposal", "quote", "invoice"] as const;
 export type WorkflowDocumentKind = (typeof WORKFLOW_DOCUMENT_KINDS)[number];
 
-/** Editor layout: Flow = Google Docs–style continuous doc; Creator = page/overlay canvas. */
-export const EDITOR_LAYOUTS = ["flow", "creator"] as const;
+/** Editor layout: Flow = Google Docs–style continuous doc; Creator = page/overlay canvas; Commercial = Quote/Invoice builder. */
+export const EDITOR_LAYOUTS = ["flow", "creator", "commercial"] as const;
 export type EditorLayout = (typeof EDITOR_LAYOUTS)[number];
 
 export type DocumentKindProfile = {
@@ -56,6 +56,15 @@ const PROFILES: Record<DocumentCreateKind, DocumentKindProfile> = {
     deliveryIntro:
       "Hi {{recipient_full_name}},\n\nPlease find your quote at the link below. Let me know if you have any questions.\n\nThanks,\n{{sender_full_name}}",
   },
+  invoice: {
+    id: "invoice",
+    label: "New Invoice",
+    noun: "Invoice",
+    blankTitle: "Untitled Invoice",
+    workflowTitle: "New Invoice",
+    deliveryIntro:
+      "Hi {{recipient_full_name}},\n\nPlease find your invoice at the link below. Let me know if you have any questions.\n\nThanks,\n{{sender_full_name}}",
+  },
 };
 
 export function isDocumentCreateKind(value: unknown): value is DocumentCreateKind {
@@ -92,11 +101,17 @@ export function parseEditorLayout(value: unknown): EditorLayout {
 }
 
 /**
- * New Document (kind=document) defaults to Flow. Proposal/Quote keep Creator
- * unless an explicit layout is stored on the document.
+ * New Document (kind=document) defaults to Flow. Proposal keeps Creator.
+ * Quote/Invoice use the commercial builder layout.
  */
 export function defaultEditorLayoutForKind(kind: WorkflowDocumentKind): EditorLayout {
-  return kind === "document" ? "flow" : "creator";
+  if (kind === "document") {
+    return "flow";
+  }
+  if (kind === "quote" || kind === "invoice") {
+    return "commercial";
+  }
+  return "creator";
 }
 
 export function documentKindFromVariables(variables: unknown): WorkflowDocumentKind {

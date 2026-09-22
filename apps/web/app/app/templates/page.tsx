@@ -19,6 +19,7 @@ import {
 } from "@/components/templates/library-view-actions-bar";
 import { TemplateTypeCell } from "@/components/documents/document-type-icon";
 import { useNewDocumentWorkflow } from "@/components/documents/new-document-workflow-context";
+import { useCommercialBuilder } from "@/components/commercial/commercial-builder-context";
 import type { EditorDoc } from "@/lib/editor/types";
 import { assetUrl } from "@/lib/storage/asset-url";
 import {
@@ -146,6 +147,7 @@ function folderLabel(folder: FolderItem): string {
 export default function AppTemplatesPage() {
   const router = useRouter();
   const { openWorkflow } = useNewDocumentWorkflow();
+  const { openBuilder } = useCommercialBuilder();
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [allFolders, setAllFolders] = useState<FolderItem[]>([]);
@@ -757,6 +759,10 @@ export default function AppTemplatesPage() {
             }
             if (result.action === "workflow") {
               openWorkflow({ kind: result.kind });
+              return;
+            }
+            if (result.action === "commercial") {
+              openBuilder({ type: result.kind });
               return;
             }
             if (result.action === "flow") {

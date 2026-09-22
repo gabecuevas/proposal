@@ -34,6 +34,8 @@ export type AppNavItem = {
   href: string;
   countKey?: CountKey;
   icon?: SidebarIconId;
+  /** Highlight when the pathname is this href or a nested path under it. */
+  matchPrefix?: boolean;
 };
 
 export type SectionId = "dashboard" | "documents" | "library" | "contacts" | "settings";
@@ -94,11 +96,12 @@ export const appSections: AppSection[] = [
     id: "library",
     label: "Library",
     href: "/app/templates",
-    prefixes: ["/app/content-library"],
+    prefixes: ["/app/content-library", "/app/catalog"],
     createCta: true,
     items: [
       { label: "Templates", href: "/app/templates", countKey: "templates" },
       { label: "Content Blocks", href: "/app/content-library", countKey: "contentBlocks" },
+      { label: "Catalog", href: "/app/catalog", matchPrefix: true },
     ],
     extras: [{ label: "Create a template", href: "/app/templates/new" }],
   },
@@ -124,7 +127,7 @@ export const appSections: AppSection[] = [
     showInTopNav: false,
     createCta: false,
     items: [
-      { label: "Workspace", href: "/app/settings" },
+      { label: "Company settings", href: "/app/settings" },
       { label: "Integrations", href: "/app/settings/integrations" },
       { label: "Marketing templates", href: "/app/settings/marketing-templates" },
       { label: "All users", href: "/app/settings/users" },
@@ -235,8 +238,15 @@ export function isNavItemActive(
   tabParam: string | null,
   hash: string,
 ): boolean {
-  if (pathname !== navItemHrefPath(item.href)) {
+  const itemPath = navItemHrefPath(item.href);
+  const pathMatches =
+    pathname === itemPath || (Boolean(item.matchPrefix) && pathname.startsWith(`${itemPath}/`));
+  if (!pathMatches) {
     return false;
+  }
+  // Nested routes under a prefix-matched item are always active for that item.
+  if (item.matchPrefix && pathname !== itemPath) {
+    return true;
   }
   const itemHash = navItemHrefHash(item.href);
   if (itemHash) {

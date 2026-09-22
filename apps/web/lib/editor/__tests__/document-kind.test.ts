@@ -7,10 +7,11 @@ import {
 } from "../document-kind";
 
 describe("document-kind editor layout", () => {
-  it("defaults New Document to Flow and Proposal/Quote to Creator", () => {
+  it("defaults New Document to Flow, Proposal to Creator, Quote/Invoice to Commercial", () => {
     expect(defaultEditorLayoutForKind("document")).toBe("flow");
     expect(defaultEditorLayoutForKind("proposal")).toBe("creator");
-    expect(defaultEditorLayoutForKind("quote")).toBe("creator");
+    expect(defaultEditorLayoutForKind("quote")).toBe("commercial");
+    expect(defaultEditorLayoutForKind("invoice")).toBe("commercial");
   });
 
   it("stores layout alongside kind in variables_json", () => {
