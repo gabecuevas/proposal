@@ -1,7 +1,7 @@
 import { prisma } from "@repo/db";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
+import { errorResponse } from "@/lib/api/response";
 import { normalizeIdentityEmail } from "@/lib/auth/onboarding-schemas";
 import { verifyPassword } from "@/lib/auth/password";
 import { requireSessionOnly } from "@/lib/auth/require-session";

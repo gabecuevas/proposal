@@ -1,6 +1,6 @@
 import { prisma } from "@repo/db";
 import type { NextRequest } from "next/server";
-import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
+import { jsonWithRequestId } from "@/lib/api/response";
 import { requireSessionOnly } from "@/lib/auth/require-session";
 import { sendEmailVerification } from "@/lib/auth/verification-mail";
 
