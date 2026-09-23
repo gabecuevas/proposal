@@ -16,6 +16,14 @@ import type { DashboardActivityKind, DashboardOverview } from "@/lib/dashboard/t
 
 const SAMPLE_DISMISSED_KEY = "senddox.dashboard.sampleDismissed";
 
+type OnboardingChecklist = {
+  accountCreated: boolean;
+  emailVerified: boolean;
+  companySetup: boolean;
+  teamStep: boolean;
+  tourComplete: boolean;
+};
+
 const emptyOverview: DashboardOverview = {
   currency: "USD",
   totals: {
@@ -106,22 +114,35 @@ export default function AppHomePage() {
   const [realOverview, setRealOverview] = useState<DashboardOverview | null>(null);
   const [showSample, setShowSample] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [checklist, setChecklist] = useState<OnboardingChecklist | null>(null);
 
   const sampleOverview = useMemo(() => (mounted ? buildSampleOverview() : null), [mounted]);
 
   useEffect(() => {
     setMounted(true);
-    setShowSample(window.localStorage.getItem(SAMPLE_DISMISSED_KEY) !== "1");
 
     let cancelled = false;
     async function load() {
-      const response = await fetch("/api/dashboard/overview");
-      if (!response.ok) {
-        return;
+      const [overviewRes, onboardingRes] = await Promise.all([
+        fetch("/api/dashboard/overview"),
+        fetch("/api/auth/onboarding-status"),
+      ]);
+      if (overviewRes.ok) {
+        const payload = (await overviewRes.json()) as { overview: DashboardOverview };
+        if (!cancelled) {
+          setRealOverview(payload.overview);
+        }
       }
-      const payload = (await response.json()) as { overview: DashboardOverview };
-      if (!cancelled) {
-        setRealOverview(payload.overview);
+      if (onboardingRes.ok) {
+        const payload = (await onboardingRes.json()) as {
+          checklist?: OnboardingChecklist;
+          sampleModeEnabled?: boolean;
+        };
+        if (!cancelled) {
+          setChecklist(payload.checklist ?? null);
+          const dismissed = window.localStorage.getItem(SAMPLE_DISMISSED_KEY) === "1";
+          setShowSample(Boolean(payload.sampleModeEnabled) && !dismissed);
+        }
       }
     }
     void load().catch(() => undefined);
@@ -174,8 +195,39 @@ export default function AppHomePage() {
     },
   ];
 
+  const checklistItems = checklist
+    ? [
+        { label: "Verify email", done: checklist.emailVerified, href: "/verify-email" },
+        { label: "Set up company", done: checklist.companySetup, href: "/onboarding/company" },
+        { label: "Invite team", done: checklist.teamStep, href: "/onboarding/team" },
+      ]
+    : [];
+
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-auto bg-surface">
+      {checklist && checklistItems.some((item) => !item.done) ? (
+        <div className="border-b border-border bg-slate-50 px-4 py-4">
+          <h2 className="text-sm font-semibold text-foreground">Welcome to SendDox</h2>
+          <p className="mt-1 text-sm text-muted">Finish setup to get the most from your workspace.</p>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {checklistItems.map((item) => (
+              <li key={item.label}>
+                <Link
+                  href={item.href}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${
+                    item.done
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                      : "border-border bg-surface text-foreground hover:bg-slate-100"
+                  }`}
+                >
+                  <span>{item.done ? "✓" : "○"}</span>
+                  {item.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {showSample ? (
         <div className="flex shrink-0 items-center gap-3 border-b border-border bg-slate-50 px-4 py-2.5 text-sm">
           <span className="rounded-md border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-primary">

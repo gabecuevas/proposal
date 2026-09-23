@@ -48,6 +48,10 @@ export async function getRequestAuthContext(request: NextRequest): Promise<Reque
     throw new Error("Unauthorized");
   }
 
+  if (!session.workspaceId) {
+    throw new Error("Forbidden");
+  }
+
   const member = await prisma.workspaceMember.findFirst({
     where: {
       workspace_id: session.workspaceId,

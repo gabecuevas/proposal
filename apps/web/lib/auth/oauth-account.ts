@@ -1,11 +1,19 @@
 import { prisma } from "@repo/db";
 import { hashPassword } from "./password";
+import { buildSessionPayloadFromUser } from "./session-builder";
 import type { SessionPayload } from "./session";
 
-export async function resolveOAuthSession(input: {
+export type OAuthResolveInput = {
   email: string;
   name: string;
-}): Promise<SessionPayload> {
+  googleSub: string;
+};
+
+export type OAuthResolveResult =
+  | { ok: true; payload: SessionPayload }
+  | { ok: false; code: "google_account_exists" };
+
+export async function resolveOAuthSession(input: OAuthResolveInput): Promise<OAuthResolveResult> {
   const normalizedEmail = input.email.trim().toLowerCase();
   const normalizedName = input.name.trim() || "Google User";
 
@@ -13,84 +21,34 @@ export async function resolveOAuthSession(input: {
     where: { email: normalizedEmail },
   });
 
-  if (!existingUser) {
-    const passwordHash = await hashPassword(crypto.randomUUID());
-    const created = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          email: normalizedEmail,
-          name: normalizedName,
-          password_hash: passwordHash,
-        },
-      });
-      const workspace = await tx.workspace.create({
-        data: {
-          name: `${normalizedName} Workspace`,
-          owner_user_id: user.id,
-        },
-      });
-      await tx.workspaceMember.create({
-        data: {
-          workspace_id: workspace.id,
-          user_id: user.id,
-          role: "OWNER",
-        },
-      });
-      await tx.user.update({
-        where: { id: user.id },
-        data: { default_workspace_id: workspace.id },
-      });
-      return {
-        userId: user.id,
-        workspaceId: workspace.id,
-        role: "OWNER" as const,
-      };
+  if (existingUser) {
+    if (existingUser.google_sub && existingUser.google_sub !== input.googleSub) {
+      return { ok: false, code: "google_account_exists" };
+    }
+    if (!existingUser.google_sub) {
+      return { ok: false, code: "google_account_exists" };
+    }
+
+    const user = await prisma.user.update({
+      where: { id: existingUser.id },
+      data: {
+        email_verified_at: existingUser.email_verified_at ?? new Date(),
+      },
     });
-    return {
-      userId: created.userId,
-      workspaceId: created.workspaceId,
-      role: created.role,
+    return { ok: true, payload: await buildSessionPayloadFromUser(user) };
+  }
+
+  const passwordHash = await hashPassword(crypto.randomUUID());
+  const user = await prisma.user.create({
+    data: {
       email: normalizedEmail,
-    };
-  }
-
-  const membership = await prisma.workspaceMember.findFirst({
-    where: { user_id: existingUser.id },
-    orderBy: { created_at: "asc" },
+      name: normalizedName,
+      password_hash: passwordHash,
+      google_sub: input.googleSub,
+      email_verified_at: new Date(),
+      provisional_company_name: `${normalizedName.split(" ")[0] ?? normalizedName}'s Company`,
+    },
   });
-  if (!membership) {
-    const created = await prisma.$transaction(async (tx) => {
-      const workspace = await tx.workspace.create({
-        data: {
-          name: `${existingUser.name} Workspace`,
-          owner_user_id: existingUser.id,
-        },
-      });
-      await tx.workspaceMember.create({
-        data: {
-          workspace_id: workspace.id,
-          user_id: existingUser.id,
-          role: "OWNER",
-        },
-      });
-      await tx.user.update({
-        where: { id: existingUser.id },
-        data: { default_workspace_id: workspace.id },
-      });
-      return workspace.id;
-    });
-    return {
-      userId: existingUser.id,
-      workspaceId: created,
-      role: "OWNER",
-      email: existingUser.email,
-    };
-  }
 
-  return {
-    userId: existingUser.id,
-    workspaceId: existingUser.default_workspace_id ?? membership.workspace_id,
-    role: membership.role,
-    email: existingUser.email,
-  };
+  return { ok: true, payload: await buildSessionPayloadFromUser(user) };
 }

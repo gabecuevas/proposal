@@ -1,100 +1,63 @@
 import { prisma } from "@repo/db";
+import type { NextRequest } from "next/server";
 import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
 import { hashPassword } from "@/lib/auth/password";
 import {
-  SESSION_COOKIE_NAME,
-  SESSION_MAX_AGE,
-  signSessionToken,
-  type SessionPayload,
-} from "@/lib/auth/session";
+  normalizeIdentityEmail,
+  PRIVACY_VERSION,
+  signupSchema,
+  TERMS_VERSION,
+} from "@/lib/auth/onboarding-schemas";
+import { buildSessionPayloadFromUser } from "@/lib/auth/session-builder";
+import { jsonWithSessionCookie } from "@/lib/auth/session-cookie";
+import { sendEmailVerification } from "@/lib/auth/verification-mail";
 
-type SignupBody = {
-  email?: string;
-  password?: string;
-  name?: string;
-  workspaceName?: string;
+const SIGNUP_SUCCESS = {
+  message: "Check your email to verify your account and continue setup.",
 };
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as SignupBody;
-    const email = body.email?.trim().toLowerCase();
-    const password = body.password?.trim();
-    const name = body.name?.trim();
-    const workspaceName = body.workspaceName?.trim() || `${name ?? "New"} Workspace`;
-
-    if (!email || !password || !name) {
+    const parsed = signupSchema.safeParse(await request.json());
+    if (!parsed.success) {
       return errorResponse(request, {
         status: 400,
         code: "validation_error",
-        message: "email, password, and name are required",
+        message: parsed.error.issues[0]?.message ?? "Invalid signup payload",
       });
     }
 
+    const email = normalizeIdentityEmail(parsed.data.email);
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      return errorResponse(request, {
-        status: 409,
-        code: "email_conflict",
-        message: "An account with this email already exists",
-      });
+      return jsonWithRequestId(request, SIGNUP_SUCCESS);
     }
 
-    const passwordHash = await hashPassword(password);
+    const passwordHash = await hashPassword(parsed.data.password);
+    const now = new Date();
 
-    const result = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          email,
-          name,
-          password_hash: passwordHash,
-        },
-      });
-
-      const workspace = await tx.workspace.create({
-        data: {
-          name: workspaceName,
-          owner_user_id: user.id,
-        },
-      });
-
-      await tx.workspaceMember.create({
-        data: {
-          workspace_id: workspace.id,
-          user_id: user.id,
-          role: "OWNER",
-        },
-      });
-
-      await tx.user.update({
-        where: { id: user.id },
-        data: { default_workspace_id: workspace.id },
-      });
-
-      return {
-        userId: user.id,
-        email: user.email,
-        workspaceId: workspace.id,
-        role: "OWNER" as const,
-      };
+    const user = await prisma.user.create({
+      data: {
+        email,
+        name: parsed.data.fullName,
+        password_hash: passwordHash,
+        provisional_company_name: parsed.data.companyName,
+        terms_accepted_at: now,
+        terms_version: TERMS_VERSION,
+        privacy_version: PRIVACY_VERSION,
+      },
     });
 
-    const payload: SessionPayload = {
-      userId: result.userId,
-      workspaceId: result.workspaceId,
-      role: result.role,
-      email: result.email,
-    };
-    const token = await signSessionToken(payload);
-    const response = jsonWithRequestId(request, { user: payload }, { status: 201 });
-    response.cookies.set(SESSION_COOKIE_NAME, token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: SESSION_MAX_AGE,
-      path: "/",
+    await sendEmailVerification({
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      generation: user.verification_generation,
+      request,
     });
-    return response;
+
+    const payload = await buildSessionPayloadFromUser(user);
+    return jsonWithSessionCookie(request, SIGNUP_SUCCESS, payload, { status: 201 });
   } catch {
     return errorResponse(request, {
       status: 500,

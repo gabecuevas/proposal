@@ -5,7 +5,7 @@ import type { InputJsonValue as PrismaInputJsonValue } from "@prisma/client/runt
  * Bump when adding/removing Prisma model fields so hot-reload drops a stale
  * PrismaClient that would reject new columns (e.g. Company.linkedin).
  */
-const PRISMA_SCHEMA_REV = 23;
+const PRISMA_SCHEMA_REV = 24;
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -75,6 +75,7 @@ if (process.env.NODE_ENV !== "production") {
 
 export { Prisma };
 export type {
+  AuthTokenPurpose,
   CrmActivityAvailability,
   CrmActivityPriority,
   CrmActivityType,
@@ -84,6 +85,10 @@ export type {
   CrmEmailSyncStatus,
   CrmEmailTemplateVisibility,
   CrmTimelineEventType,
+  User,
+  Workspace,
+  WorkspaceMember,
+  WorkspaceRole,
 } from "@prisma/client";
 
 export type InputJsonValue = PrismaInputJsonValue;

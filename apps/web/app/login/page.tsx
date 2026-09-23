@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { FormEvent } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { AuthMarketingPanel } from "@/components/auth/auth-marketing-panel";
+import { SendDoxLogo } from "@/components/brand/senddox-logo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,7 +17,11 @@ export default function LoginPage() {
   const [bootstrapLoading, setBootstrapLoading] = useState(false);
   const oauthError = searchParams.get("error");
   const next = searchParams.get("next");
-  const nextPath = next && next.startsWith("/") ? next : "/app";
+
+  const googleConfigured = useMemo(
+    () => process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === "true",
+    [],
+  );
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -26,19 +32,20 @@ export default function LoginPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, next }),
     });
 
     if (!response.ok) {
       const payload = (await response.json().catch(() => null)) as
-        | { error?: { code?: string; message?: string } }
+        | { error?: { message?: string } }
         | null;
       setError(payload?.error?.message ?? "Unable to log in");
       setLoading(false);
       return;
     }
 
-    router.push(nextPath);
+    const payload = (await response.json()) as { redirectHint?: string };
+    router.push(payload.redirectHint ?? "/app");
     router.refresh();
   }
 
@@ -67,63 +74,77 @@ export default function LoginPage() {
   const oauthErrorMessage =
     oauthError === "google_not_configured"
       ? "Google sign-in is not configured yet."
-      : oauthError
-        ? "Google sign-in failed. Please try again."
-        : "";
+      : oauthError === "google_account_exists"
+        ? "This email is registered with a password. Log in with email and password."
+        : oauthError
+          ? "Google sign-in failed. Please try again."
+          : "";
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6">
-      <div className="glass-card rounded-2xl p-6 md:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Welcome back</p>
-        <h1 className="mt-3 text-3xl font-semibold">Log in to SendDox</h1>
-        <p className="mt-2 text-muted">Access your workspace and continue editing documents.</p>
-        {oauthErrorMessage ? <p className="mt-4 text-sm text-red-600">{oauthErrorMessage}</p> : null}
-        <form className="mt-8 space-y-4" onSubmit={onSubmit}>
-        <input
-          className="w-full rounded-lg border border-border bg-surface px-4 py-3"
-          placeholder="Email"
-          type="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          required
-        />
-        <input
-          className="w-full rounded-lg border border-border bg-surface px-4 py-3"
-          placeholder="Password"
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-        />
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground disabled:opacity-60"
-        >
-          {loading ? "Signing in..." : "Continue"}
-        </button>
-        <button
-          type="button"
-          onClick={() => void bootstrapLocalDemo()}
-          disabled={bootstrapLoading}
-          className="w-full rounded-lg border border-border px-4 py-3 font-medium hover:bg-surface disabled:opacity-60"
-        >
-          {bootstrapLoading ? "Preparing local demo..." : "Use local demo account"}
-        </button>
-        <a
-          className="block w-full rounded-lg border border-border px-4 py-3 text-center font-medium hover:bg-surface"
-          href={`/api/auth/google/start?next=${encodeURIComponent(nextPath)}`}
-        >
-          Continue with Google
-        </a>
-        </form>
-        <p className="mt-4 text-sm text-muted">
-        New here?{" "}
-        <Link href="/signup" className="text-primary underline-offset-4 hover:underline">
-          Create an account
-        </Link>
-        </p>
+    <main className="grid min-h-screen lg:grid-cols-2">
+      <AuthMarketingPanel />
+      <div className="flex flex-col justify-center px-6 py-10 lg:px-12">
+        <div className="mx-auto w-full max-w-md">
+          <div className="mb-8 lg:hidden">
+            <SendDoxLogo className="h-8" />
+          </div>
+          <h1 className="text-3xl font-semibold">Log in to SendDox</h1>
+          <p className="mt-2 text-sm text-muted">Access your workspace and continue editing documents.</p>
+          {oauthErrorMessage ? <p className="mt-4 text-sm text-red-600">{oauthErrorMessage}</p> : null}
+          <form className="mt-8 space-y-4" onSubmit={onSubmit}>
+            <input
+              className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+              placeholder="Email"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
+            <input
+              className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+              placeholder="Password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+            <div className="text-right">
+              <Link href="/forgot-password" className="text-sm text-primary underline-offset-4 hover:underline">
+                Forgot password?
+              </Link>
+            </div>
+            {error ? <p className="text-sm text-red-600">{error}</p> : null}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
+            >
+              {loading ? "Signing in..." : "Continue"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void bootstrapLocalDemo()}
+              disabled={bootstrapLoading}
+              className="w-full rounded-lg border border-border px-4 py-3 text-sm font-medium hover:bg-surface disabled:opacity-60"
+            >
+              {bootstrapLoading ? "Preparing local demo..." : "Use local demo account"}
+            </button>
+            {googleConfigured ? (
+              <a
+                className="block w-full rounded-lg border border-border px-4 py-3 text-center text-sm font-medium hover:bg-surface"
+                href={`/api/auth/google/start?next=${encodeURIComponent(next && next.startsWith("/") ? next : "/app")}`}
+              >
+                Continue with Google
+              </a>
+            ) : null}
+          </form>
+          <p className="mt-4 text-sm text-muted">
+            New here?{" "}
+            <Link href="/signup" className="text-primary underline-offset-4 hover:underline">
+              Create an account
+            </Link>
+          </p>
+        </div>
       </div>
     </main>
   );
