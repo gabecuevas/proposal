@@ -192,7 +192,7 @@ export default function AppTemplatesPage() {
   >(SAMPLE_TEMPLATE_FOLDERS.map((folder) => ({ ...folder, template_count: 0 })));
   const [sampleTemplates, setSampleTemplates] = useState<TemplateItem[]>([]);
 
-  function useLibraryTemplate(template: TemplateItem) {
+  function openUseTemplateWorkflow(template: TemplateItem) {
     openWorkflow({
       templateId: template.id,
       templateName: template.name,
@@ -1171,7 +1171,7 @@ export default function AppTemplatesPage() {
                       <button
                         type="button"
                         className="shrink-0 rounded border border-border px-2 py-0.5 text-[11px] font-medium text-muted hover:border-primary/40 hover:text-primary"
-                        onClick={() => useLibraryTemplate(template)}
+                        onClick={() => openUseTemplateWorkflow(template)}
                       >
                         Use
                       </button>
@@ -1282,7 +1282,7 @@ export default function AppTemplatesPage() {
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    useLibraryTemplate(template);
+                    openUseTemplateWorkflow(template);
                   }}
                 >
                   Use

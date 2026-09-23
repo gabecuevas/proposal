@@ -1122,7 +1122,7 @@ export function FlowDocumentEditor({
     }
     setPdfBusy(true);
     try {
-      const safeName = (name.trim() || "document").replace(/[^\w\-]+/g, "_");
+      const safeName = (name.trim() || "document").replace(/[^\w-]+/g, "_");
       await downloadDocumentPdf({
         bodyHtml: flowBodyHtml(),
         pageSize: flowPageSize,
