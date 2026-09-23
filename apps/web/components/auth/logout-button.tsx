@@ -13,14 +13,17 @@ export function useLogout() {
   }, [router]);
 }
 
-export function LogoutButton() {
+export function LogoutButton({ className }: { className?: string }) {
   const logout = useLogout();
 
   return (
     <button
       onClick={() => void logout()}
       type="button"
-      className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-muted transition-colors hover:border-primary/30 hover:text-foreground"
+      className={
+        className ??
+        "w-full rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-muted transition-colors hover:border-primary/30 hover:text-foreground"
+      }
     >
       Log out
     </button>

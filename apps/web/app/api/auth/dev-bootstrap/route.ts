@@ -3,12 +3,9 @@ import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
 import { createDocumentFromTemplate } from "@/lib/editor/document-store";
 import { createTemplate, listTemplates } from "@/lib/editor/template-store";
 import { hashPassword } from "@/lib/auth/password";
-import {
-  SESSION_COOKIE_NAME,
-  SESSION_MAX_AGE,
-  signSessionToken,
-  type SessionPayload,
-} from "@/lib/auth/session";
+import { buildSessionPayloadFromUser } from "@/lib/auth/session-builder";
+import { applySessionCookie } from "@/lib/auth/session-cookie";
+import { signSessionToken } from "@/lib/auth/session";
 
 type DevBootstrapBody = {
   email?: string;
@@ -58,6 +55,7 @@ export async function POST(request: Request) {
             email,
             name,
             password_hash: passwordHash,
+            email_verified_at: new Date(),
           },
         });
       }
@@ -72,6 +70,8 @@ export async function POST(request: Request) {
           data: {
             name: workspaceName,
             owner_user_id: user.id,
+            company_setup_completed_at: new Date(),
+            sample_mode_enabled: false,
           },
         });
 
@@ -86,6 +86,14 @@ export async function POST(request: Request) {
         await tx.user.update({
           where: { id: user.id },
           data: { default_workspace_id: workspace.id },
+        });
+
+        await tx.userWorkspaceOnboarding.create({
+          data: {
+            user_id: user.id,
+            workspace_id: workspace.id,
+            team_step_skipped_at: new Date(),
+          },
         });
       } else if (!user.default_workspace_id) {
         await tx.user.update({
@@ -111,13 +119,7 @@ export async function POST(request: Request) {
 
     const document = await createDocumentFromTemplate(template.id, workspaceId);
 
-    const payload: SessionPayload = {
-      userId: userAndWorkspace.user.id,
-      workspaceId,
-      role: userAndWorkspace.membership.role,
-      email: userAndWorkspace.user.email,
-    };
-
+    const payload = await buildSessionPayloadFromUser(userAndWorkspace.user, workspaceId);
     const token = await signSessionToken(payload);
     const response = jsonWithRequestId(
       request,
@@ -130,13 +132,7 @@ export async function POST(request: Request) {
       },
       { status: 201 },
     );
-    response.cookies.set(SESSION_COOKIE_NAME, token, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      maxAge: SESSION_MAX_AGE,
-      path: "/",
-    });
+    applySessionCookie(response, token);
     return response;
   } catch {
     return errorResponse(request, {

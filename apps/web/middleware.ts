@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { checkRateLimit } from "@/lib/security/rate-limit";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
+import { SESSION_COOKIE_NAME, verifySessionToken, type SessionPayload } from "@/lib/auth/session";
 
 const protectedApiPrefixes = [
   "/api/dashboard",
@@ -16,8 +16,16 @@ const protectedApiPrefixes = [
   "/api/audit",
 ];
 
+const sessionOnlyPagePrefixes = ["/verify-email", "/onboarding/", "/auth/verify-email"];
+
 function isProtectedApi(pathname: string): boolean {
   return protectedApiPrefixes.some((prefix) => pathname.startsWith(prefix));
+}
+
+function isSessionOnlyPage(pathname: string): boolean {
+  return sessionOnlyPagePrefixes.some(
+    (prefix) => pathname === prefix.replace(/\/$/, "") || pathname.startsWith(prefix),
+  );
 }
 
 function isTokenAccessibleDocumentApi(pathname: string): boolean {
@@ -111,6 +119,41 @@ function getRateLimitConfig(request: NextRequest): { scope: string; limit: numbe
   return null;
 }
 
+function onboardingRedirect(request: NextRequest, session: SessionPayload): NextResponse | null {
+  const { pathname } = request.nextUrl;
+
+  if (!session.emailVerified) {
+    if (pathname !== "/verify-email" && !pathname.startsWith("/auth/verify-email")) {
+      return NextResponse.redirect(new URL("/verify-email", request.url));
+    }
+    return null;
+  }
+
+  if (pathname === "/verify-email") {
+    return NextResponse.redirect(new URL("/onboarding/company", request.url));
+  }
+
+  if (!session.workspaceId || !session.companySetupComplete) {
+    if (!pathname.startsWith("/onboarding/company")) {
+      return NextResponse.redirect(new URL("/onboarding/company", request.url));
+    }
+    return null;
+  }
+
+  if (!session.teamStepComplete) {
+    if (!pathname.startsWith("/onboarding/team")) {
+      return NextResponse.redirect(new URL("/onboarding/team", request.url));
+    }
+    return null;
+  }
+
+  if (pathname.startsWith("/onboarding/")) {
+    return NextResponse.redirect(new URL("/app", request.url));
+  }
+
+  return null;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const requestId = getOrCreateRequestId(request);
@@ -140,9 +183,13 @@ export async function middleware(request: NextRequest) {
       return response;
     }
   }
-  const isProtectedRoute = pathname.startsWith("/app") || isProtectedApi(pathname);
 
-  if (!isProtectedRoute) {
+  const needsSession =
+    pathname.startsWith("/app") ||
+    isProtectedApi(pathname) ||
+    isSessionOnlyPage(pathname);
+
+  if (!needsSession) {
     return nextWithRequestId(request, requestId);
   }
 
@@ -183,9 +230,25 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  if (pathname.startsWith("/app") || isSessionOnlyPage(pathname)) {
+    const redirect = onboardingRedirect(request, session);
+    if (redirect) {
+      redirect.headers.set("x-request-id", requestId);
+      applySecurityHeaders(redirect, request);
+      return redirect;
+    }
+  }
+
   return nextWithRequestId(request, requestId);
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/sign/:path*", "/api/:path*"],
+  matcher: [
+    "/app/:path*",
+    "/sign/:path*",
+    "/api/:path*",
+    "/verify-email",
+    "/onboarding/:path*",
+    "/auth/verify-email",
+  ],
 };

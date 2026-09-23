@@ -15,13 +15,15 @@ type SettingsMenuProps = {
 
 const menuGroups = [
   [
-    { label: "Company settings", href: "/app/settings" },
-    { label: "Integrations", href: "/app/settings/integrations" },
+    { label: "Profile", href: "/app/settings/profile" },
+    { label: "Company", href: "/app/settings/company" },
+    { label: "Branding", href: "/app/settings/branding" },
   ],
   [
-    { label: "All users", href: "/app/settings/users" },
-    { label: "Calendar Sync", href: "/app/settings/integrations/calendar" },
-    { label: "Email Sync", href: "/app/settings/integrations/email" },
+    { label: "Team", href: "/app/settings/team" },
+    { label: "Document defaults", href: "/app/settings/document-defaults" },
+    { label: "Security", href: "/app/settings/security" },
+    { label: "Integrations", href: "/app/settings/integrations" },
     { label: "Billing", href: "/app/settings/billing" },
   ],
 ];

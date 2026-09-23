@@ -6,9 +6,13 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 export type SessionPayload = {
   userId: string;
-  workspaceId: string;
-  role: "OWNER" | "ADMIN" | "MEMBER";
+  /** Null while the user has no workspace membership yet (onboarding). */
+  workspaceId: string | null;
+  role: "OWNER" | "ADMIN" | "MEMBER" | null;
   email: string;
+  emailVerified: boolean;
+  companySetupComplete: boolean;
+  teamStepComplete: boolean;
 };
 
 function getSecret(): Uint8Array {
@@ -16,8 +20,30 @@ function getSecret(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
+function normalizePayload(payload: Record<string, unknown>): SessionPayload {
+  const workspaceId =
+    typeof payload.workspaceId === "string" && payload.workspaceId.length > 0
+      ? payload.workspaceId
+      : null;
+  const role =
+    payload.role === "OWNER" || payload.role === "ADMIN" || payload.role === "MEMBER"
+      ? payload.role
+      : null;
+  // Legacy sessions (pre-onboarding) with a workspace are treated as fully onboarded.
+  const legacyComplete = Boolean(workspaceId) && payload.emailVerified === undefined;
+  return {
+    userId: String(payload.userId ?? ""),
+    workspaceId,
+    role,
+    email: String(payload.email ?? ""),
+    emailVerified: payload.emailVerified === true || legacyComplete,
+    companySetupComplete: payload.companySetupComplete === true || legacyComplete,
+    teamStepComplete: payload.teamStepComplete === true || legacyComplete,
+  };
+}
+
 export async function signSessionToken(payload: SessionPayload): Promise<string> {
-  return new SignJWT(payload)
+  return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
@@ -27,7 +53,11 @@ export async function signSessionToken(payload: SessionPayload): Promise<string>
 export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
   try {
     const { payload } = await jwtVerify(token, getSecret());
-    return payload as SessionPayload;
+    const normalized = normalizePayload(payload as Record<string, unknown>);
+    if (!normalized.userId || !normalized.email) {
+      return null;
+    }
+    return normalized;
   } catch {
     return null;
   }

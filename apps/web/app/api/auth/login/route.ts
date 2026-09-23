@@ -1,19 +1,17 @@
 import { prisma } from "@repo/db";
-import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
+import type { NextRequest } from "next/server";
+import { errorResponse } from "@/lib/api/response";
 import { verifyPassword } from "@/lib/auth/password";
-import {
-  SESSION_COOKIE_NAME,
-  SESSION_MAX_AGE,
-  signSessionToken,
-  type SessionPayload,
-} from "@/lib/auth/session";
+import { buildSessionPayloadFromUser, postAuthRedirectPath } from "@/lib/auth/session-builder";
+import { jsonWithSessionCookie } from "@/lib/auth/session-cookie";
 
 type LoginBody = {
   email?: string;
   password?: string;
+  next?: string;
 };
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as LoginBody;
     const email = body.email?.trim().toLowerCase();
@@ -45,36 +43,10 @@ export async function POST(request: Request) {
       });
     }
 
-    const member = await prisma.workspaceMember.findFirst({
-      where: { user_id: user.id },
-      orderBy: { created_at: "asc" },
-    });
+    const payload = await buildSessionPayloadFromUser(user);
+    const redirectHint = postAuthRedirectPath(payload, body.next ?? null);
 
-    if (!member) {
-      return errorResponse(request, {
-        status: 403,
-        code: "forbidden",
-        message: "No workspace membership found",
-      });
-    }
-
-    const payload: SessionPayload = {
-      userId: user.id,
-      workspaceId: user.default_workspace_id ?? member.workspace_id,
-      role: member.role,
-      email: user.email,
-    };
-
-    const token = await signSessionToken(payload);
-    const response = jsonWithRequestId(request, { user: payload });
-    response.cookies.set(SESSION_COOKIE_NAME, token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: SESSION_MAX_AGE,
-      path: "/",
-    });
-    return response;
+    return jsonWithSessionCookie(request, { user: payload, redirectHint }, payload);
   } catch {
     return errorResponse(request, {
       status: 500,
