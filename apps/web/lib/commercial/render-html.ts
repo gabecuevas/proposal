@@ -4,9 +4,9 @@ import {
   lineAmountMinor,
   quantityToDisplay,
 } from "./calculate";
-import type { CommercialDocument } from "./schema";
-import { currencyPrecision } from "./schema";
+import { DEFAULT_COMMERCIAL_THEME, type CommercialDocument, currencyPrecision } from "./schema";
 import { resolveCommercialText } from "./variables";
+import { FLOW_GOOGLE_FONTS, flowGoogleFontsStylesheetHref } from "@/lib/flow-document/google-fonts";
 
 function escapeHtml(value: string): string {
   return value
@@ -52,13 +52,21 @@ export function renderCommercialDocumentHtml(input: {
   const precision = currencyPrecision(commercial.currency);
   const money = (minor: number) => formatMoneyMinor(minor, commercial.currency, commercial.locale);
   const labels = commercial.labels;
+  const theme = commercial.theme ?? DEFAULT_COMMERCIAL_THEME;
+  const titleFont =
+    FLOW_GOOGLE_FONTS.find((font) => font.id === theme.titleFontId) ?? FLOW_GOOGLE_FONTS[0]!;
+  const tableHeaderFg = contrastTextColor(theme.tableHeaderBg);
   const isInvoice = commercial.type === "invoice";
+  const fontHref = flowGoogleFontsStylesheetHref();
 
   const logo = commercial.logoAssetKey
     ? `<img class="cm-logo" src="/api/uploads/${escapeHtml(commercial.logoAssetKey)}" alt="" />`
     : "";
 
+  const documentNumberLabel =
+    labels.documentNumber || (isInvoice ? "Invoice Number" : "Quote Number");
   const metaRows = [
+    [documentNumberLabel, commercial.documentNumber],
     [labels.date, commercial.issueDate ?? ""],
     [labels.paymentTerms, commercial.paymentTerms],
     ...(isInvoice ? [[labels.dueDate, commercial.dueDate ?? ""]] : []),
@@ -117,21 +125,24 @@ export function renderCommercialDocumentHtml(input: {
       : "";
 
   return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"/><style>
+<html><head><meta charset="utf-8"/>
+<link rel="stylesheet" href="${escapeHtml(fontHref)}"/>
+<style>
 @page { size: Letter; margin: 0.5in; }
 body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color: #0f2744; }
 .cm-paper { max-width: 800px; margin: 0 auto; }
-.cm-logo { max-width: 180px; max-height: 116px; width: auto; height: auto; object-fit: contain; display: block; margin-bottom: 12px; }
-.cm-header { display: flex; justify-content: space-between; gap: 24px; }
-.cm-title { font-size: 42px; font-weight: 700; letter-spacing: 0.02em; margin: 0; color: #0f2744; }
-.cm-number { margin-top: 8px; font-size: 14px; }
-.cm-meta-row { display: flex; justify-content: space-between; gap: 16px; font-size: 13px; margin-top: 6px; min-width: 220px; }
+.cm-logo { max-width: 264px; max-height: 144px; width: auto; height: auto; object-fit: contain; display: block; margin-bottom: 12px; }
+.cm-header { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+.cm-title-slot { height: 72px; display: flex; align-items: flex-end; justify-content: flex-end; overflow: visible; }
+.cm-title { font-size: ${theme.titleSizePx}px; font-weight: 700; letter-spacing: 0.02em; margin: 0; color: ${escapeHtml(theme.titleColor)}; font-family: ${escapeHtml(titleFont.family)}; white-space: nowrap; text-align: right; line-height: 1; }
+.cm-meta { margin-top: 12px; }
+.cm-meta-row { display: flex; justify-content: space-between; gap: 16px; font-size: 13px; margin-top: 6px; }
 .cm-sender { margin-top: 12px; white-space: pre-wrap; font-size: 13px; line-height: 1.45; }
-.cm-parties { display: flex; gap: 16px; margin-top: 20px; }
-.cm-party { flex: 1; font-size: 13px; line-height: 1.45; }
+.cm-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+.cm-party { font-size: 13px; line-height: 1.45; min-width: 0; }
 .cm-party-label { font-weight: 700; margin-bottom: 4px; }
 table.cm-items { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 13px; }
-table.cm-items thead th { background: #0f2744; color: #fff; text-align: left; padding: 8px 10px; font-weight: 600; }
+table.cm-items thead th { background: ${escapeHtml(theme.tableHeaderBg)}; color: ${escapeHtml(tableHeaderFg)}; text-align: left; padding: 8px 10px; font-weight: 600; }
 table.cm-items thead th.num, table.cm-items td.num { text-align: right; white-space: nowrap; }
 table.cm-items tbody td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
 .cm-bottom { display: flex; gap: 24px; margin-top: 20px; }
@@ -148,9 +159,10 @@ table.cm-items tbody td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; v
       <div class="cm-sender">${multilineHtml(sender)}</div>
     </div>
     <div>
-      <h1 class="cm-title">${escapeHtml(labels.title || (isInvoice ? "INVOICE" : "QUOTE"))}</h1>
-      <div class="cm-number"># ${escapeHtml(commercial.documentNumber)}</div>
-      <div style="margin-top:12px">${metaRows}</div>
+      <div class="cm-title-slot">
+        <h1 class="cm-title">${escapeHtml(labels.title || (isInvoice ? "INVOICE" : "QUOTE"))}</h1>
+      </div>
+      <div class="cm-meta">${metaRows}</div>
     </div>
   </div>
   <div class="cm-parties">
@@ -181,4 +193,23 @@ table.cm-items tbody td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; v
   </div>
 </article>
 </body></html>`;
+}
+
+function contrastTextColor(backgroundHex: string): string {
+  const hex = backgroundHex.trim().replace("#", "");
+  const normalized =
+    hex.length === 3
+      ? hex
+          .split("")
+          .map((ch) => `${ch}${ch}`)
+          .join("")
+      : hex;
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
+    return "#ffffff";
+  }
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.62 ? "#0f2744" : "#ffffff";
 }

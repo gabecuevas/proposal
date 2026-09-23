@@ -140,7 +140,7 @@ export function PromptNameModal({
           onClick={() => void onConfirm(value.trim())}
           className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-40"
         >
-          {confirmLabel}
+          {busy ? "Saving…" : confirmLabel}
         </button>
       </div>
     </ModalShell>
@@ -348,7 +348,7 @@ export function ShareMembersModal({
           onClick={() => void onConfirm([...selected])}
           className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-40"
         >
-          Save sharing
+          {busy ? "Saving…" : "Save sharing"}
         </button>
       </div>
     </ModalShell>

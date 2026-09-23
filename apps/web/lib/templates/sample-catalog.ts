@@ -25,6 +25,11 @@ export const SAMPLE_TEMPLATE_FOLDERS: readonly SampleTemplateFolder[] = [
     description: "Sales proposals and statements of work.",
   },
   {
+    slug: "quotes",
+    name: "Quotes",
+    description: "Master quote layouts ready to customize and send.",
+  },
+  {
     slug: "billing-commercial",
     name: "Billing & Commercial Templates",
     description: "Quotes, invoices, and commercial terms.",

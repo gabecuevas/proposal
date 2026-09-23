@@ -158,7 +158,13 @@ export function editorLayoutForTemplateSource(input: {
   if (input.pageBacked) {
     return "creator";
   }
+  if (input.kind === "quote" || input.kind === "invoice") {
+    return "commercial";
+  }
   const lower = (input.tags ?? []).map((tag) => tag.toLowerCase());
+  if (lower.includes("commercial") || lower.includes("quote") || lower.includes("invoice")) {
+    return "commercial";
+  }
   if (lower.includes("flow") || lower.includes("docx")) {
     return "flow";
   }

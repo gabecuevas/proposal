@@ -26,11 +26,13 @@ describe("commercial variables and templates", () => {
   it("template reset clears customer-specific fields and refreshes line ids", () => {
     const doc = createBlankCommercialDocument("quote", { documentNumber: "9" });
     doc.poNumber = "PO-1";
+    doc.sender = { text: "Ada Lovelace\nAnalytical Engines" };
     doc.billTo = { text: "Acme Corp" };
     doc.lineItems = [{ id: "keep-me", description: "Widget", quantityScaled: QUANTITY_SCALE, rateMinor: 100 }];
     const template = toCommercialTemplatePayload(doc);
     expect(template.documentNumber).toBe("");
     expect(template.poNumber).toBe("");
+    expect(template.sender.text).toContain("[Sender.FullName]");
     expect(template.billTo.text).toBe("[Recipient.CompanyName]");
     expect(template.lineItems[0]?.id).not.toBe("keep-me");
     expect(template.lineItems[0]?.description).toBe("Widget");
@@ -43,6 +45,26 @@ describe("commercial variables and templates", () => {
     });
     expect(draft.documentNumber).toBe("12");
     expect(draft.sourceTemplateId).toBe("tmpl_1");
+    expect(draft.sender.text).toContain("[Sender.FullName]");
+    expect(draft.billTo.text).toBe("[Recipient.CompanyName]");
     expect(draft.lineItems[0]?.id).not.toBe(template.lineItems[0]?.id);
+  });
+
+  it("preserves custom variable layouts when saving as a new template", () => {
+    const doc = createBlankCommercialDocument("quote");
+    doc.sender = { text: "[Sender.CompanyName]\n[Sender.Phone]" };
+    doc.billTo = { text: "[Recipient.FullName]\n[Recipient.Email]" };
+    const template = toCommercialTemplatePayload(doc);
+    expect(template.sender.text).toBe("[Sender.CompanyName]\n[Sender.Phone]");
+    expect(template.billTo.text).toBe("[Recipient.FullName]\n[Recipient.Email]");
+
+    const draft = instantiateCommercialFromTemplate(template, {
+      type: "quote",
+      documentNumber: "3",
+      issueDate: "2026-09-22",
+      sourceTemplateId: "tmpl_custom",
+    });
+    expect(draft.sender.text).toBe("[Sender.CompanyName]\n[Sender.Phone]");
+    expect(draft.billTo.text).toBe("[Recipient.FullName]\n[Recipient.Email]");
   });
 });

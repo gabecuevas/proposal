@@ -1,99 +1,52 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Editor } from "@tiptap/core";
-import { insertVariable } from "@/lib/editor/insert-elements";
-import type { EditorDoc, VariableContext } from "@/lib/editor/types";
 import {
-  buildFlowVariableGroups,
-  countVariableUsages,
-  getVariablePathValue,
-  setVariablePathValue,
-  type FlowVariableDef,
-} from "@/lib/flow-document/variable-catalog";
+  COMMERCIAL_VARIABLE_GROUPS,
+  type CommercialVariableDef,
+} from "@/lib/commercial/variables";
 
 type Props = {
-  editor: Editor | null;
-  variables: VariableContext;
+  usageCounts: Record<string, number>;
+  values?: Record<string, string>;
   locked?: boolean;
   onClose: () => void;
-  onChangeVariables: (next: VariableContext) => void;
+  onInsert: (key: string) => void;
+  onChangeValue?: (key: string, value: string) => void;
 };
 
 /**
- * Expandable Variables panel — search, grouped lists, usage counts, value inputs.
+ * Expandable Variables panel for Quote/Invoice — insert `[Token]` placeholders
+ * that auto-fill from sender/recipient context when sending.
+ * Recipient group is listed first.
  */
-export function FlowVariablesPanel({
-  editor,
-  variables,
+export function CommercialVariablesPanel({
+  usageCounts,
+  values = {},
   locked = false,
   onClose,
-  onChangeVariables,
+  onInsert,
+  onChangeValue,
 }: Props) {
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [menuKey, setMenuKey] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    if (!editor) {
-      return;
-    }
-    const bump = () => setTick((n) => n + 1);
-    editor.on("update", bump);
-    return () => {
-      editor.off("update", bump);
-    };
-  }, [editor]);
-
-  const usageCounts = useMemo(() => {
-    void tick;
-    return countVariableUsages((editor?.getJSON() as EditorDoc | undefined) ?? null);
-  }, [editor, tick]);
-
-  const groups = useMemo(() => buildFlowVariableGroups(variables, usageCounts), [variables, usageCounts]);
 
   const filteredGroups = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) {
-      return groups;
+      return COMMERCIAL_VARIABLE_GROUPS;
     }
-    return groups
-      .map((group) => ({
-        ...group,
-        variables: group.variables.filter(
-          (variable) =>
-            variable.key.toLowerCase().includes(q) || variable.label.toLowerCase().includes(q),
-        ),
-      }))
-      .filter((group) => group.variables.length > 0);
-  }, [groups, query]);
+    return COMMERCIAL_VARIABLE_GROUPS.map((group) => ({
+      ...group,
+      variables: group.variables.filter(
+        (variable) =>
+          variable.key.toLowerCase().includes(q) || variable.label.toLowerCase().includes(q),
+      ),
+    })).filter((group) => group.variables.length > 0);
+  }, [query]);
 
   const shownCount = filteredGroups.reduce((sum, group) => sum + group.variables.length, 0);
-
-  useEffect(() => {
-    if (menuKey == null) {
-      return;
-    }
-    function onPointer(event: MouseEvent) {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest(".flow-variables-row-menu")) {
-        return;
-      }
-      setMenuKey(null);
-    }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setMenuKey(null);
-      }
-    }
-    document.addEventListener("mousedown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menuKey]);
 
   function highlightKey(key: string): ReactNode {
     const q = query.trim();
@@ -114,14 +67,6 @@ export function FlowVariablesPanel({
     );
   }
 
-  function insertKey(key: string) {
-    if (!editor || locked) {
-      return;
-    }
-    insertVariable(editor, key);
-    setMenuKey(null);
-  }
-
   async function copyKey(key: string) {
     try {
       await navigator.clipboard.writeText(`[${key}]`);
@@ -136,7 +81,7 @@ export function FlowVariablesPanel({
       <div className="flow-variables-header">
         <div className="flow-variables-title-row">
           <span className="flow-variables-title-icon" aria-hidden>
-            ▤
+            {"{ }"}
           </span>
           <h2 className="flow-variables-title">Variables</h2>
         </div>
@@ -166,6 +111,9 @@ export function FlowVariablesPanel({
         <div className="flow-variables-meta">
           <span>{shownCount} VARIABLES SHOWN</span>
         </div>
+        <p className="mt-2 text-[11px] leading-snug text-[#64748b]">
+          Yellow tokens auto-fill from recipient and sender details when you send.
+        </p>
       </div>
 
       <div className="flow-variables-list">
@@ -194,7 +142,7 @@ export function FlowVariablesPanel({
                       <VariableRow
                         key={variable.key}
                         variable={variable}
-                        value={getVariablePathValue(variables, variable.key)}
+                        value={values[variable.key] ?? ""}
                         usage={usageCounts[variable.key] ?? 0}
                         highlight={highlightKey}
                         menuOpen={menuKey === variable.key}
@@ -202,11 +150,12 @@ export function FlowVariablesPanel({
                         onToggleMenu={() =>
                           setMenuKey((prev) => (prev === variable.key ? null : variable.key))
                         }
-                        onInsert={() => insertKey(variable.key)}
-                        onCopy={() => void copyKey(variable.key)}
-                        onCommitValue={(nextValue) => {
-                          onChangeVariables(setVariablePathValue(variables, variable.key, nextValue));
+                        onInsert={() => {
+                          onInsert(variable.key);
+                          setMenuKey(null);
                         }}
+                        onCopy={() => void copyKey(variable.key)}
+                        onCommitValue={(next) => onChangeValue?.(variable.key, next)}
                       />
                     ))}
                   </ul>
@@ -235,7 +184,7 @@ function VariableRow({
   onCopy,
   onCommitValue,
 }: {
-  variable: FlowVariableDef;
+  variable: CommercialVariableDef;
   value: string;
   usage: number;
   highlight: (key: string) => ReactNode;
@@ -292,7 +241,7 @@ function VariableRow({
         type="text"
         className="flow-variables-value"
         value={draft}
-        placeholder="None"
+        placeholder={variable.label}
         disabled={locked}
         aria-label={`${variable.key} value`}
         onChange={(event) => setDraft(event.target.value)}

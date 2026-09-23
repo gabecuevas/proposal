@@ -76,6 +76,13 @@ type Props = {
   onInsertTable: () => void;
   onInsertPageBreak: () => void;
   onAddComment: () => void;
+  /** Collaboration row — Add Contact / Preview / PDF / Copy URL (documents only). */
+  onAddContact?: () => void;
+  onPreview?: () => void;
+  onDownloadPdf?: () => void;
+  onCopyUrl?: () => void;
+  copyUrlLabel?: string;
+  documentActionsDisabled?: boolean;
   zoom: number;
   onZoomChange: (zoom: number) => void;
   showRulers?: boolean;
@@ -114,6 +121,12 @@ export function FlowDocsChrome({
   onInsertTable,
   onInsertPageBreak,
   onAddComment,
+  onAddContact,
+  onPreview,
+  onDownloadPdf,
+  onCopyUrl,
+  copyUrlLabel = "Copy URL",
+  documentActionsDisabled = false,
   zoom,
   onZoomChange,
   showRulers = true,
@@ -1004,6 +1017,62 @@ export function FlowDocsChrome({
           ) : null}
         </div>
       </div>
+
+      {onAddContact || onPreview || onDownloadPdf || onCopyUrl ? (
+        <div className="px-3 pb-2">
+          <div
+            className="relative flex flex-wrap items-center gap-0.5 rounded-full bg-[#f0f4f9] px-2 py-1"
+            role="toolbar"
+            aria-label="Document sharing"
+          >
+            {onAddContact ? (
+              <ToolbarIconButton
+                title="Add Contact"
+                disabled={documentActionsDisabled}
+                onClick={onAddContact}
+                className="rounded-full px-2.5"
+              >
+                <IconPersonAdd />
+                <span className="ml-1 text-xs">Add Contact</span>
+              </ToolbarIconButton>
+            ) : null}
+            {onAddContact && (onPreview || onDownloadPdf || onCopyUrl) ? <Sep /> : null}
+            {onPreview ? (
+              <ToolbarIconButton
+                title="Preview"
+                disabled={documentActionsDisabled}
+                onClick={onPreview}
+                className="rounded-full px-2.5"
+              >
+                <IconEye />
+                <span className="ml-1 text-xs">Preview</span>
+              </ToolbarIconButton>
+            ) : null}
+            {onDownloadPdf ? (
+              <ToolbarIconButton
+                title="Download PDF"
+                disabled={documentActionsDisabled}
+                onClick={onDownloadPdf}
+                className="rounded-full px-2.5"
+              >
+                <IconDownloadPdf />
+                <span className="ml-1 text-xs">Download PDF</span>
+              </ToolbarIconButton>
+            ) : null}
+            {onCopyUrl ? (
+              <ToolbarIconButton
+                title={copyUrlLabel}
+                disabled={documentActionsDisabled}
+                onClick={onCopyUrl}
+                className="rounded-full px-2.5"
+              >
+                <IconLink />
+                <span className="ml-1 text-xs">{copyUrlLabel}</span>
+              </ToolbarIconButton>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1177,6 +1246,34 @@ function IconPrint() {
       <path d="M6 9V3h12v6" />
       <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
       <rect x="6" y="14" width="12" height="7" />
+    </svg>
+  );
+}
+function IconPersonAdd() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M19 8v6" />
+      <path d="M22 11h-6" />
+    </svg>
+  );
+}
+function IconEye() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+function IconDownloadPdf() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6" />
+      <path d="M12 18v-6" />
+      <path d="M9 15l3 3 3-3" />
     </svg>
   );
 }

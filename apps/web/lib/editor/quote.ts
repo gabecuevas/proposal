@@ -17,28 +17,27 @@ function lineTotal(item: QuoteLineItem): number {
   return roundMoney(item.quantity * item.unitPrice);
 }
 
-export function calculateQuoteTotals(pricing: PricingModel): QuoteTotals {
+export function calculateQuoteTotals(pricing: PricingModel | null | undefined): QuoteTotals {
+  const items = pricing?.items ?? [];
   const oneTimeSubtotal = roundMoney(
-    pricing.items
-      .filter((item) => !item.recurring)
-      .reduce((sum, item) => sum + lineTotal(item), 0),
+    items.filter((item) => !item.recurring).reduce((sum, item) => sum + lineTotal(item), 0),
   );
 
   const recurringMonthlySubtotal = roundMoney(
-    pricing.items
+    items
       .filter((item) => item.recurring?.interval === "month")
       .reduce((sum, item) => sum + lineTotal(item), 0),
   );
 
   const recurringYearlySubtotal = roundMoney(
-    pricing.items
+    items
       .filter((item) => item.recurring?.interval === "year")
       .reduce((sum, item) => sum + lineTotal(item), 0),
   );
 
-  const discountAmount = roundMoney(oneTimeSubtotal * ((pricing.discountPercent ?? 0) / 100));
+  const discountAmount = roundMoney(oneTimeSubtotal * ((pricing?.discountPercent ?? 0) / 100));
   const taxableBase = roundMoney(oneTimeSubtotal - discountAmount);
-  const taxAmount = roundMoney(taxableBase * ((pricing.taxPercent ?? 0) / 100));
+  const taxAmount = roundMoney(taxableBase * ((pricing?.taxPercent ?? 0) / 100));
   const totalDueNow = roundMoney(taxableBase + taxAmount);
 
   return {

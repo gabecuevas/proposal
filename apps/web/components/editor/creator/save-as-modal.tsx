@@ -77,7 +77,7 @@ export function SaveAsModal({
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 id="save-as-title" className="text-sm font-semibold text-foreground">
-            Save as
+            {kind === "template" ? "Save as Template" : "Save as"}
           </h2>
           <button
             type="button"
@@ -128,7 +128,7 @@ export function SaveAsModal({
               disabled={saving || !name.trim()}
               className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-95 disabled:opacity-40"
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? "Saving…" : kind === "template" ? "Save template" : "Save"}
             </button>
           </div>
         </form>

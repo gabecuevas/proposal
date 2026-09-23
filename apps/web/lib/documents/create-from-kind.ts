@@ -5,14 +5,14 @@ import type { DocumentCreateKind } from "@/lib/editor/document-kind";
 export type CreateDocumentFromKindResult =
   | { action: "template"; href: string }
   | { action: "workflow"; kind: "proposal" }
-  | { action: "commercial"; kind: "quote" | "invoice" }
+  | { action: "commercial"; kind: "quote" | "invoice"; documentId: string }
   | { action: "flow"; documentId: string }
   | { action: "error"; message: string };
 
 /**
  * Shared create routing for Library / Dashboard / Documents split buttons.
  * New Document → blank Flow Document. Proposal → Creator workflow.
- * Quote/Invoice → commercial builder. Template → editor.
+ * Quote/Invoice → commercial draft, then immersive editor. Template → editor.
  */
 export async function createFromDocumentKind(
   kind: DocumentCreateKind,
@@ -31,7 +31,31 @@ export async function createFromDocumentKind(
   }
 
   if (kind === "quote" || kind === "invoice") {
-    return { action: "commercial", kind };
+    const response = await fetch("/api/commercial/documents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: kind,
+        idempotencyKey: `cm-${kind}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      }),
+    });
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string | { message?: string };
+        message?: string;
+      };
+      const message =
+        (typeof payload.error === "string" ? payload.error : payload.error?.message) ||
+        payload.message ||
+        "Could not create document";
+      return { action: "error", message };
+    }
+    const data = (await response.json()) as { document?: { id?: string } };
+    const documentId = data.document?.id;
+    if (!documentId) {
+      return { action: "error", message: "Unexpected create response" };
+    }
+    return { action: "commercial", kind, documentId };
   }
 
   const response = await fetch("/api/documents", {

@@ -10,6 +10,7 @@ import { useNewDocumentWorkflow } from "@/components/documents/new-document-work
 import { SaveAsModal } from "@/components/editor/creator/save-as-modal";
 import { FlowDocsChrome } from "@/components/flow-document/flow-docs-chrome";
 import type { FlowActionsMenuItem } from "@/components/flow-document/flow-actions-menu";
+import { UseTemplateWizardChrome } from "@/components/documents/use-template-wizard-chrome";
 import { FlowHeaderFooterLayer } from "@/components/flow-document/flow-header-footer";
 import { HeadersFootersModal } from "@/components/flow-document/headers-footers-modal";
 import { FlowMarginRulers } from "@/components/flow-document/flow-margin-rulers";
@@ -103,7 +104,13 @@ import type { EditorDoc, VariableContext } from "@/lib/editor/types";
 import { applyTitleToDoc, documentTitleFromEditorJson } from "@/lib/ui/document-title";
 import { documentKindProfile, editorLayoutFromVariables } from "@/lib/editor/document-kind";
 import { unwrapTextBoxesInEditorDoc } from "@/lib/flow-document/normalize-content";
-import { UseTemplateRecipientModal } from "@/components/templates/use-template-recipient-modal";
+import { NewContactModal, type NewContactCreated } from "@/components/documents/new-contact-modal";
+import {
+  contactRecordToVariableContext,
+  mergeCrmVariablesIntoContext,
+} from "@/lib/crm/variables";
+import { downloadDocumentPdf, openPdfPreview } from "@/lib/editor/print-document";
+import type { PageSizeId } from "@/lib/editor/page-geometry";
 
 /** Soft cap — if float seams still runaway, pause briefly then recover. */
 const FLOW_PAGE_RUNAWAY_THRESHOLD = 40;
@@ -181,7 +188,9 @@ export function FlowDocumentEditor({
   const [saveAsTemplateOpen, setSaveAsTemplateOpen] = useState(false);
   const [saveAsTemplateBusy, setSaveAsTemplateBusy] = useState(false);
   const [saveAsTemplateError, setSaveAsTemplateError] = useState("");
-  const [useTemplateOpen, setUseTemplateOpen] = useState(false);
+  const [addContactOpen, setAddContactOpen] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [copyUrlLabel, setCopyUrlLabel] = useState("Copy URL");
   const [currentPage, setCurrentPage] = useState(1);
   const pageChromeRef = useRef(pageChrome);
   pageChromeRef.current = pageChrome;
@@ -894,8 +903,12 @@ export function FlowDocumentEditor({
     try {
       await saveQueueRef.current.run(() => persist(editor.getJSON() as EditorDoc, nameRef.current));
       setStatus("Saved");
-      if (isTemplate) {
-        setUseTemplateOpen(true);
+      if (isTemplate && templateId) {
+        openWorkflow({
+          kind: "document",
+          templateId,
+          templateName: nameRef.current.trim() || "Untitled Template",
+        });
         return;
       }
       openWorkflow({ kind: "document", documentId: document.id });
@@ -903,7 +916,7 @@ export function FlowDocumentEditor({
       setError(err instanceof Error ? err.message : "Save failed");
       setStatus("Error");
     }
-  }, [document, editor, isTemplate, openWorkflow, persist]);
+  }, [document, editor, isTemplate, openWorkflow, persist, templateId]);
 
   const handleSaveDraft = useCallback(async () => {
     if (!editor) {
@@ -1076,6 +1089,137 @@ export function FlowDocumentEditor({
     setStatus("Comment added");
   }, [document, isTemplate]);
 
+  const flowBodyHtml = useCallback(() => {
+    if (!editor) {
+      return "";
+    }
+    return editor.getHTML();
+  }, [editor]);
+
+  const flowPageSize = paper as PageSizeId;
+
+  const handlePreviewPdf = useCallback(async () => {
+    if (!editor || pdfBusy) {
+      return;
+    }
+    setPdfBusy(true);
+    try {
+      await openPdfPreview({
+        bodyHtml: flowBodyHtml(),
+        pageSize: flowPageSize,
+        title: name.trim() || "PDF Preview",
+      });
+    } catch {
+      setError("Failed to preview PDF.");
+    } finally {
+      setPdfBusy(false);
+    }
+  }, [editor, flowBodyHtml, flowPageSize, name, pdfBusy]);
+
+  const handleDownloadPdf = useCallback(async () => {
+    if (!editor || pdfBusy) {
+      return;
+    }
+    setPdfBusy(true);
+    try {
+      const safeName = (name.trim() || "document").replace(/[^\w\-]+/g, "_");
+      await downloadDocumentPdf({
+        bodyHtml: flowBodyHtml(),
+        pageSize: flowPageSize,
+        filename: `${safeName}.pdf`,
+      });
+    } catch {
+      setError("Failed to download PDF.");
+    } finally {
+      setPdfBusy(false);
+    }
+  }, [editor, flowBodyHtml, flowPageSize, name, pdfBusy]);
+
+  const handleCopyUrl = useCallback(async () => {
+    if (!document) {
+      return;
+    }
+    const path = isTemplate ? `/app/templates/${document.id}` : `/app/documents/${document.id}`;
+    const url = `${window.location.origin}${path}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopyUrlLabel("Copied!");
+      setStatus("Internal link copied — teammates must be signed in to open it.");
+      window.setTimeout(() => setCopyUrlLabel("Copy URL"), 2000);
+    } catch {
+      setError("Could not copy URL to clipboard.");
+    }
+  }, [document, isTemplate]);
+
+  const handleContactCreated = useCallback(
+    async (contact: NewContactCreated) => {
+      setAddContactOpen(false);
+      if (!document || isTemplate) {
+        setStatus(`Contact ${contact.full_name} saved to CRM`);
+        return;
+      }
+      const nameParts = contact.full_name.trim().split(/\s+/);
+      const firstName = nameParts[0] ?? "";
+      const lastName = nameParts.slice(1).join(" ");
+      const crmContext = contactRecordToVariableContext({
+        id: contact.id,
+        first_name: firstName,
+        last_name: lastName,
+        full_name: contact.full_name,
+        email: contact.email,
+        company_name: contact.company_name ?? null,
+      });
+      const nextVariables = mergeCrmVariablesIntoContext(
+        variablesContextRef.current,
+        crmContext,
+      ) as VariableContext;
+      setVariablesContext(nextVariables);
+      variablesContextRef.current = nextVariables;
+
+      const recipientsJson = [
+        {
+          id: contact.id,
+          name: contact.full_name,
+          email: contact.email,
+          company_name: contact.company_name ?? null,
+          contact_id: contact.id,
+          role: "signer" as const,
+          signing_order: 1,
+        },
+      ];
+
+      setStatus("Linking contact…");
+      try {
+        const response = await fetch(`/api/documents/${document.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contact_id: contact.id,
+            recipients_json: recipientsJson,
+            variables_json: nextVariables,
+            expectedUpdatedAt: expectedUpdatedAtRef.current || undefined,
+          }),
+        });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as { error?: string };
+          throw new Error(payload.error || "Could not link contact");
+        }
+        const payload = (await response.json()) as { document: DocumentDetail };
+        expectedUpdatedAtRef.current = payload.document.updated_at;
+        setDocument(payload.document);
+        if (payload.document.variables_json) {
+          setVariablesContext(payload.document.variables_json);
+          variablesContextRef.current = payload.document.variables_json;
+        }
+        setStatus(`Contact ${contact.full_name} linked`);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Could not link contact");
+        setStatus("Error");
+      }
+    },
+    [document, isTemplate],
+  );
+
   useEffect(() => {
     if (!editor) {
       return;
@@ -1118,12 +1262,19 @@ export function FlowDocumentEditor({
         onInsertTable={insertTable}
         onInsertPageBreak={insertPageBreak}
         onAddComment={isTemplate ? () => undefined : () => void addComment()}
+        onAddContact={isTemplate || locked ? undefined : () => setAddContactOpen(true)}
+        onPreview={() => void handlePreviewPdf()}
+        onDownloadPdf={() => void handleDownloadPdf()}
+        onCopyUrl={() => void handleCopyUrl()}
+        copyUrlLabel={copyUrlLabel}
+        documentActionsDisabled={pdfBusy || !document}
         zoom={zoom}
         onZoomChange={setZoom}
         showRulers={showRulers}
         onShowRulersChange={setShowRulers}
         actionsItems={actionsItems}
       />
+      {documentId ? <UseTemplateWizardChrome documentId={documentId} /> : null}
 
       {error ? <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">{error}</p> : null}
       {isFlowPaginationDebugEnabled() ? (
@@ -1302,12 +1453,12 @@ export function FlowDocumentEditor({
         }}
         onSave={handleSaveAsTemplate}
       />
-      {isTemplate && templateId ? (
-        <UseTemplateRecipientModal
-          open={useTemplateOpen}
-          templateId={templateId}
-          templateName={name}
-          onClose={() => setUseTemplateOpen(false)}
+      {!isTemplate ? (
+        <NewContactModal
+          open={addContactOpen}
+          source="flow-document-editor"
+          onClose={() => setAddContactOpen(false)}
+          onCreated={(contact) => void handleContactCreated(contact)}
         />
       ) : null}
     </div>

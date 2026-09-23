@@ -12,14 +12,13 @@ import {
   ShareMembersModal,
   type WorkspaceMemberOption,
 } from "@/components/templates/library-modals";
-import { UseTemplateRecipientModal } from "@/components/templates/use-template-recipient-modal";
 import {
   LibraryViewActionsBar,
   type LibraryViewMode,
 } from "@/components/templates/library-view-actions-bar";
 import { TemplateTypeCell } from "@/components/documents/document-type-icon";
 import { useNewDocumentWorkflow } from "@/components/documents/new-document-workflow-context";
-import { useCommercialBuilder } from "@/components/commercial/commercial-builder-context";
+import type { WorkflowDocumentKind } from "@/lib/editor/document-kind";
 import type { EditorDoc } from "@/lib/editor/types";
 import { assetUrl } from "@/lib/storage/asset-url";
 import {
@@ -37,7 +36,7 @@ const FAVORITES_KEY = "senddox-template-favorites";
 const VIEW_KEY = "senddox-template-view";
 const SUGGESTED_LIMIT = 8;
 
-type TemplateKind = "PDF" | "DOCX" | "Custom" | "Doc";
+type TemplateKind = "PDF" | "DOCX" | "Custom" | "Doc" | "Quote" | "Invoice";
 
 type TemplateItem = {
   id: string;
@@ -109,6 +108,26 @@ function formatDate(value: string): string {
   }
 }
 
+function workflowKindFromTemplate(template: TemplateItem): WorkflowDocumentKind {
+  if (template.kind === "Quote") {
+    return "quote";
+  }
+  if (template.kind === "Invoice") {
+    return "invoice";
+  }
+  const tags = template.tags.map((tag) => tag.toLowerCase());
+  if (tags.includes("invoice")) {
+    return "invoice";
+  }
+  if (tags.includes("quote") || tags.includes("commercial")) {
+    return "quote";
+  }
+  if (tags.includes("proposal")) {
+    return "proposal";
+  }
+  return "document";
+}
+
 function FolderIcon({ className, filled = false }: { className?: string; filled?: boolean }) {
   return (
     <svg
@@ -147,7 +166,6 @@ function folderLabel(folder: FolderItem): string {
 export default function AppTemplatesPage() {
   const router = useRouter();
   const { openWorkflow } = useNewDocumentWorkflow();
-  const { openBuilder } = useCommercialBuilder();
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [allFolders, setAllFolders] = useState<FolderItem[]>([]);
@@ -173,7 +191,14 @@ export default function AppTemplatesPage() {
     Array<SampleTemplateFolder & { template_count: number }>
   >(SAMPLE_TEMPLATE_FOLDERS.map((folder) => ({ ...folder, template_count: 0 })));
   const [sampleTemplates, setSampleTemplates] = useState<TemplateItem[]>([]);
-  const [useTemplateTarget, setUseTemplateTarget] = useState<{ id: string; name: string } | null>(null);
+
+  function useLibraryTemplate(template: TemplateItem) {
+    openWorkflow({
+      templateId: template.id,
+      templateName: template.name,
+      kind: workflowKindFromTemplate(template),
+    });
+  }
 
   const currentFolderId = path[path.length - 1]?.id ?? null;
   const browseFolders = tab !== "suggested" && !browsingSamples;
@@ -761,11 +786,7 @@ export default function AppTemplatesPage() {
               openWorkflow({ kind: result.kind });
               return;
             }
-            if (result.action === "commercial") {
-              openBuilder({ type: result.kind });
-              return;
-            }
-            if (result.action === "flow") {
+            if (result.action === "commercial" || result.action === "flow") {
               router.push(`/app/documents/${result.documentId}`);
               return;
             }
@@ -1150,7 +1171,7 @@ export default function AppTemplatesPage() {
                       <button
                         type="button"
                         className="shrink-0 rounded border border-border px-2 py-0.5 text-[11px] font-medium text-muted hover:border-primary/40 hover:text-primary"
-                        onClick={() => setUseTemplateTarget({ id: template.id, name: template.name })}
+                        onClick={() => useLibraryTemplate(template)}
                       >
                         Use
                       </button>
@@ -1261,7 +1282,7 @@ export default function AppTemplatesPage() {
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    setUseTemplateTarget({ id: template.id, name: template.name });
+                    useLibraryTemplate(template);
                   }}
                 >
                   Use
@@ -1345,12 +1366,6 @@ export default function AppTemplatesPage() {
         busy={busy}
         onClose={() => setModal(null)}
         onConfirm={deleteSelected}
-      />
-      <UseTemplateRecipientModal
-        open={Boolean(useTemplateTarget)}
-        templateId={useTemplateTarget?.id ?? ""}
-        templateName={useTemplateTarget?.name ?? ""}
-        onClose={() => setUseTemplateTarget(null)}
       />
     </SheetPage>
   );

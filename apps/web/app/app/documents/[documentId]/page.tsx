@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { CreatorDocumentEditor } from "@/components/documents/creator-document-editor";
 import { FlowDocumentEditor } from "@/components/flow-document/flow-document-editor";
-import { CommercialBuilderModal } from "@/components/commercial/commercial-builder-modal";
+import { CommercialDocumentEditor } from "@/components/commercial/commercial-document-editor";
 import {
   documentKindFromVariables,
   editorLayoutFromVariables,
@@ -18,7 +18,7 @@ type Params = {
 };
 
 /**
- * Routes to Flow, Creator, or Commercial (Quote/Invoice) builder.
+ * Routes to Flow, Creator, or Commercial (Quote/Invoice) full-screen editor.
  * Existing documents without a layout stay on Creator.
  */
 export default function DocumentDetailPage({ params }: Params) {
@@ -81,17 +81,10 @@ export default function DocumentDetailPage({ params }: Params) {
 
   if (layout === "commercial") {
     return (
-      <div className="h-screen w-full bg-[#eef1f5]">
-        <CommercialBuilderModal
-          open
-          type={kind === "invoice" ? "invoice" : "quote"}
-          documentId={documentId}
-          onClose={() => {
-            window.location.href = "/app/documents";
-          }}
-          onDocumentId={() => undefined}
-        />
-      </div>
+      <CommercialDocumentEditor
+        documentId={documentId}
+        type={kind === "invoice" ? "invoice" : "quote"}
+      />
     );
   }
 

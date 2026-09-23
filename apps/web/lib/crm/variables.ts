@@ -14,6 +14,15 @@ export const RECIPIENT_VARIABLES: CrmVariableKey[] = [
   { key: "Recipient.Title", label: "Title" },
 ];
 
+/** Sender / workspace identity — same `[Sender.*]` bracket format as Quote/Invoice. */
+export const SENDER_VARIABLES: CrmVariableKey[] = [
+  { key: "Sender.FullName", label: "Full name" },
+  { key: "Sender.CompanyName", label: "Company name" },
+  { key: "Sender.FullAddress", label: "Full address" },
+  { key: "Sender.Phone", label: "Phone" },
+  { key: "Sender.Email", label: "Email" },
+];
+
 export const CLIENT_VARIABLES: CrmVariableKey[] = [
   { key: "Client.FirstName", label: "First name" },
   { key: "Client.LastName", label: "Last name" },
@@ -68,7 +77,7 @@ type CompanyLike = {
 
 type VariableBag = Record<string, unknown>;
 
-const CRM_NAMESPACES = ["Recipient", "Client", "Company"] as const;
+const CRM_NAMESPACES = ["Recipient", "Client", "Company", "Sender"] as const;
 
 function companyAddress(company: CompanyLike | null | undefined): string {
   if (!company) {

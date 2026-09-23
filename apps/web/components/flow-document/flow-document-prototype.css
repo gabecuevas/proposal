@@ -1145,7 +1145,8 @@
   min-width: 0;
 }
 
-.flow-page-properties-control select {
+.flow-page-properties-control select,
+.flow-page-properties-control input[type="text"] {
   max-width: 9.5rem;
   border: 0;
   border-bottom: 1px solid #cbd5e1;
@@ -1156,7 +1157,8 @@
   outline: none;
 }
 
-.flow-page-properties-control select:disabled {
+.flow-page-properties-control select:disabled,
+.flow-page-properties-control input[type="text"]:disabled {
   opacity: 0.4;
 }
 
@@ -1675,10 +1677,11 @@
 .flow-document-shell .variable-token {
   display: inline-block;
   border-radius: 4px;
-  background: #eff6ff;
+  background: #fef3c7;
   padding: 1px 6px;
   font-size: 11px;
-  color: #1d4ed8;
+  font-weight: 500;
+  color: #92400e;
   white-space: nowrap;
 }
 
