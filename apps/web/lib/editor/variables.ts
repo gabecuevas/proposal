@@ -40,7 +40,7 @@ export function renderVariableText(
 ): string {
   const value = resolved[key];
   if (value === undefined || value === null || value === "") {
-    return fallback ?? `{{${key}}}`;
+    return fallback ?? `[${key}]`;
   }
   return String(value);
 }

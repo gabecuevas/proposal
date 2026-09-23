@@ -9,7 +9,7 @@ import { CreatorCanvas } from "@/components/editor/creator/creator-canvas";
 import { CreatorFieldsSidebar } from "@/components/editor/creator/creator-fields-sidebar";
 import { CreatorHeader } from "@/components/editor/creator/creator-header";
 import { CreatorPageWorkspace } from "@/components/editor/creator/creator-page-workspace";
-import { UseTemplateRecipientModal } from "@/components/templates/use-template-recipient-modal";
+import { useNewDocumentWorkflow } from "@/components/documents/new-document-workflow-context";
 import { defaultEditorDoc } from "@/lib/editor/defaults";
 import { creatorEditorProps } from "@/lib/editor/editor-config";
 import { editorExtensions } from "@/lib/editor/extensions";
@@ -73,6 +73,7 @@ export function TemplateEditor({
   closeHref = "/app/templates",
 }: Props) {
   const router = useRouter();
+  const { openWorkflow } = useNewDocumentWorkflow();
   const migratedInitial = useMemo(
     () => migrateSignerFieldsDoc(initialDoc ?? defaultEditorDoc),
     [initialDoc],
@@ -80,7 +81,6 @@ export function TemplateEditor({
 
   const [status, setStatus] = useState("Idle");
   const [name, setName] = useState(initialName);
-  const [useTemplateOpen, setUseTemplateOpen] = useState(false);
   const [copyBusy, setCopyBusy] = useState(false);
   const [serialized, setSerialized] = useState(() =>
     serializeStable(withPageSize(migratedInitial, pageSizeFromDoc(migratedInitial))),
@@ -395,6 +395,15 @@ export function TemplateEditor({
     await saveNow();
   }
 
+  async function startUseTemplateWorkflow() {
+    await saveNow();
+    openWorkflow({
+      templateId,
+      templateName: name.trim() || "Untitled Template",
+      kind: "document",
+    });
+  }
+
   async function copySampleToLibrary() {
     setCopyBusy(true);
     setStatus("Copying…");
@@ -446,13 +455,13 @@ export function TemplateEditor({
               ? undefined
               : [
                   { label: "Make a copy", onClick: () => void duplicateTemplate() },
-                  { label: "Create document…", onClick: () => setUseTemplateOpen(true) },
+                  { label: "Create document…", onClick: () => void startUseTemplateWorkflow() },
                 ]
           }
           primaryActionLabel={masterPreview ? "Copy to My Library" : "Create document"}
           primaryActionShowsSendIcon={false}
           onPrimaryAction={
-            masterPreview ? () => void copySampleToLibrary() : () => setUseTemplateOpen(true)
+            masterPreview ? () => void copySampleToLibrary() : () => void startUseTemplateWorkflow()
           }
           previewMode={masterPreview}
           primaryActionBusy={copyBusy}
@@ -506,15 +515,6 @@ export function TemplateEditor({
             />
           )}
         </div>
-
-        {masterPreview ? null : (
-          <UseTemplateRecipientModal
-            open={useTemplateOpen}
-            templateId={templateId}
-            templateName={name}
-            onClose={() => setUseTemplateOpen(false)}
-          />
-        )}
 
         {masterPreview ? null : (
         <details

@@ -31,16 +31,71 @@ export const COMMERCIAL_VARIABLE_ALIASES: Record<string, string[]> = {
   "Recipient.Phone": ["Recipient.Phone", "Client.Phone"],
 };
 
-const TOKEN_RE = /\[([A-Za-z][A-Za-z0-9_.]*)\]/g;
+export type CommercialVariableDef = {
+  key: string;
+  label: string;
+};
+
+export type CommercialVariableGroup = {
+  id: string;
+  title: string;
+  description: string;
+  variables: CommercialVariableDef[];
+};
+
+export const COMMERCIAL_VARIABLE_GROUPS: CommercialVariableGroup[] = [
+  {
+    id: "recipient",
+    title: "Recipient",
+    description: "Bill-to client details — auto-filled from the contact.",
+    variables: [
+      { key: "Recipient.CompanyName", label: "Company name" },
+      { key: "Recipient.FullName", label: "Full name" },
+      { key: "Recipient.Email", label: "Email" },
+      { key: "Recipient.Phone", label: "Phone" },
+    ],
+  },
+  {
+    id: "sender",
+    title: "Sender",
+    description: "Your company and contact details — auto-filled when sending.",
+    variables: [
+      { key: "Sender.FullName", label: "Full name" },
+      { key: "Sender.CompanyName", label: "Company name" },
+      { key: "Sender.FullAddress", label: "Full address" },
+      { key: "Sender.Phone", label: "Phone" },
+    ],
+  },
+];
+
+export const COMMERCIAL_TOKEN_RE = /\[([A-Za-z][A-Za-z0-9_.]*)\]/g;
 
 export function extractCommercialTokens(text: string): string[] {
   const found = new Set<string>();
-  for (const match of text.matchAll(TOKEN_RE)) {
+  for (const match of text.matchAll(COMMERCIAL_TOKEN_RE)) {
     if (match[1]) {
       found.add(match[1]);
     }
   }
   return [...found];
+}
+
+export function countCommercialTokenUsages(texts: string[]): number {
+  let total = 0;
+  for (const text of texts) {
+    total += extractCommercialTokens(text).length;
+  }
+  return total;
+}
+
+export function countCommercialTokenUsageMap(texts: string[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const text of texts) {
+    for (const token of extractCommercialTokens(text)) {
+      counts[token] = (counts[token] ?? 0) + 1;
+    }
+  }
+  return counts;
 }
 
 export function resolveCommercialToken(
@@ -68,7 +123,7 @@ export function resolveCommercialText(
 ): { text: string; unresolved: string[] } {
   const unresolved: string[] = [];
   const keep = options?.keepUnresolved !== false;
-  const next = text.replace(TOKEN_RE, (full, token: string) => {
+  const next = text.replace(COMMERCIAL_TOKEN_RE, (full, token: string) => {
     const resolved = resolveCommercialToken(token, context);
     if (resolved == null) {
       unresolved.push(token);
@@ -81,4 +136,20 @@ export function resolveCommercialText(
 
 export function hasUnresolvedTokens(text: string, context: Record<string, unknown>): boolean {
   return resolveCommercialText(text, context).unresolved.length > 0;
+}
+
+/** Insert `[Key]` into text at a caret range. */
+export function insertCommercialTokenAt(
+  text: string,
+  key: string,
+  start: number,
+  end: number,
+): { text: string; caret: number } {
+  const token = `[${key}]`;
+  const safeStart = Math.max(0, Math.min(start, text.length));
+  const safeEnd = Math.max(safeStart, Math.min(end, text.length));
+  return {
+    text: `${text.slice(0, safeStart)}${token}${text.slice(safeEnd)}`,
+    caret: safeStart + token.length,
+  };
 }

@@ -7,6 +7,7 @@ import { CreatorCanvas } from "@/components/editor/creator/creator-canvas";
 import { CreatorFieldsSidebar } from "@/components/editor/creator/creator-fields-sidebar";
 import { CreatorHeader } from "@/components/editor/creator/creator-header";
 import { CreatorPageWorkspace } from "@/components/editor/creator/creator-page-workspace";
+import { UseTemplateWizardChrome } from "@/components/documents/use-template-wizard-chrome";
 import { SignerRecipientProvider, withSenderRecipient } from "@/components/editor/signer-field-context";
 import { PricingProvider } from "@/components/editor/pricing-context";
 import { defaultPricingModel } from "@/lib/editor/defaults";
@@ -668,6 +669,7 @@ export function CreatorDocumentEditor({ documentId: documentIdProp }: CreatorDoc
             { label: "Signing session", onClick: () => void openSigningSession() },
           ]}
         />
+        {documentId ? <UseTemplateWizardChrome documentId={documentId} /> : null}
 
         {error ? <p className="border-b border-border bg-red-50 px-4 py-2 text-sm text-red-600">{error}</p> : null}
         {document.status !== "DRAFTED" ? (

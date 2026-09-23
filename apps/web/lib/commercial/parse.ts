@@ -2,6 +2,9 @@ import {
   COMMERCIAL_SCHEMA,
   createBlankCommercialDocument,
   createBlankLineItem,
+  DEFAULT_BILL_TO_TEXT,
+  DEFAULT_COMMERCIAL_THEME,
+  DEFAULT_SENDER_TEXT,
   emptyAdjustment,
   isCommercialDocument,
   type CommercialAdjustment,
@@ -10,8 +13,11 @@ import {
   type CommercialLabels,
   type CommercialLineItem,
   type CommercialPartyText,
+  type CommercialTheme,
   DEFAULT_COMMERCIAL_LABELS,
 } from "./schema";
+import { extractCommercialTokens } from "./variables";
+import { FLOW_GOOGLE_FONTS } from "@/lib/flow-document/google-fonts";
 
 function asObject(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -34,6 +40,19 @@ function asNullableString(value: unknown): string | null {
     return null;
   }
   return typeof value === "string" ? value : null;
+}
+
+function parseTheme(value: unknown): CommercialTheme {
+  const obj = asObject(value);
+  const fontIds = new Set(FLOW_GOOGLE_FONTS.map((f) => f.id));
+  const titleFontId = asString(obj?.titleFontId, DEFAULT_COMMERCIAL_THEME.titleFontId);
+  const titleSizePx = Math.trunc(asNumber(obj?.titleSizePx, DEFAULT_COMMERCIAL_THEME.titleSizePx));
+  return {
+    tableHeaderBg: asString(obj?.tableHeaderBg, DEFAULT_COMMERCIAL_THEME.tableHeaderBg) || DEFAULT_COMMERCIAL_THEME.tableHeaderBg,
+    titleFontId: fontIds.has(titleFontId) ? titleFontId : DEFAULT_COMMERCIAL_THEME.titleFontId,
+    titleColor: asString(obj?.titleColor, DEFAULT_COMMERCIAL_THEME.titleColor) || DEFAULT_COMMERCIAL_THEME.titleColor,
+    titleSizePx: Math.max(20, Math.min(96, titleSizePx || DEFAULT_COMMERCIAL_THEME.titleSizePx)),
+  };
 }
 
 function parseParty(value: unknown, fallbackText: string): CommercialPartyText {
@@ -80,6 +99,7 @@ function parseLabels(value: unknown, type: CommercialDocType): CommercialLabels 
   const base = {
     ...DEFAULT_COMMERCIAL_LABELS,
     title: type === "invoice" ? "INVOICE" : "QUOTE",
+    documentNumber: type === "invoice" ? "Invoice Number" : "Quote Number",
   };
   const obj = asObject(value);
   if (!obj) {
@@ -119,8 +139,8 @@ export function parseCommercialDocument(
     paymentTerms: asString(obj.paymentTerms),
     poNumber: asString(obj.poNumber),
     logoAssetKey: asNullableString(obj.logoAssetKey),
-    sender: parseParty(obj.sender, "[Sender.FullName]\n[Sender.CompanyName]\n[Sender.FullAddress]\n[Sender.Phone]"),
-    billTo: parseParty(obj.billTo, "[Recipient.CompanyName]"),
+    sender: parseParty(obj.sender, DEFAULT_SENDER_TEXT),
+    billTo: parseParty(obj.billTo, DEFAULT_BILL_TO_TEXT),
     shipTo: parseParty(obj.shipTo, ""),
     contactId: asNullableString(obj.contactId),
     lineItems: lineItems.length > 0 ? lineItems : [createBlankLineItem()],
@@ -131,6 +151,7 @@ export function parseCommercialDocument(
     notes: asString(obj.notes),
     terms: asString(obj.terms),
     labels: parseLabels(obj.labels, type),
+    theme: parseTheme(obj.theme),
     sourceTemplateId: asNullableString(obj.sourceTemplateId),
     sourceQuoteDocumentId: asNullableString(obj.sourceQuoteDocumentId),
     dueDateOffsetDays:
@@ -155,6 +176,23 @@ export function commercialFromUnknownPricing(
   return createBlankCommercialDocument(type);
 }
 
+/**
+ * Prefer variable-token layouts for templates. Plain filled text (no tokens)
+ * falls back to the standard Sender / Bill To defaults so every template
+ * starts with auto-fill placeholders. Custom token layouts are kept so users
+ * can Save as Template after editing variables.
+ */
+function templatePartyOrDefault(text: string, fallback: string): CommercialPartyText {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return { text: fallback };
+  }
+  if (extractCommercialTokens(trimmed).length > 0) {
+    return { text };
+  }
+  return { text: fallback };
+}
+
 /** Reset customer-specific fields when saving a template. */
 export function toCommercialTemplatePayload(doc: CommercialDocument): CommercialDocument {
   return {
@@ -165,7 +203,8 @@ export function toCommercialTemplatePayload(doc: CommercialDocument): Commercial
     poNumber: "",
     amountPaidMinor: 0,
     contactId: null,
-    billTo: { text: "[Recipient.CompanyName]" },
+    sender: templatePartyOrDefault(doc.sender.text, DEFAULT_SENDER_TEXT),
+    billTo: templatePartyOrDefault(doc.billTo.text, DEFAULT_BILL_TO_TEXT),
     shipTo: { text: "" },
     sourceQuoteDocumentId: null,
     lineItems: doc.lineItems.map((item) => ({
@@ -198,6 +237,10 @@ export function instantiateCommercialFromTemplate(
     labels: {
       ...template.labels,
       title: options.type === "invoice" ? "INVOICE" : template.labels.title || "QUOTE",
+      documentNumber:
+        options.type === "invoice"
+          ? "Invoice Number"
+          : template.labels.documentNumber || "Quote Number",
     },
     internalName:
       options.internalName ??
@@ -208,7 +251,8 @@ export function instantiateCommercialFromTemplate(
     poNumber: "",
     amountPaidMinor: 0,
     contactId: null,
-    billTo: { text: "[Recipient.CompanyName]" },
+    sender: templatePartyOrDefault(template.sender?.text ?? "", DEFAULT_SENDER_TEXT),
+    billTo: templatePartyOrDefault(template.billTo?.text ?? "", DEFAULT_BILL_TO_TEXT),
     shipTo: { text: "" },
     sourceTemplateId: options.sourceTemplateId,
     sourceQuoteDocumentId: null,
@@ -226,7 +270,7 @@ export function convertQuoteToInvoicePayload(
   return {
     ...quote,
     type: "invoice",
-    labels: { ...quote.labels, title: "INVOICE" },
+    labels: { ...quote.labels, title: "INVOICE", documentNumber: "Invoice Number" },
     internalName: quote.internalName.replace(/quote/i, "Invoice") || "Untitled Invoice",
     documentNumber: options.documentNumber,
     issueDate: options.issueDate,

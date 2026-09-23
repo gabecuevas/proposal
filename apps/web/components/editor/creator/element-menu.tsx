@@ -300,7 +300,7 @@ export function ElementMenu({
             <Row
               key={key}
               Icon={IconTextT}
-              label={`{{${key}}}`}
+              label={`[${key}]`}
               hint="Inline token"
               onClick={() => run((ed) => insertVariable(ed, key))}
             />

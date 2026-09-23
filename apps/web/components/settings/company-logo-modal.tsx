@@ -5,12 +5,12 @@ import { cn } from "@repo/ui/utils";
 import { assetUrl } from "@/lib/storage/asset-url";
 
 /** On-document display box (matches Quote/Invoice screenshots). */
-export const COMPANY_LOGO_DISPLAY_WIDTH = 180;
-export const COMPANY_LOGO_DISPLAY_HEIGHT = 116;
+export const COMPANY_LOGO_DISPLAY_WIDTH = 264;
+export const COMPANY_LOGO_DISPLAY_HEIGHT = 144;
 
 /** Suggested upload size (2× display for crisp retina). */
-export const COMPANY_LOGO_SUGGESTED_WIDTH = 360;
-export const COMPANY_LOGO_SUGGESTED_HEIGHT = 232;
+export const COMPANY_LOGO_SUGGESTED_WIDTH = 528;
+export const COMPANY_LOGO_SUGGESTED_HEIGHT = 288;
 export const COMPANY_LOGO_SUGGESTED_SIZE = `${COMPANY_LOGO_SUGGESTED_WIDTH}×${COMPANY_LOGO_SUGGESTED_HEIGHT}px`;
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
@@ -168,7 +168,12 @@ export function CompanyLogoModal({
           </p>
 
           <div
-            className="mx-auto flex items-center justify-center overflow-hidden rounded-md border border-dashed border-border bg-slate-50"
+            className={cn(
+              "mx-auto flex items-center justify-center overflow-hidden",
+              previewUrl
+                ? "border-0 bg-transparent"
+                : "rounded-md border border-dashed border-border bg-transparent",
+            )}
             style={{ width: COMPANY_LOGO_DISPLAY_WIDTH, height: COMPANY_LOGO_DISPLAY_HEIGHT }}
           >
             {previewUrl ? (

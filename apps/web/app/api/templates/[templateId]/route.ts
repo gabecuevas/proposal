@@ -32,7 +32,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     name?: string;
     editor_json?: EditorDoc;
     variable_registry?: VariableRegistry;
-    pricing_json?: PricingModel;
+    pricing_json?: PricingModel | Record<string, unknown>;
     folder_id?: string | null;
     shareUserIds?: string[];
     duplicate?: boolean;

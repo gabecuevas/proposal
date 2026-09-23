@@ -8,8 +8,9 @@ import {
 import { defaultEditorDoc, defaultPricingModel, defaultVariableRegistry } from "./defaults";
 import { normalizeEditorDoc } from "./stable";
 import { isPageBackedEditorJson } from "./extensions/field-canvas";
+import { isCommercialDocument } from "@/lib/commercial/schema";
 
-export type TemplateKind = "PDF" | "DOCX" | "Custom" | "Doc";
+export type TemplateKind = "PDF" | "DOCX" | "Custom" | "Doc" | "Quote" | "Invoice";
 
 export type TemplateEditorRecord = {
   id: string;
@@ -18,7 +19,7 @@ export type TemplateEditorRecord = {
   schema_version: number;
   tags: string[];
   variable_registry: VariableRegistry;
-  pricing_json: PricingModel;
+  pricing_json: PricingModel | Record<string, unknown>;
   folder_id: string | null;
   is_sample: boolean;
   sample_folder_slug: string | null;
@@ -32,8 +33,14 @@ export type TemplateEditorRecord = {
   kind: TemplateKind;
 };
 
-function inferKind(tags: string[], editor: EditorDoc): TemplateKind {
+function inferKind(tags: string[], editor: EditorDoc, pricing?: unknown): TemplateKind {
+  if (isCommercialDocument(pricing)) {
+    return pricing.type === "invoice" ? "Invoice" : "Quote";
+  }
   const lower = tags.map((t) => t.toLowerCase());
+  if (lower.includes("commercial")) {
+    return lower.includes("invoice") ? "Invoice" : "Quote";
+  }
   // Editable Word imports carry both docx + flow; prefer DOCX for the type column.
   if (lower.includes("docx") || lower.includes("word")) {
     return "DOCX";
@@ -57,6 +64,18 @@ export function templateUsesFlowEditor(template: {
   }
   const lower = (template.tags ?? []).map((tag) => tag.toLowerCase());
   return lower.includes("flow") || lower.includes("docx");
+}
+
+/** Quote/Invoice templates saved from the commercial editor. */
+export function templateUsesCommercialEditor(template: {
+  tags?: string[] | null;
+  pricing_json?: unknown;
+}): boolean {
+  if (isCommercialDocument(template.pricing_json)) {
+    return true;
+  }
+  const lower = (template.tags ?? []).map((tag) => tag.toLowerCase());
+  return lower.includes("commercial");
 }
 
 function parseTemplateJson(
@@ -106,7 +125,7 @@ function parseTemplateJson(
     schema_version: template.schema_version,
     tags,
     variable_registry: (variableRegistry as VariableRegistry) ?? defaultVariableRegistry,
-    pricing_json: (template.pricing_json as PricingModel) ?? defaultPricingModel,
+    pricing_json: (template.pricing_json as TemplateEditorRecord["pricing_json"]) ?? defaultPricingModel,
     folder_id: template.folder_id,
     is_sample: Boolean(template.is_sample),
     sample_folder_slug: template.sample_folder_slug ?? null,
@@ -117,7 +136,7 @@ function parseTemplateJson(
     owner_name: ownerName,
     updated_by_name: updatedByName,
     shared_with,
-    kind: inferKind(tags, editor),
+    kind: inferKind(tags, editor, template.pricing_json),
   };
 }
 
@@ -142,6 +161,8 @@ export async function createTemplate(input: {
   folder_id?: string | null;
   is_sample?: boolean;
   sample_folder_slug?: string | null;
+  /** Legacy CPQ PricingModel or commercial_v1 CommercialDocument. */
+  pricing_json?: PricingModel | Record<string, unknown> | unknown;
 }): Promise<TemplateEditorRecord> {
   const row = await prisma.template.create({
     data: {
@@ -149,7 +170,7 @@ export async function createTemplate(input: {
       name: input.name,
       tags: input.tags ?? [],
       variable_registry_json: defaultVariableRegistry,
-      pricing_json: defaultPricingModel,
+      pricing_json: (input.pricing_json ?? defaultPricingModel) as object,
       editor_json: input.editor_json ? normalizeEditorDoc(input.editor_json) : defaultEditorDoc,
       schema_version: CURRENT_DOC_VERSION,
       created_by: input.createdBy,
@@ -221,7 +242,8 @@ export async function updateTemplate(
     name?: string;
     editor_json?: EditorDoc;
     variable_registry?: VariableRegistry;
-    pricing_json?: PricingModel;
+    /** Legacy CPQ PricingModel or commercial_v1 CommercialDocument. */
+    pricing_json?: PricingModel | unknown;
     folder_id?: string | null;
     updatedBy?: string;
   },
@@ -354,6 +376,7 @@ export async function copySampleTemplateToLibrary(input: {
     workspaceId: input.workspaceId,
     createdBy: input.createdBy,
     editor_json: existing.editor_json,
+    pricing_json: existing.pricing_json,
     tags: [
       ...existing.tags.filter((tag) => tag !== "sample" && !tag.startsWith("sample-folder:")),
       "from-sample",
@@ -418,6 +441,7 @@ export async function duplicateSampleTemplate(input: {
     workspaceId: input.workspaceId,
     createdBy: input.createdBy,
     editor_json: existing.editor_json,
+    pricing_json: existing.pricing_json,
     tags: [
       ...existing.tags.filter((tag) => tag !== "copy"),
       "sample",

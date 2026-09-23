@@ -1,5 +1,7 @@
 "use client";
 
+import { IconPalette } from "@/components/editor/creator/creator-icons";
+
 type ShelfPanel = "variables" | "page" | null;
 
 type Props = {
@@ -55,12 +57,12 @@ export function FlowToolShelf({
           type="button"
           className={`flow-tool-shelf-icon${activePanel === "page" ? " is-active" : ""}`}
           onClick={() => (activePanel === "page" ? onCollapse() : onSelect("page"))}
-          aria-label={`Page ${propertiesPage} properties`}
+          aria-label="Page properties"
           aria-pressed={activePanel === "page"}
-          title={`Page ${propertiesPage} properties`}
+          title="Page properties"
         >
           <span className="flow-tool-shelf-glyph" aria-hidden>
-            ▢
+            <IconPalette />
           </span>
         </button>
       ) : null}

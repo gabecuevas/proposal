@@ -5,6 +5,7 @@ import {
   CLIENT_VARIABLES,
   COMPANY_VARIABLES,
   RECIPIENT_VARIABLES,
+  SENDER_VARIABLES,
 } from "@/lib/crm/variables";
 import type { EditorDoc, JSONValue, VariableContext } from "@/lib/editor/types";
 
@@ -28,6 +29,7 @@ export const FLOW_RECIPIENT_VARIABLES: FlowVariableDef[] = RECIPIENT_VARIABLES.m
 
 const STANDARD_KEYS = new Set<string>([
   ...FLOW_RECIPIENT_VARIABLES.map((v) => v.key),
+  ...SENDER_VARIABLES.map((v) => v.key),
   ...CLIENT_VARIABLES.map((v) => v.key),
   ...COMPANY_VARIABLES.map((v) => v.key),
 ]);
@@ -151,6 +153,12 @@ export function buildFlowVariableGroups(
       title: "Recipient",
       description: "Values filled for the document recipient.",
       variables: FLOW_RECIPIENT_VARIABLES,
+    },
+    {
+      id: "sender",
+      title: "Sender",
+      description: "Your company and contact details.",
+      variables: SENDER_VARIABLES.map((v) => ({ key: v.key, label: v.label })),
     },
     {
       id: "client",

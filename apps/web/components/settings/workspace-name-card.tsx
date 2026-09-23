@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { cn } from "@repo/ui/utils";
 import { crmInputClass } from "@/components/crm/variable-pills";
 import { assetUrl } from "@/lib/storage/asset-url";
 import {
@@ -94,7 +95,12 @@ export function WorkspaceNameCard() {
           <button
             type="button"
             onClick={() => setLogoModalOpen(true)}
-            className="flex items-center justify-center overflow-hidden rounded-md border border-border bg-slate-50 text-sm text-muted hover:border-primary/40 hover:text-foreground"
+            className={cn(
+              "flex items-center justify-center overflow-hidden text-sm text-muted",
+              logoKey
+                ? "border-0 bg-transparent hover:opacity-90"
+                : "rounded-md border border-dashed border-border bg-transparent hover:border-primary/40 hover:text-foreground",
+            )}
             style={{ width: COMPANY_LOGO_DISPLAY_WIDTH, height: COMPANY_LOGO_DISPLAY_HEIGHT }}
             aria-label={logoKey ? "Change company logo" : "Add company logo"}
           >

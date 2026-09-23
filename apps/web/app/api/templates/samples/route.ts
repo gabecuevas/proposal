@@ -6,10 +6,16 @@ import {
   listSampleTemplates,
 } from "@/lib/editor/template-store";
 import { SAMPLE_TEMPLATE_FOLDERS, isSampleFolderSlug } from "@/lib/templates/sample-catalog";
+import { ensureMasterQuoteSampleTemplate } from "@/lib/templates/ensure-master-quote-sample";
 
 export async function GET(request: NextRequest) {
   try {
-    await getRequestAuthContext(request);
+    const auth = await getRequestAuthContext(request);
+    await ensureMasterQuoteSampleTemplate({
+      workspaceId: auth.workspaceId,
+      actorUserId: auth.userId,
+    });
+
     const url = new URL(request.url);
     const folder = url.searchParams.get("folder")?.trim() || null;
     const q = url.searchParams.get("q")?.trim() || undefined;

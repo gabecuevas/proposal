@@ -98,6 +98,7 @@ export function CreatorHeader({
   const [open, setOpen] = useState<MenuId>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
+  const [saveAsBusy, setSaveAsBusy] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   void tick;
@@ -443,11 +444,20 @@ export function CreatorHeader({
         open={saveAsOpen}
         kind={saveAsKind}
         initialName={name}
-        saving={saving}
-        onClose={() => setSaveAsOpen(false)}
+        saving={saveAsBusy}
+        onClose={() => {
+          if (!saveAsBusy) {
+            setSaveAsOpen(false);
+          }
+        }}
         onSave={async (nextName) => {
-          await onSaveAs?.(nextName);
-          setSaveAsOpen(false);
+          setSaveAsBusy(true);
+          try {
+            await onSaveAs?.(nextName);
+            setSaveAsOpen(false);
+          } finally {
+            setSaveAsBusy(false);
+          }
         }}
       />
     </header>

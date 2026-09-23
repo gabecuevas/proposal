@@ -43,6 +43,13 @@ export type CommercialPartyText = {
   manualOverrides?: string[];
 };
 
+/** Default Sender box content for blank drafts and templates. */
+export const DEFAULT_SENDER_TEXT =
+  "[Sender.FullName]\n[Sender.CompanyName]\n[Sender.FullAddress]\n[Sender.Phone]";
+
+/** Default Bill To box content for blank drafts and templates. */
+export const DEFAULT_BILL_TO_TEXT = "[Recipient.CompanyName]";
+
 export type CommercialLabels = {
   title: string;
   billTo: string;
@@ -64,6 +71,7 @@ export type CommercialLabels = {
   paymentTerms: string;
   dueDate: string;
   poNumber: string;
+  documentNumber: string;
 };
 
 export type CommercialDocument = {
@@ -92,10 +100,29 @@ export type CommercialDocument = {
   notes: string;
   terms: string;
   labels: CommercialLabels;
+  /** Visual theme for title + line-item header bar. */
+  theme: CommercialTheme;
   sourceTemplateId: string | null;
   sourceQuoteDocumentId: string | null;
   /** Relative due-date rule in days from issue date (templates). */
   dueDateOffsetDays: number | null;
+};
+
+export type CommercialTheme = {
+  /** Line-item table header background (Item | Quantity | Rate | Amount). */
+  tableHeaderBg: string;
+  /** Google/system font id from FLOW_GOOGLE_FONTS. */
+  titleFontId: string;
+  titleColor: string;
+  /** Title font size in px. */
+  titleSizePx: number;
+};
+
+export const DEFAULT_COMMERCIAL_THEME: CommercialTheme = {
+  tableHeaderBg: "#0f2744",
+  titleFontId: "arial",
+  titleColor: "#0f2744",
+  titleSizePx: 44,
 };
 
 export type CommercialTotals = {
@@ -132,6 +159,7 @@ export const DEFAULT_COMMERCIAL_LABELS: CommercialLabels = {
   paymentTerms: "Payment Terms",
   dueDate: "Due Date",
   poNumber: "PO Number",
+  documentNumber: "Quote Number",
 };
 
 export const QUANTITY_SCALE = 10_000;
@@ -184,6 +212,7 @@ export function createBlankCommercialDocument(
 ): CommercialDocument {
   const labels = { ...DEFAULT_COMMERCIAL_LABELS };
   labels.title = type === "invoice" ? "INVOICE" : "QUOTE";
+  labels.documentNumber = type === "invoice" ? "Invoice Number" : "Quote Number";
   return {
     schema: COMMERCIAL_SCHEMA,
     type,
@@ -197,9 +226,9 @@ export function createBlankCommercialDocument(
     poNumber: "",
     logoAssetKey: null,
     sender: {
-      text: "[Sender.FullName]\n[Sender.CompanyName]\n[Sender.FullAddress]\n[Sender.Phone]",
+      text: DEFAULT_SENDER_TEXT,
     },
-    billTo: { text: "[Recipient.CompanyName]" },
+    billTo: { text: DEFAULT_BILL_TO_TEXT },
     shipTo: { text: "" },
     contactId: null,
     lineItems: [createBlankLineItem()],
@@ -210,6 +239,7 @@ export function createBlankCommercialDocument(
     notes: "",
     terms: "",
     labels,
+    theme: { ...DEFAULT_COMMERCIAL_THEME },
     sourceTemplateId: null,
     sourceQuoteDocumentId: null,
     dueDateOffsetDays: null,

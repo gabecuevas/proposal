@@ -56,5 +56,12 @@ describe("document-kind editor layout", () => {
         pageBacked: true,
       }),
     ).toBe("creator");
+    expect(
+      editorLayoutForTemplateSource({
+        kind: "quote",
+        tags: ["commercial", "quote"],
+        pageBacked: false,
+      }),
+    ).toBe("commercial");
   });
 });

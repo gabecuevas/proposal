@@ -30,9 +30,12 @@ import { pageCountFromEditor, templateThumbnailKey } from "@/lib/ui/template-met
 import {
   documentKindFromVariables,
   documentKindProfile,
+  editorLayoutFromVariables,
   type WorkflowDocumentKind,
 } from "@/lib/editor/document-kind";
 import type { VariableContext } from "@/lib/editor/types";
+import { UseTemplateStepWizard } from "@/components/documents/use-template-wizard-chrome";
+import { isCommercialDocument } from "@/lib/commercial/schema";
 
 type StepId = 1 | 2 | 3 | 4;
 
@@ -65,6 +68,7 @@ type DocumentPayload = {
   status: string;
   editor_json: EditorDoc;
   variables_json?: VariableContext;
+  pricing_json?: unknown;
   recipients_json: Array<{
     id: string;
     name: string;
@@ -82,11 +86,23 @@ const STEPS: { id: StepId; label: string }[] = [
   { id: 4, label: "Deliver" },
 ];
 
+/** Three-step labels when Pick Template is skipped (Library → Use, or resume). */
+const USE_TEMPLATE_STEPS: { id: StepId; label: string }[] = [
+  { id: 2, label: "Add Contact" },
+  { id: 3, label: "Edit Document" },
+  { id: 4, label: "Review & Send" },
+];
+
 type Props = {
   open: boolean;
   kind?: WorkflowDocumentKind;
   /** When set, skip Pick Template and start at Info with this draft. */
   seedDocumentId?: string | null;
+  /** Library template to use — skip Pick Template, start at Add Contact. */
+  seedTemplateId?: string | null;
+  seedTemplateName?: string | null;
+  /** Optional step to land on after seed load (e.g. Review & Send). */
+  initialStep?: StepId | null;
   onClose: () => void;
 };
 
@@ -94,11 +110,15 @@ export function NewDocumentWorkflowPanel({
   open,
   kind = "document",
   seedDocumentId = null,
+  seedTemplateId = null,
+  seedTemplateName = null,
+  initialStep = null,
   onClose,
 }: Props) {
   const router = useRouter();
   const profile = documentKindProfile(kind);
-  const skipTemplateStep = Boolean(seedDocumentId);
+  const skipTemplateStep = Boolean(seedDocumentId || seedTemplateId);
+  const stepLabels = skipTemplateStep ? USE_TEMPLATE_STEPS : STEPS;
   const [step, setStep] = useState<StepId>(1);
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [templateQuery, setTemplateQuery] = useState("");
@@ -123,12 +143,13 @@ export function NewDocumentWorkflowPanel({
     if (!open) {
       return;
     }
-    setStep(skipTemplateStep ? 2 : 1);
-    setSelectedTemplateId(skipTemplateStep ? "blank" : null);
-    setTitle("");
+    const startStep: StepId = skipTemplateStep ? 2 : 1;
+    setStep(startStep);
+    setSelectedTemplateId(seedTemplateId || (seedDocumentId ? "blank" : null));
+    setTitle(seedTemplateName?.trim() || "");
     setDueDate("");
     setRecipients([]);
-    setDocumentId(skipTemplateStep ? seedDocumentId : null);
+    setDocumentId(seedDocumentId);
     setDocument(null);
     setError("");
     setSaveStatus("");
@@ -138,6 +159,22 @@ export function NewDocumentWorkflowPanel({
     setDeliverySubject("");
 
     if (!seedDocumentId) {
+      if (seedTemplateId && !seedTemplateName?.trim()) {
+        let cancelled = false;
+        (async () => {
+          const response = await fetch(`/api/templates/${seedTemplateId}`);
+          if (!response.ok || cancelled) {
+            return;
+          }
+          const data = (await response.json()) as { template?: { name?: string } };
+          if (!cancelled && data.template?.name) {
+            setTitle(data.template.name);
+          }
+        })();
+        return () => {
+          cancelled = true;
+        };
+      }
       return;
     }
     let cancelled = false;
@@ -170,18 +207,30 @@ export function NewDocumentWorkflowPanel({
           })),
       );
       setSelectedRecipientId(doc.recipients_json[0]?.id ?? "");
-      setDeliverySubject(`New proposal: ${documentTitleFromEditorJson(doc.editor_json, profile.blankTitle)}`);
+      setDeliverySubject(
+        `New ${profile.noun.toLowerCase()}: ${documentTitleFromEditorJson(doc.editor_json, profile.blankTitle)}`,
+      );
       const kindFromDoc = documentKindFromVariables(doc.variables_json);
       if (kindFromDoc) {
-        // Keep delivery copy aligned with the document kind when seeded.
         setDeliveryMessage(documentKindProfile(kindFromDoc).deliveryIntro || profile.deliveryIntro);
       }
-      setStep(2);
+      setStep(initialStep && initialStep >= 2 ? initialStep : 2);
     })();
     return () => {
       cancelled = true;
     };
-  }, [open, kind, profile.blankTitle, profile.deliveryIntro, seedDocumentId, skipTemplateStep]);
+  }, [
+    open,
+    kind,
+    profile.blankTitle,
+    profile.deliveryIntro,
+    profile.noun,
+    seedDocumentId,
+    seedTemplateId,
+    seedTemplateName,
+    skipTemplateStep,
+    initialStep,
+  ]);
 
   useEffect(() => {
     if (!open) {
@@ -391,6 +440,11 @@ export function NewDocumentWorkflowPanel({
           throw new Error("Could not save draft details");
         }
         setSelectedRecipientId((current) => current || document.recipients_json[0]?.id || recipients[0]?.id || "");
+        if (usesNativeDocumentEditor(document, kind)) {
+          onClose();
+          router.push(`/app/documents/${documentId}?afterUse=1`);
+          return;
+        }
         setStep(3);
         return;
       }
@@ -491,8 +545,15 @@ export function NewDocumentWorkflowPanel({
       setDocumentId(created.id);
       setDocument(created);
       setSelectedRecipientId(created.recipients_json[0]?.id ?? "");
-      setDeliverySubject(`New proposal: ${title.trim()}`);
+      setDeliverySubject(`New ${profile.noun.toLowerCase()}: ${title.trim()}`);
       setSaveStatus("Draft saved");
+
+      // Flow / Quote / Invoice use their immersive editors for Edit Document.
+      if (usesNativeDocumentEditor(created, kind)) {
+        onClose();
+        router.push(`/app/documents/${created.id}?afterUse=1`);
+        return;
+      }
       setStep(3);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create draft");
@@ -546,69 +607,84 @@ export function NewDocumentWorkflowPanel({
   }
 
   return (
-    <div className="app-theme fixed inset-0 z-[90] flex flex-col bg-slate-900/40 pt-14" role="presentation">
+    <div className="app-theme fixed inset-0 z-[100] flex flex-col bg-background" role="presentation">
       <div
-        className="flex min-h-0 flex-1 flex-col overflow-hidden border-b border-border bg-background shadow-2xl transition-transform duration-300 ease-out"
-        style={{ transform: "translateY(0)" }}
+        className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-document-workflow-title"
       >
-        <header className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-border bg-surface px-4 py-3">
-          <div className="min-w-0">
-            <h2 id="new-document-workflow-title" className="text-sm font-semibold text-foreground">
-              {profile.workflowTitle}
-            </h2>
-            <p className="truncate text-xs text-muted">
-              {title.trim() || selectedTemplate?.name || "Create and deliver a proposal"}
-            </p>
+        <header className="shrink-0 border-b border-border bg-surface">
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <h2 id="new-document-workflow-title" className="text-sm font-semibold text-foreground">
+                {seedTemplateId ? `Use ${profile.noun}` : profile.workflowTitle}
+              </h2>
+              <p className="truncate text-xs text-muted">
+                {title.trim() || selectedTemplate?.name || seedTemplateName || "Create and deliver"}
+              </p>
+            </div>
+            <div className="flex min-w-0 items-center justify-end gap-3">
+              {saveStatus ? (
+                <span className="inline-flex items-center gap-1 truncate text-xs font-medium text-emerald-700">
+                  <span aria-hidden>✓</span>
+                  {saveStatus}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void flushAndClose()}
+                className="shrink-0 rounded-md px-2 py-1 text-sm text-primary hover:bg-primary/10"
+              >
+                Close
+              </button>
+            </div>
           </div>
-          <nav className="flex flex-wrap items-center justify-center gap-1" aria-label="Workflow steps">
-            {(skipTemplateStep ? STEPS.filter((item) => item.id !== 1) : STEPS).map((item, index, list) => {
-              const active = step === item.id;
-              const done = step > item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  disabled={item.id > step && !documentId && item.id > 2}
-                  onClick={() => {
-                    if (item.id <= step || (documentId && item.id <= 4)) {
-                      if (skipTemplateStep && item.id === 1) {
-                        return;
+          {skipTemplateStep ? (
+            <UseTemplateStepWizard
+              currentStep={step === 2 ? 1 : step === 3 ? 2 : 3}
+              onSelectStep={(wizardStep) => {
+                const mapped: StepId = wizardStep === 1 ? 2 : wizardStep === 2 ? 3 : 4;
+                if (mapped <= step || (documentId && mapped <= 4)) {
+                  if (mapped === 3 && documentId && document && usesNativeDocumentEditor(document, kind)) {
+                    onClose();
+                    router.push(`/app/documents/${documentId}?afterUse=1`);
+                    return;
+                  }
+                  setStep(mapped);
+                }
+              }}
+            />
+          ) : (
+            <nav className="flex flex-wrap items-center justify-center gap-1 px-4 pb-3" aria-label="Workflow steps">
+              {stepLabels.map((item, index, list) => {
+                const active = step === item.id;
+                const done = step > item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    disabled={item.id > step && !documentId && item.id > 2}
+                    onClick={() => {
+                      if (item.id <= step || (documentId && item.id <= 4)) {
+                        setStep(item.id);
                       }
-                      setStep(item.id);
-                    }
-                  }}
-                  className={`rounded-md px-3 py-1.5 text-sm font-bold transition-colors ${
-                    active
-                      ? "bg-primary text-primary-foreground"
-                      : done
-                        ? "bg-primary/10 text-primary hover:bg-primary/15"
-                        : "text-muted hover:text-primary"
-                  }`}
-                >
-                  {item.label}
-                  {index < list.length - 1 ? <span className="ml-1 opacity-50">›</span> : null}
-                </button>
-              );
-            })}
-          </nav>
-          <div className="flex min-w-0 items-center justify-end gap-3">
-            {saveStatus ? (
-              <span className="inline-flex items-center gap-1 truncate text-xs font-medium text-emerald-700">
-                <span aria-hidden>✓</span>
-                {saveStatus}
-              </span>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => void flushAndClose()}
-              className="shrink-0 rounded-md px-2 py-1 text-sm text-primary hover:bg-primary/10"
-            >
-              Close
-            </button>
-          </div>
+                    }}
+                    className={`rounded-md px-3 py-1.5 text-sm font-bold transition-colors ${
+                      active
+                        ? "bg-primary text-primary-foreground"
+                        : done
+                          ? "bg-primary/10 text-primary hover:bg-primary/15"
+                          : "text-muted hover:text-primary"
+                    }`}
+                  >
+                    {item.label}
+                    {index < list.length - 1 ? <span className="ml-1 opacity-50">›</span> : null}
+                  </button>
+                );
+              })}
+            </nav>
+          )}
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f4f6f9] p-4 md:p-6">
@@ -746,6 +822,17 @@ export function NewDocumentWorkflowPanel({
       </div>
     </div>
   );
+}
+
+function usesNativeDocumentEditor(doc: DocumentPayload, kind: WorkflowDocumentKind): boolean {
+  if (kind === "quote" || kind === "invoice") {
+    return true;
+  }
+  if (isCommercialDocument(doc.pricing_json)) {
+    return true;
+  }
+  const layout = editorLayoutFromVariables(doc.variables_json);
+  return layout === "flow" || layout === "commercial";
 }
 
 function StepPickTemplate({
