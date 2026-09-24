@@ -81,14 +81,14 @@ export default function SignupPage() {
           {oauthErrorMessage ? <p className="mt-4 text-sm text-red-600">{oauthErrorMessage}</p> : null}
           <form className="mt-8 space-y-4" onSubmit={onSubmit}>
             <input
-              className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+              className="w-full rounded-none border border-border bg-surface px-4 py-3 text-sm"
               placeholder="Full name"
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
               required
             />
             <input
-              className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+              className="w-full rounded-none border border-border bg-surface px-4 py-3 text-sm"
               placeholder="Work email"
               type="email"
               value={email}
@@ -97,7 +97,7 @@ export default function SignupPage() {
             />
             <div className="relative">
               <input
-                className="w-full rounded-lg border border-border bg-surface px-4 py-3 pr-20 text-sm"
+                className="w-full rounded-none border border-border bg-surface px-4 py-3 pr-20 text-sm"
                 placeholder="Password (15+ characters)"
                 type={showPassword ? "text" : "password"}
                 value={password}
@@ -114,7 +114,7 @@ export default function SignupPage() {
               </button>
             </div>
             <input
-              className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+              className="w-full rounded-none border border-border bg-surface px-4 py-3 text-sm"
               placeholder="Company name"
               value={companyName}
               onChange={(event) => setCompanyName(event.target.value)}
@@ -144,13 +144,13 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
+              className="w-full rounded-none bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
             >
               {loading ? "Creating account..." : "Create account"}
             </button>
             {googleConfigured ? (
               <a
-                className="block w-full rounded-lg border border-border px-4 py-3 text-center text-sm font-medium hover:bg-surface"
+                className="block w-full rounded-none border border-border px-4 py-3 text-center text-sm font-medium hover:bg-surface"
                 href="/api/auth/google/start?next=%2Fverify-email"
               >
                 Continue with Google

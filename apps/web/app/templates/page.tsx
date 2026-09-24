@@ -32,13 +32,13 @@ export default function TemplatesLibraryPage() {
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
               href="/signup"
-              className="rounded-lg bg-[#1e3a5f] px-5 py-3 text-sm font-medium text-white hover:bg-[#18324f]"
+              className="rounded-none bg-[#1e3a5f] px-5 py-3 text-sm font-medium text-white hover:bg-[#18324f]"
             >
               Start free
             </Link>
             <Link
               href="#categories"
-              className="rounded-lg border border-[#d7dee8] px-5 py-3 text-sm font-medium text-[#0f2744]"
+              className="rounded-none border border-[#d7dee8] px-5 py-3 text-sm font-medium text-[#0f2744]"
             >
               Browse categories
             </Link>

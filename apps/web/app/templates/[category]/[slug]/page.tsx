@@ -90,13 +90,13 @@ export default async function TemplateDetailPage({ params }: Params) {
             <div className="mt-6 flex flex-wrap gap-3">
               <Link
                 href="/signup"
-                className="rounded-lg bg-[#1e3a5f] px-5 py-3 text-sm font-medium text-white hover:bg-[#18324f]"
+                className="rounded-none bg-[#1e3a5f] px-5 py-3 text-sm font-medium text-white hover:bg-[#18324f]"
               >
                 Use this template free
               </Link>
               <Link
                 href="/login"
-                className="rounded-lg border border-[#d7dee8] px-5 py-3 text-sm font-medium text-[#0f2744]"
+                className="rounded-none border border-[#d7dee8] px-5 py-3 text-sm font-medium text-[#0f2744]"
               >
                 Log in to customize
               </Link>

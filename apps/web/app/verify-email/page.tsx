@@ -122,25 +122,25 @@ export default function VerifyEmailPage() {
             type="button"
             disabled={loading}
             onClick={() => void resend()}
-            className="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
+            className="rounded-none bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
           >
             {loading ? "Sending..." : "Resend email"}
           </button>
           <button
             type="button"
             onClick={() => setChangingEmail(true)}
-            className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium hover:bg-surface"
+            className="rounded-none border border-border px-4 py-2.5 text-sm font-medium hover:bg-surface"
           >
             Change email
           </button>
-          <LogoutButton className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium hover:bg-surface" />
+          <LogoutButton className="rounded-none border border-border px-4 py-2.5 text-sm font-medium hover:bg-surface" />
         </div>
       ) : (
         <form className="mt-8 space-y-3" onSubmit={(event) => void changeEmail(event)}>
           <label className="block text-sm">
             <span className="mb-1 block text-muted">New email</span>
             <input
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+              className="w-full rounded-none border border-border bg-surface px-3 py-2"
               type="email"
               autoComplete="email"
               required
@@ -151,7 +151,7 @@ export default function VerifyEmailPage() {
           <label className="block text-sm">
             <span className="mb-1 block text-muted">Confirm with password</span>
             <input
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+              className="w-full rounded-none border border-border bg-surface px-3 py-2"
               type="password"
               autoComplete="current-password"
               required
@@ -163,14 +163,14 @@ export default function VerifyEmailPage() {
             <button
               type="submit"
               disabled={loading}
-              className="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
+              className="rounded-none bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
             >
               {loading ? "Updating..." : "Update email"}
             </button>
             <button
               type="button"
               onClick={() => setChangingEmail(false)}
-              className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium"
+              className="rounded-none border border-border px-4 py-2.5 text-sm font-medium"
             >
               Cancel
             </button>

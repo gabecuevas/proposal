@@ -41,7 +41,7 @@ export default function ResetPasswordPage() {
       <p className="mt-2 text-sm text-muted">Use at least 15 characters.</p>
       <form className="mt-8 space-y-4" onSubmit={onSubmit}>
         <input
-          className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+          className="w-full rounded-none border border-border bg-surface px-4 py-3 text-sm"
           placeholder="New password"
           type="password"
           minLength={15}
@@ -53,7 +53,7 @@ export default function ResetPasswordPage() {
         <button
           type="submit"
           disabled={loading || !token}
-          className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
+          className="w-full rounded-none bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
         >
           {loading ? "Saving..." : "Update password"}
         </button>

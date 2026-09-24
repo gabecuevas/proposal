@@ -22,7 +22,7 @@ export function LogoutButton({ className }: { className?: string }) {
       type="button"
       className={
         className ??
-        "w-full rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-muted transition-colors hover:border-primary/30 hover:text-foreground"
+        "w-full rounded-none border border-border bg-background px-3 py-2 text-xs font-medium text-muted transition-colors hover:border-primary/30 hover:text-foreground"
       }
     >
       Log out

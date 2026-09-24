@@ -84,7 +84,7 @@ export default function OnboardingCompanyPage() {
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Company name</span>
           <input
-            className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+            className="w-full rounded-none border border-border bg-surface px-4 py-3 text-sm"
             value={companyName}
             onChange={(event) => setCompanyName(event.target.value)}
             required
@@ -95,7 +95,7 @@ export default function OnboardingCompanyPage() {
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Company website</span>
           <input
-            className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm disabled:opacity-50"
+            className="w-full rounded-none border border-border bg-surface px-4 py-3 text-sm disabled:opacity-50"
             placeholder="https://acme.example"
             value={website}
             onChange={(event) => setWebsite(event.target.value)}
@@ -114,7 +114,7 @@ export default function OnboardingCompanyPage() {
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Company size (optional)</span>
           <select
-            className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+            className="w-full rounded-none border border-border bg-surface px-4 py-3 text-sm"
             value={companySize}
             onChange={(event) => setCompanySize(event.target.value)}
           >
@@ -131,7 +131,7 @@ export default function OnboardingCompanyPage() {
           <label className="block text-sm">
             <span className="mb-1 block text-muted">Country</span>
             <select
-              className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+              className="w-full rounded-none border border-border bg-surface px-4 py-3 text-sm"
               value={country}
               onChange={(event) => setCountry(event.target.value)}
               required
@@ -145,7 +145,7 @@ export default function OnboardingCompanyPage() {
           <label className="block text-sm">
             <span className="mb-1 block text-muted">Default currency</span>
             <select
-              className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+              className="w-full rounded-none border border-border bg-surface px-4 py-3 text-sm"
               value={currency}
               onChange={(event) => setCurrency(event.target.value)}
               required
@@ -161,7 +161,7 @@ export default function OnboardingCompanyPage() {
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Time zone</span>
           <input
-            className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+            className="w-full rounded-none border border-border bg-surface px-4 py-3 text-sm"
             value={timezone}
             onChange={(event) => setTimezone(event.target.value)}
             required
@@ -171,7 +171,7 @@ export default function OnboardingCompanyPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
+          className="w-full rounded-none bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
         >
           {loading ? "Saving..." : "Continue"}
         </button>

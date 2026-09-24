@@ -59,10 +59,10 @@ export default function ProductPage() {
             workspace for revenue and operations teams.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/signup" className="rounded-lg bg-[#1e3a5f] px-5 py-3 text-sm font-medium text-white">
+            <Link href="/signup" className="rounded-none bg-[#1e3a5f] px-5 py-3 text-sm font-medium text-white">
               Start free
             </Link>
-            <Link href="/templates" className="rounded-lg border border-[#d7dee8] px-5 py-3 text-sm font-medium">
+            <Link href="/templates" className="rounded-none border border-[#d7dee8] px-5 py-3 text-sm font-medium">
               Free templates
             </Link>
           </div>
