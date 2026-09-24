@@ -46,13 +46,19 @@ export async function POST(request: NextRequest) {
     const payload = await buildSessionPayloadFromUser(user);
     const redirectHint = postAuthRedirectPath(payload, body.next ?? null);
 
-    const { recordSuccessfulLogin } = await import("@/lib/support/activity");
-    const { syncPlatformAdminFlag } = await import("@/lib/support/platform-admin");
-    await recordSuccessfulLogin(user.id);
-    await syncPlatformAdminFlag(user.id, user.email);
+    // Support tracking/admin sync must never block login.
+    try {
+      const { recordSuccessfulLogin } = await import("@/lib/support/activity");
+      const { syncPlatformAdminFlag } = await import("@/lib/support/platform-admin");
+      await recordSuccessfulLogin(user.id);
+      await syncPlatformAdminFlag(user.id, user.email);
+    } catch (error) {
+      console.error("[auth/login] support post-login hooks failed", error);
+    }
 
     return jsonWithSessionCookie(request, { user: payload, redirectHint }, payload);
-  } catch {
+  } catch (error) {
+    console.error("[auth/login] failed", error);
     return errorResponse(request, {
       status: 500,
       code: "login_failed",

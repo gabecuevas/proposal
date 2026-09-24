@@ -77,10 +77,15 @@ export async function GET(request: NextRequest) {
   }
 
   const redirectTarget = postAuthRedirectPath(resolved.payload, nextPath);
-  const { recordSuccessfulLogin } = await import("@/lib/support/activity");
-  const { syncPlatformAdminFlag } = await import("@/lib/support/platform-admin");
-  await recordSuccessfulLogin(resolved.payload.userId);
-  await syncPlatformAdminFlag(resolved.payload.userId, resolved.payload.email);
+  // Support tracking/admin sync must never block Google login.
+  try {
+    const { recordSuccessfulLogin } = await import("@/lib/support/activity");
+    const { syncPlatformAdminFlag } = await import("@/lib/support/platform-admin");
+    await recordSuccessfulLogin(resolved.payload.userId);
+    await syncPlatformAdminFlag(resolved.payload.userId, resolved.payload.email);
+  } catch (error) {
+    console.error("[auth/google] support post-login hooks failed", error);
+  }
 
   const token = await signSessionToken(resolved.payload);
   const response = NextResponse.redirect(new URL(redirectTarget, request.url));
