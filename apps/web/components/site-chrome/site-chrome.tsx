@@ -180,7 +180,7 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
           <button
             type="button"
             className={cn(
-              "rounded-md px-3 py-2 text-sm font-medium text-[#5b6b7c] hover:bg-white hover:text-[#0f2744]",
+              "rounded-none px-3 py-2 text-sm font-medium text-[#5b6b7c] hover:bg-white hover:text-[#0f2744]",
               openMenu === "platform" && "bg-white text-[#0f2744]",
             )}
             aria-expanded={openMenu === "platform"}
@@ -198,7 +198,7 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
           <button
             type="button"
             className={cn(
-              "rounded-md px-3 py-2 text-sm font-medium text-[#5b6b7c] hover:bg-white hover:text-[#0f2744]",
+              "rounded-none px-3 py-2 text-sm font-medium text-[#5b6b7c] hover:bg-white hover:text-[#0f2744]",
               openMenu === "solutions" && "bg-white text-[#0f2744]",
             )}
             aria-expanded={openMenu === "solutions"}
@@ -216,7 +216,7 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
           <button
             type="button"
             className={cn(
-              "rounded-md px-3 py-2 text-sm font-medium text-[#5b6b7c] hover:bg-white hover:text-[#0f2744]",
+              "rounded-none px-3 py-2 text-sm font-medium text-[#5b6b7c] hover:bg-white hover:text-[#0f2744]",
               openMenu === "templates" && "bg-white text-[#0f2744]",
             )}
             aria-expanded={openMenu === "templates"}
@@ -248,14 +248,14 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
             ))}
           </MegaPanel>
 
-          <Link href="/pricing" className="rounded-md px-3 py-2 text-sm font-medium text-[#5b6b7c] hover:text-[#0f2744]">
+          <Link href="/pricing" className="rounded-none px-3 py-2 text-sm font-medium text-[#5b6b7c] hover:text-[#0f2744]">
             Pricing
           </Link>
 
           <button
             type="button"
             className={cn(
-              "rounded-md px-3 py-2 text-sm font-medium text-[#5b6b7c] hover:bg-white hover:text-[#0f2744]",
+              "rounded-none px-3 py-2 text-sm font-medium text-[#5b6b7c] hover:bg-white hover:text-[#0f2744]",
               openMenu === "resources" && "bg-white text-[#0f2744]",
             )}
             aria-expanded={openMenu === "resources"}
@@ -281,7 +281,7 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
           {signedIn ? (
             <Link
               href="/app"
-              className="rounded-lg bg-[#1e3a5f] px-3.5 py-2 text-sm font-medium text-white hover:bg-[#18324f]"
+              className="rounded-none bg-[#1e3a5f] px-3.5 py-2 text-sm font-medium text-white hover:bg-[#18324f]"
             >
               Open app
             </Link>
@@ -289,13 +289,13 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
             <>
               <Link
                 href="/login"
-                className="hidden rounded-lg px-3 py-2 text-sm font-medium text-[#5b6b7c] hover:text-[#0f2744] sm:inline"
+                className="hidden rounded-none px-3 py-2 text-sm font-medium text-[#5b6b7c] hover:text-[#0f2744] sm:inline"
               >
                 Log in
               </Link>
               <Link
                 href="/signup"
-                className="rounded-lg bg-[#1e3a5f] px-3.5 py-2 text-sm font-medium text-white hover:bg-[#18324f]"
+                className="rounded-none bg-[#1e3a5f] px-3.5 py-2 text-sm font-medium text-white hover:bg-[#18324f]"
               >
                 Start free
               </Link>
@@ -303,7 +303,7 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
           )}
           <button
             type="button"
-            className="rounded-md p-2 text-[#5b6b7c] hover:bg-white lg:hidden"
+            className="rounded-none p-2 text-[#5b6b7c] hover:bg-white lg:hidden"
             aria-expanded={mobileOpen}
             aria-label="Open menu"
             onClick={() => setMobileOpen((open) => !open)}

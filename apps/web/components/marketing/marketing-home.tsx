@@ -59,13 +59,13 @@ export function MarketingHomePage() {
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
               href="/signup"
-              className="rounded-lg bg-[#1e3a5f] px-5 py-3 text-sm font-medium text-white hover:bg-[#18324f]"
+              className="rounded-none bg-[#1e3a5f] px-5 py-3 text-sm font-medium text-white hover:bg-[#18324f]"
             >
               Start free
             </Link>
             <Link
               href="/product#workflow"
-              className="rounded-lg border border-[#d7dee8] bg-white px-5 py-3 text-sm font-medium text-[#0f2744] hover:bg-[#f8fafc]"
+              className="rounded-none border border-[#d7dee8] bg-white px-5 py-3 text-sm font-medium text-[#0f2744] hover:bg-[#f8fafc]"
             >
               Explore the workflow
             </Link>
@@ -183,7 +183,7 @@ export function MarketingHomePage() {
             </ul>
             <Link
               href="/templates"
-              className="mt-8 inline-flex rounded-lg bg-white px-5 py-3 text-sm font-medium text-[#0f2744] hover:bg-[#f8fafc]"
+              className="mt-8 inline-flex rounded-none bg-white px-5 py-3 text-sm font-medium text-[#0f2744] hover:bg-[#f8fafc]"
             >
               Browse free templates
             </Link>
@@ -196,7 +196,7 @@ export function MarketingHomePage() {
             </p>
             <div className="mt-4 space-y-2">
               {["Executive summary", "Recommended package", "Investment", "Acceptance"].map((item) => (
-                <div key={item} className="rounded-lg border border-[#eef2f6] px-3 py-2 text-sm text-[#0f2744]">
+                <div key={item} className="rounded-none border border-[#eef2f6] px-3 py-2 text-sm text-[#0f2744]">
                   {item}
                 </div>
               ))}
@@ -276,7 +276,7 @@ export function MarketingHomePage() {
           </div>
           <Link
             href="/templates"
-            className="rounded-lg border border-[#d7dee8] bg-white px-4 py-2.5 text-sm font-medium text-[#0f2744] hover:bg-[#f8fafc]"
+            className="rounded-none border border-[#d7dee8] bg-white px-4 py-2.5 text-sm font-medium text-[#0f2744] hover:bg-[#f8fafc]"
           >
             Open template library
           </Link>
@@ -318,13 +318,13 @@ export function MarketingHomePage() {
           <div className="flex flex-wrap gap-3">
             <Link
               href="/signup"
-              className="rounded-lg bg-[#1e3a5f] px-5 py-3 text-sm font-medium text-white hover:bg-[#18324f]"
+              className="rounded-none bg-[#1e3a5f] px-5 py-3 text-sm font-medium text-white hover:bg-[#18324f]"
             >
               Talk to SendDox — start free
             </Link>
             <Link
               href="/contact"
-              className="rounded-lg border border-[#d7dee8] bg-white px-5 py-3 text-sm font-medium text-[#0f2744]"
+              className="rounded-none border border-[#d7dee8] bg-white px-5 py-3 text-sm font-medium text-[#0f2744]"
             >
               Contact
             </Link>

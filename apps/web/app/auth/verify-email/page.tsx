@@ -73,7 +73,7 @@ export default function VerifyEmailConfirmPage() {
             type="button"
             disabled={submitting}
             onClick={() => void confirm()}
-            className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
+            className="w-full rounded-none bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
           >
             {submitting ? "Verifying..." : "Verify email"}
           </button>

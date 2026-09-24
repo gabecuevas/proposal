@@ -69,13 +69,13 @@ export default function InviteAcceptPage() {
           type="button"
           disabled={loading || !invite}
           onClick={() => void accept()}
-          className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
+          className="w-full rounded-none bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
         >
           {loading ? "Accepting..." : "Accept invitation"}
         </button>
         <Link
           href="/login"
-          className="block w-full rounded-lg border border-border px-4 py-3 text-center text-sm font-medium hover:bg-surface"
+          className="block w-full rounded-none border border-border px-4 py-3 text-center text-sm font-medium hover:bg-surface"
         >
           Sign in with another account
         </Link>

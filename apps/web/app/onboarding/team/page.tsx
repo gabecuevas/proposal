@@ -66,14 +66,14 @@ export default function OnboardingTeamPage() {
         {rows.map((row, index) => (
           <div key={index} className="flex gap-2">
             <input
-              className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+              className="min-w-0 flex-1 rounded-none border border-border bg-surface px-4 py-3 text-sm"
               placeholder="colleague@company.com"
               type="email"
               value={row.email}
               onChange={(event) => updateRow(index, { email: event.target.value })}
             />
             <select
-              className="rounded-lg border border-border bg-surface px-3 py-3 text-sm"
+              className="rounded-none border border-border bg-surface px-3 py-3 text-sm"
               value={row.role}
               onChange={(event) => updateRow(index, { role: event.target.value as InviteRow["role"] })}
             >
@@ -93,7 +93,7 @@ export default function OnboardingTeamPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
+          className="w-full rounded-none bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
         >
           {loading ? "Sending..." : "Send invites & finish"}
         </button>
@@ -101,7 +101,7 @@ export default function OnboardingTeamPage() {
           type="button"
           disabled={loading}
           onClick={() => void skip()}
-          className="w-full rounded-lg border border-border px-4 py-3 text-sm font-medium hover:bg-surface disabled:opacity-60"
+          className="w-full rounded-none border border-border px-4 py-3 text-sm font-medium hover:bg-surface disabled:opacity-60"
         >
           Skip for now
         </button>

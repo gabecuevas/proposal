@@ -35,7 +35,7 @@ export default function ForgotPasswordPage() {
       <p className="mt-2 text-sm text-muted">We&apos;ll email you a secure link to choose a new password.</p>
       <form className="mt-8 space-y-4" onSubmit={onSubmit}>
         <input
-          className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+          className="w-full rounded-none border border-border bg-surface px-4 py-3 text-sm"
           placeholder="Work email"
           type="email"
           value={email}
@@ -46,7 +46,7 @@ export default function ForgotPasswordPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
+          className="w-full rounded-none bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
         >
           {loading ? "Sending..." : "Send reset link"}
         </button>

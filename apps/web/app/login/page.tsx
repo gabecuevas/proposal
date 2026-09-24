@@ -93,7 +93,7 @@ export default function LoginPage() {
           {oauthErrorMessage ? <p className="mt-4 text-sm text-red-600">{oauthErrorMessage}</p> : null}
           <form className="mt-8 space-y-4" onSubmit={onSubmit}>
             <input
-              className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+              className="w-full rounded-none border border-border bg-surface px-4 py-3 text-sm"
               placeholder="Email"
               type="email"
               value={email}
@@ -101,7 +101,7 @@ export default function LoginPage() {
               required
             />
             <input
-              className="w-full rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+              className="w-full rounded-none border border-border bg-surface px-4 py-3 text-sm"
               placeholder="Password"
               type="password"
               value={password}
@@ -117,7 +117,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
+              className="w-full rounded-none bg-primary px-4 py-3 text-sm font-medium text-primary-foreground disabled:opacity-60"
             >
               {loading ? "Signing in..." : "Continue"}
             </button>
@@ -125,13 +125,13 @@ export default function LoginPage() {
               type="button"
               onClick={() => void bootstrapLocalDemo()}
               disabled={bootstrapLoading}
-              className="w-full rounded-lg border border-border px-4 py-3 text-sm font-medium hover:bg-surface disabled:opacity-60"
+              className="w-full rounded-none border border-border px-4 py-3 text-sm font-medium hover:bg-surface disabled:opacity-60"
             >
               {bootstrapLoading ? "Preparing local demo..." : "Use local demo account"}
             </button>
             {googleConfigured ? (
               <a
-                className="block w-full rounded-lg border border-border px-4 py-3 text-center text-sm font-medium hover:bg-surface"
+                className="block w-full rounded-none border border-border px-4 py-3 text-center text-sm font-medium hover:bg-surface"
                 href={`/api/auth/google/start?next=${encodeURIComponent(next && next.startsWith("/") ? next : "/app")}`}
               >
                 Continue with Google

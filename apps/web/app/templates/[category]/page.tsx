@@ -83,7 +83,7 @@ export default async function TemplateCategoryPage({ params }: Params) {
           </p>
           <Link
             href="/signup"
-            className="mt-4 inline-flex rounded-lg bg-[#1e3a5f] px-4 py-2.5 text-sm font-medium text-white"
+            className="mt-4 inline-flex rounded-none bg-[#1e3a5f] px-4 py-2.5 text-sm font-medium text-white"
           >
             Use templates free
           </Link>
