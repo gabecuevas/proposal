@@ -3,6 +3,7 @@ export type MailMessage = {
   subject: string;
   html: string;
   text: string;
+  replyTo?: string;
 };
 
 export type MailSendResult = {
@@ -59,6 +60,7 @@ class ResendMailAdapter implements MailAdapter {
         subject: message.subject,
         html: message.html,
         text: message.text,
+        ...(message.replyTo ? { reply_to: message.replyTo } : {}),
       }),
     });
     if (!response.ok) {

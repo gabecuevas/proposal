@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { NewDocumentWorkflowProvider } from "@/components/documents/new-document-workflow-context";
+import { SupportShell } from "@/components/support/support-shell";
 import { AppBreadcrumbs } from "./app-breadcrumbs";
 import { AppSidebar } from "./app-sidebar";
 import { AppTopBar } from "./app-top-bar";
@@ -13,6 +14,7 @@ type AppShellLayoutProps = {
   userEmail: string;
   userName: string;
   userInitials?: string;
+  messengerEnabled?: boolean;
 };
 
 function initialsFromEmail(email: string): string {
@@ -35,7 +37,13 @@ function initialsFromIdentity(name: string, email: string): string {
   return initialsFromEmail(email);
 }
 
-function AppShellChrome({ children, userEmail, userName, userInitials }: AppShellLayoutProps) {
+function AppShellChrome({
+  children,
+  userEmail,
+  userName,
+  userInitials,
+  messengerEnabled = false,
+}: AppShellLayoutProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -137,6 +145,7 @@ function AppShellChrome({ children, userEmail, userName, userInitials }: AppShel
           </main>
         </div>
       </div>
+      <SupportShell messengerEnabled={messengerEnabled} />
     </div>
   );
 }

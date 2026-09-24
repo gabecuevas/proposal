@@ -30,6 +30,7 @@ const menuGroups = [
 
 export function SettingsMenu({ userName, userEmail, userInitials, active }: SettingsMenuProps) {
   const [open, setOpen] = useState(false);
+  const [showPlatformAdmin, setShowPlatformAdmin] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [menuPos, setMenuPos] = useState<{ bottom: number; left: number } | null>(null);
@@ -40,6 +41,12 @@ export function SettingsMenu({ userName, userEmail, userInitials, active }: Sett
     if (!open) {
       return;
     }
+    void fetch("/api/admin/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { isPlatformAdmin?: boolean } | null) => {
+        setShowPlatformAdmin(Boolean(data?.isPlatformAdmin));
+      })
+      .catch(() => setShowPlatformAdmin(false));
     function place() {
       const rect = buttonRef.current?.getBoundingClientRect();
       if (!rect) {
@@ -125,6 +132,18 @@ export function SettingsMenu({ userName, userEmail, userInitials, active }: Sett
               ))}
             </div>
           ))}
+          {showPlatformAdmin ? (
+            <div className="border-t border-border py-1">
+              <Link
+                href="/admin/contacts"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                className="block px-3 py-2 text-sm text-foreground transition-colors hover:bg-slate-50"
+              >
+                Platform admin
+              </Link>
+            </div>
+          ) : null}
           <div className="border-t border-border py-1">
             <button
               type="button"

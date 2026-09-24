@@ -46,6 +46,11 @@ export async function POST(request: NextRequest) {
     const payload = await buildSessionPayloadFromUser(user);
     const redirectHint = postAuthRedirectPath(payload, body.next ?? null);
 
+    const { recordSuccessfulLogin } = await import("@/lib/support/activity");
+    const { syncPlatformAdminFlag } = await import("@/lib/support/platform-admin");
+    await recordSuccessfulLogin(user.id);
+    await syncPlatformAdminFlag(user.id, user.email);
+
     return jsonWithSessionCookie(request, { user: payload, redirectHint }, payload);
   } catch {
     return errorResponse(request, {
