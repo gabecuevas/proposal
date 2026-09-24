@@ -2,13 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import { OnboardingProgress } from "@/components/auth/onboarding-progress";
 import { SendDoxLogo } from "@/components/brand/senddox-logo";
 
 export default function OnboardingCompanyPage() {
   const router = useRouter();
-  const operationId = useId();
+  const [operationId] = useState(() => crypto.randomUUID());
   const [companyName, setCompanyName] = useState("");
   const [website, setWebsite] = useState("");
   const [noWebsite, setNoWebsite] = useState(false);
@@ -54,7 +54,7 @@ export default function OnboardingCompanyPage() {
         country,
         timezone,
         currency,
-        onboardingOperationId: operationId.replace(/:/g, ""),
+        onboardingOperationId: operationId,
       }),
     });
 
