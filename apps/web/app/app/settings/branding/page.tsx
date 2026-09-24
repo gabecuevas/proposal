@@ -91,7 +91,7 @@ export default function SettingsBrandingPage() {
         <div>
           <p className="mb-2 text-sm text-muted">Company logo</p>
           <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-border bg-slate-50 text-sm font-semibold text-muted">
+            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-none border border-border bg-slate-50 text-sm font-semibold text-muted">
               {logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={logoUrl} alt="Company logo" className="h-full w-full object-contain" />
@@ -123,7 +123,7 @@ export default function SettingsBrandingPage() {
               className="h-10 w-14 cursor-pointer rounded border border-border bg-surface"
             />
             <input
-              className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm"
+              className="flex-1 rounded-none border border-border bg-surface px-3 py-2 font-mono text-sm"
               value={brandColor}
               onChange={(event) => setBrandColor(event.target.value)}
               pattern="^#[0-9A-Fa-f]{6}$"
@@ -139,7 +139,7 @@ export default function SettingsBrandingPage() {
           </div>
         </label>
         <div
-          className="rounded-lg border border-border p-4 text-sm"
+          className="rounded-none border border-border p-4 text-sm"
           style={{ borderLeftWidth: 4, borderLeftColor: brandColor }}
         >
           Preview: new documents can use this accent for headers and buttons.
@@ -149,7 +149,7 @@ export default function SettingsBrandingPage() {
         <button
           type="submit"
           disabled={loading}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+          className="rounded-none bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
         >
           {loading ? "Saving..." : "Save changes"}
         </button>

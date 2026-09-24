@@ -392,7 +392,7 @@ export default function EmailSyncSettingsPage() {
             {banner ? (
               <div
                 className={cn(
-                  "flex items-start justify-between gap-3 rounded-md border px-3 py-2 text-sm",
+                  "flex items-start justify-between gap-3 rounded-none border px-3 py-2 text-sm",
                   banner.tone === "success" && "border-emerald-200 bg-emerald-50 text-emerald-950",
                   banner.tone === "warning" && "border-amber-200 bg-amber-50 text-amber-950",
                   banner.tone === "error" && "border-red-200 bg-red-50 text-red-900",
@@ -409,7 +409,7 @@ export default function EmailSyncSettingsPage() {
               </div>
             ) : null}
             {googleConfigured === false && !banner ? (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+              <div className="rounded-none border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
                 Google sign-in for Email Sync needs <code className="text-xs">GOOGLE_CLIENT_ID</code> and{" "}
                 <code className="text-xs">GOOGLE_CLIENT_SECRET</code> in your monorepo{" "}
                 <code className="text-xs">.env</code>. Add the redirect URI{" "}
@@ -418,12 +418,12 @@ export default function EmailSyncSettingsPage() {
               </div>
             ) : null}
             {loadError ? (
-              <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+              <div className="flex items-center justify-between gap-3 rounded-none border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
                 <p>{loadError}</p>
                 <button
                   type="button"
                   onClick={() => void loadAccounts()}
-                  className="shrink-0 rounded-md border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium hover:bg-amber-100"
+                  className="shrink-0 rounded-none border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium hover:bg-amber-100"
                 >
                   Retry
                 </button>
@@ -456,7 +456,7 @@ export default function EmailSyncSettingsPage() {
                 type="button"
                 disabled={atPersonalLimit}
                 onClick={() => setWizardOpen(true)}
-                className="mb-4 flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                className="mb-4 flex w-full items-center justify-center gap-1.5 rounded-none bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span className="text-base leading-none">+</span>
                 Email account
@@ -467,7 +467,7 @@ export default function EmailSyncSettingsPage() {
               {loading && accounts.length === 0 ? (
                 <p className="px-1 py-3 text-sm text-muted">Loading…</p>
               ) : accounts.length === 0 ? (
-                <div className="rounded-md border border-dashed border-border bg-white px-3 py-4 text-center">
+                <div className="rounded-none border border-dashed border-border bg-white px-3 py-4 text-center">
                   <p className="text-sm text-muted">No account added</p>
                   <p className="mt-1 text-xs text-muted">Google is the default provider.</p>
                 </div>
@@ -484,7 +484,7 @@ export default function EmailSyncSettingsPage() {
                             setConfirmDisconnect(false);
                           }}
                           className={cn(
-                            "flex w-full items-start gap-2 rounded-md border px-2.5 py-2 text-left transition-colors",
+                            "flex w-full items-start gap-2 rounded-none border px-2.5 py-2 text-left transition-colors",
                             active
                               ? "border-primary/30 bg-primary/[0.07]"
                               : "border-transparent bg-white hover:bg-slate-100/80",
@@ -546,7 +546,7 @@ export default function EmailSyncSettingsPage() {
                   <button
                     type="button"
                     onClick={() => setWizardOpen(true)}
-                    className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-95"
+                    className="rounded-none bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-95"
                   >
                     + Email account
                   </button>
@@ -601,7 +601,7 @@ export default function EmailSyncSettingsPage() {
                       <button
                         type="button"
                         onClick={() => startGoogleAuthorize(selected)}
-                        className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-95"
+                        className="rounded-none bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-95"
                       >
                         Connect with Google
                       </button>
@@ -615,14 +615,14 @@ export default function EmailSyncSettingsPage() {
                           onChange={(event) => setSenderName(event.target.value)}
                           placeholder={userDisplayName || "Add custom sender name."}
                           disabled={!editingSenderName || savingSenderName}
-                          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none ring-primary/20 placeholder:text-muted/80 focus:border-primary/40 focus:ring-2 disabled:bg-slate-50 disabled:opacity-80"
+                          className="h-9 w-full rounded-none border border-border bg-background px-3 text-sm text-foreground outline-none ring-primary/20 placeholder:text-muted/80 focus:border-primary/40 focus:ring-2 disabled:bg-slate-50 disabled:opacity-80"
                         />
                         {editingSenderName ? (
                           <button
                             type="button"
                             disabled={savingSenderName}
                             onClick={() => void saveSenderName()}
-                            className="shrink-0 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-95 disabled:opacity-60"
+                            className="shrink-0 rounded-none bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-95 disabled:opacity-60"
                           >
                             {savingSenderName ? "Saving…" : "Save"}
                           </button>
@@ -632,7 +632,7 @@ export default function EmailSyncSettingsPage() {
                             title="Edit sender name"
                             aria-label="Edit sender name"
                             onClick={() => setEditingSenderName(true)}
-                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-white text-muted hover:bg-slate-50 hover:text-foreground"
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-border bg-white text-muted hover:bg-slate-50 hover:text-foreground"
                           >
                             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden>
                               <path
@@ -693,7 +693,7 @@ export default function EmailSyncSettingsPage() {
                           value={syncStart}
                           onChange={(event) => setSyncStart(parseEmailSyncLookback(event.target.value))}
                           disabled={syncing || selected.syncStatus !== "ACTIVE"}
-                          className="h-9 min-w-[16rem] rounded-md border border-border bg-background px-2 text-sm text-foreground disabled:opacity-60"
+                          className="h-9 min-w-[16rem] rounded-none border border-border bg-background px-2 text-sm text-foreground disabled:opacity-60"
                         >
                           {syncLookbackOptions.map((option) => (
                             <option key={option.id} value={option.id}>
@@ -706,7 +706,7 @@ export default function EmailSyncSettingsPage() {
                         type="button"
                         disabled={syncing || selected.syncStatus !== "ACTIVE"}
                         onClick={() => void runPastEmailSync()}
-                        className="h-9 rounded-md border border-border bg-white px-3 text-sm font-medium text-foreground hover:bg-slate-50 disabled:opacity-60"
+                        className="h-9 rounded-none border border-border bg-white px-3 text-sm font-medium text-foreground hover:bg-slate-50 disabled:opacity-60"
                       >
                         {syncing ? "Syncing…" : "Sync"}
                       </button>
@@ -719,7 +719,7 @@ export default function EmailSyncSettingsPage() {
                   <section className="space-y-3 border-t border-border pt-5">
                     <h2 className="text-sm font-semibold text-foreground">Signatures</h2>
                     {signatures.length > 0 ? (
-                      <ul className="max-w-xl divide-y divide-border rounded-md border border-border">
+                      <ul className="max-w-xl divide-y divide-border rounded-none border border-border">
                         {signatures.map((item) => (
                           <li key={item.id} className="flex items-center justify-between gap-3 px-3 py-2">
                             <button
@@ -757,7 +757,7 @@ export default function EmailSyncSettingsPage() {
 
                   <section className="space-y-3 border-t border-border pt-5">
                     <h2 className="text-sm font-semibold text-foreground">Advanced settings</h2>
-                    <div className="max-w-xl rounded-md border border-border bg-slate-50/70 px-4 py-4">
+                    <div className="max-w-xl rounded-none border border-border bg-slate-50/70 px-4 py-4">
                       <p className="text-sm font-medium text-foreground">Disconnect Email Sync</p>
                       <p className="mt-1 text-sm text-muted">
                         Removes this mailbox from SendDox and clears stored Google/IMAP credentials.
@@ -767,12 +767,12 @@ export default function EmailSyncSettingsPage() {
                         <button
                           type="button"
                           onClick={() => setConfirmDisconnect(true)}
-                          className="mt-3 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                          className="mt-3 rounded-none border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
                         >
                           Disconnect Email Sync
                         </button>
                       ) : (
-                        <div className="mt-3 space-y-3 rounded-md border border-red-200 bg-red-50 px-3 py-3">
+                        <div className="mt-3 space-y-3 rounded-none border border-red-200 bg-red-50 px-3 py-3">
                           <p className="text-sm text-red-950">
                             Disconnect <span className="font-medium">{selected.email}</span>? This stops
                             syncing with SendDox until you connect again.
@@ -782,7 +782,7 @@ export default function EmailSyncSettingsPage() {
                               type="button"
                               disabled={disconnecting}
                               onClick={() => void disconnectSelectedAccount()}
-                              className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                              className="rounded-none bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
                             >
                               {disconnecting ? "Disconnecting…" : "Yes, disconnect"}
                             </button>
@@ -790,7 +790,7 @@ export default function EmailSyncSettingsPage() {
                               type="button"
                               disabled={disconnecting}
                               onClick={() => setConfirmDisconnect(false)}
-                              className="rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50 disabled:opacity-60"
+                              className="rounded-none border border-border bg-white px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50 disabled:opacity-60"
                             >
                               Cancel
                             </button>

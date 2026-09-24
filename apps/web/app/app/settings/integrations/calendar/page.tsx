@@ -235,7 +235,7 @@ export default function CalendarSyncSettingsPage() {
           {banner ? (
             <div
               className={cn(
-                "flex items-start justify-between gap-3 rounded-md border px-3 py-2 text-sm",
+                "flex items-start justify-between gap-3 rounded-none border px-3 py-2 text-sm",
                 banner.tone === "success" && "border-emerald-200 bg-emerald-50 text-emerald-950",
                 banner.tone === "warning" && "border-amber-200 bg-amber-50 text-amber-950",
                 banner.tone === "error" && "border-red-200 bg-red-50 text-red-900",
@@ -252,7 +252,7 @@ export default function CalendarSyncSettingsPage() {
             </div>
           ) : null}
           {googleConfigured === false && !banner ? (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+            <div className="rounded-none border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
               Google Calendar needs <code className="text-xs">GOOGLE_CLIENT_ID</code> and{" "}
               <code className="text-xs">GOOGLE_CLIENT_SECRET</code>. Add the redirect URI{" "}
               <code className="text-xs">/api/crm/calendar-accounts/google/callback</code> in Google Cloud,
@@ -281,7 +281,7 @@ export default function CalendarSyncSettingsPage() {
     >
       {tab === "account" ? (
         <div className="max-w-2xl space-y-5 p-5">
-          <section className="space-y-4 rounded-lg border border-border bg-white p-5">
+          <section className="space-y-4 rounded-none border border-border bg-white p-5">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-sm font-semibold text-foreground">Google Calendar</h2>
               <span
@@ -325,13 +325,13 @@ export default function CalendarSyncSettingsPage() {
                     type="button"
                     disabled={syncing}
                     onClick={() => void syncNow()}
-                    className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-95 disabled:opacity-60"
+                    className="rounded-none bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-95 disabled:opacity-60"
                   >
                     {syncing ? "Syncing…" : "Sync now"}
                   </button>
                   <Link
                     href="/app/contacts/calendar"
-                    className="rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50"
+                    className="rounded-none border border-border bg-white px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50"
                   >
                     Open Calendar
                   </Link>
@@ -348,7 +348,7 @@ export default function CalendarSyncSettingsPage() {
                   onClick={() => {
                     window.location.assign("/api/crm/calendar-accounts/google/start");
                   }}
-                  className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-95 disabled:opacity-60"
+                  className="rounded-none bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-95 disabled:opacity-60"
                 >
                   Connect Google Calendar
                 </button>
@@ -357,7 +357,7 @@ export default function CalendarSyncSettingsPage() {
           </section>
 
           {account ? (
-            <section className="space-y-3 rounded-lg border border-border bg-slate-50/70 p-5">
+            <section className="space-y-3 rounded-none border border-border bg-slate-50/70 p-5">
               <h2 className="text-sm font-semibold text-foreground">Disconnect</h2>
               <p className="text-sm text-muted">
                 Removes this Google Calendar connection and clears synced events from SendDox. Your Google Calendar
@@ -367,12 +367,12 @@ export default function CalendarSyncSettingsPage() {
                 <button
                   type="button"
                   onClick={() => setConfirmDisconnect(true)}
-                  className="rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                  className="rounded-none border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
                 >
                   Disconnect Google Calendar
                 </button>
               ) : (
-                <div className="space-y-3 rounded-md border border-red-200 bg-red-50 px-3 py-3">
+                <div className="space-y-3 rounded-none border border-red-200 bg-red-50 px-3 py-3">
                   <p className="text-sm text-red-950">
                     Disconnect <span className="font-medium">{account.email}</span>?
                   </p>
@@ -381,7 +381,7 @@ export default function CalendarSyncSettingsPage() {
                       type="button"
                       disabled={disconnecting}
                       onClick={() => void disconnect()}
-                      className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                      className="rounded-none bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
                     >
                       {disconnecting ? "Disconnecting…" : "Yes, disconnect"}
                     </button>
@@ -389,7 +389,7 @@ export default function CalendarSyncSettingsPage() {
                       type="button"
                       disabled={disconnecting}
                       onClick={() => setConfirmDisconnect(false)}
-                      className="rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50"
+                      className="rounded-none border border-border bg-white px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50"
                     >
                       Cancel
                     </button>
@@ -401,7 +401,7 @@ export default function CalendarSyncSettingsPage() {
         </div>
       ) : account ? (
         <div className="max-w-2xl space-y-5 p-5">
-          <section className="space-y-4 rounded-lg border border-border bg-white p-5">
+          <section className="space-y-4 rounded-none border border-border bg-white p-5">
             <div>
               <h2 className="text-sm font-semibold text-foreground">My Calendar events</h2>
               <p className="mt-1 text-sm text-muted">
@@ -413,7 +413,7 @@ export default function CalendarSyncSettingsPage() {
             <div className="flex flex-wrap items-center gap-3">
               <label className="inline-flex items-center gap-2 text-sm text-foreground">
                 <span
-                  className="h-8 w-8 overflow-hidden rounded-md border border-border shadow-sm"
+                  className="h-8 w-8 overflow-hidden rounded-none border border-border shadow-sm"
                   style={{ backgroundColor: eventColor }}
                 >
                   <input
@@ -431,7 +431,7 @@ export default function CalendarSyncSettingsPage() {
                 value={eventColor}
                 onChange={(event) => setEventColor(event.target.value.toUpperCase())}
                 spellCheck={false}
-                className="w-28 rounded-md border border-border bg-white px-2.5 py-1.5 font-mono text-sm text-foreground"
+                className="w-28 rounded-none border border-border bg-white px-2.5 py-1.5 font-mono text-sm text-foreground"
                 aria-label="Hex color"
               />
             </div>
@@ -472,7 +472,7 @@ export default function CalendarSyncSettingsPage() {
                 type="button"
                 disabled={savingColor || !colorDirty}
                 onClick={() => void saveEventColor()}
-                className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-95 disabled:opacity-60"
+                className="rounded-none bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-95 disabled:opacity-60"
               >
                 {savingColor ? "Saving…" : "Save color"}
               </button>
@@ -481,7 +481,7 @@ export default function CalendarSyncSettingsPage() {
                   type="button"
                   disabled={savingColor}
                   onClick={() => setEventColor(account.eventColor)}
-                  className="rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50 disabled:opacity-60"
+                  className="rounded-none border border-border bg-white px-3 py-2 text-sm font-medium text-foreground hover:bg-slate-50 disabled:opacity-60"
                 >
                   Reset
                 </button>

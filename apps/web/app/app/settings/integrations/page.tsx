@@ -150,7 +150,7 @@ export default function IntegrationsPage() {
               <td className={sheetTd()}>
                 <span
                   className={cn(
-                    "inline-flex rounded-md border px-2 py-0.5 text-xs font-medium",
+                    "inline-flex rounded-none border px-2 py-0.5 text-xs font-medium",
                     statusBadgeClass(item.status),
                   )}
                 >

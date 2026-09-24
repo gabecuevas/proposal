@@ -79,7 +79,7 @@ export function WorkspaceNameCard() {
   }
 
   return (
-    <section className="rounded-xl border border-border bg-surface p-4">
+    <section className="rounded-none border border-border bg-surface p-4">
       <h2 className="text-lg font-semibold">Company settings</h2>
       <p className="mt-1 text-sm text-muted">
         This name and logo appear on Quotes, Invoices, and across your workspace.
@@ -99,7 +99,7 @@ export function WorkspaceNameCard() {
               "flex items-center justify-center overflow-hidden text-sm text-muted",
               logoKey
                 ? "border-0 bg-transparent hover:opacity-90"
-                : "rounded-md border border-dashed border-border bg-transparent hover:border-primary/40 hover:text-foreground",
+                : "rounded-none border border-dashed border-border bg-transparent hover:border-primary/40 hover:text-foreground",
             )}
             style={{ width: COMPANY_LOGO_DISPLAY_WIDTH, height: COMPANY_LOGO_DISPLAY_HEIGHT }}
             aria-label={logoKey ? "Change company logo" : "Add company logo"}
@@ -119,7 +119,7 @@ export function WorkspaceNameCard() {
             <button
               type="button"
               onClick={() => setLogoModalOpen(true)}
-              className="rounded-md border border-border bg-white px-3 py-2 text-sm text-foreground hover:bg-slate-50"
+              className="rounded-none border border-border bg-white px-3 py-2 text-sm text-foreground hover:bg-slate-50"
             >
               {logoKey ? "Replace logo" : "Upload logo"}
             </button>
@@ -128,7 +128,7 @@ export function WorkspaceNameCard() {
                 type="button"
                 disabled={busy}
                 onClick={() => void saveLogoKey(null)}
-                className="rounded-md px-3 py-2 text-sm text-muted hover:bg-slate-100 hover:text-foreground disabled:opacity-40"
+                className="rounded-none px-3 py-2 text-sm text-muted hover:bg-slate-100 hover:text-foreground disabled:opacity-40"
               >
                 Remove
               </button>
@@ -149,7 +149,7 @@ export function WorkspaceNameCard() {
           <button
             type="button"
             onClick={() => void saveName()}
-            className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground"
+            className="rounded-none bg-primary px-3 py-2 text-sm text-primary-foreground"
           >
             Save
           </button>
