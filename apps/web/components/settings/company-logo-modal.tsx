@@ -143,7 +143,7 @@ export function CompanyLogoModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="w-full max-w-md overflow-hidden rounded-xl border border-border bg-white shadow-2xl"
+        className="w-full max-w-md overflow-hidden rounded-none border border-border bg-white shadow-2xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -154,7 +154,7 @@ export function CompanyLogoModal({
             type="button"
             onClick={onClose}
             disabled={disabled}
-            className="rounded-md px-2 py-1 text-sm text-muted hover:bg-slate-100 disabled:opacity-40"
+            className="rounded-none px-2 py-1 text-sm text-muted hover:bg-slate-100 disabled:opacity-40"
           >
             Close
           </button>
@@ -172,7 +172,7 @@ export function CompanyLogoModal({
               "mx-auto flex items-center justify-center overflow-hidden",
               previewUrl
                 ? "border-0 bg-transparent"
-                : "rounded-md border border-dashed border-border bg-transparent",
+                : "rounded-none border border-dashed border-border bg-transparent",
             )}
             style={{ width: COMPANY_LOGO_DISPLAY_WIDTH, height: COMPANY_LOGO_DISPLAY_HEIGHT }}
           >
@@ -210,7 +210,7 @@ export function CompanyLogoModal({
               type="button"
               disabled={disabled}
               onClick={() => inputRef.current?.click()}
-              className="rounded-md border border-border bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-40"
+              className="rounded-none border border-border bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-40"
             >
               Choose image
             </button>
@@ -219,7 +219,7 @@ export function CompanyLogoModal({
               disabled={disabled || !pendingFile}
               onClick={() => void upload()}
               className={cn(
-                "rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-40",
+                "rounded-none bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-40",
               )}
             >
               {uploading ? "Uploading…" : "Use this logo"}

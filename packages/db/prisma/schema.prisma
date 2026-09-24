@@ -50,6 +50,9 @@ model Workspace {
   members       WorkspaceMember[]
   invites       WorkspaceInvite[]
   onboardingStates UserWorkspaceOnboarding[]
+  activitySessions ActivitySession[]
+  supportConversations SupportConversation[]
+  campaignDeliveries CampaignDelivery[]
   contacts      Contact[]
   companies     Company[]
   leads         Lead[]
@@ -367,7 +370,15 @@ model User {
   verification_generation Int              @default(0)
   provisional_company_name String?
   avatar_asset_key       String?
+  phone                  String?
   personal_timezone      String?
+  timezone_source        String?
+  city                   String?
+  city_source            String?
+  is_platform_admin      Boolean           @default(false)
+  last_login_at          DateTime?
+  last_active_at         DateTime?
+  tracked_since          DateTime?
   terms_accepted_at      DateTime?
   terms_version          String?
   privacy_version        String?
@@ -379,6 +390,13 @@ model User {
   owned_workspaces       Workspace[]       @relation("workspace_owner")
   auth_tokens            AuthToken[]
   onboarding_states      UserWorkspaceOnboarding[]
+  activity_sessions      ActivitySession[]
+  support_conversations  SupportConversation[] @relation("support_conversation_customer")
+  support_messages_sent  SupportMessage[]      @relation("support_message_sender")
+  support_read_states    SupportReadState[]
+  support_contact_notes_about SupportContactNote[] @relation("support_note_subject")
+  support_contact_notes_authored SupportContactNote[] @relation("support_note_author")
+  campaign_deliveries    CampaignDelivery[]
   owned_contacts         Contact[]         @relation("contact_owner")
   owned_companies        Company[]         @relation("company_owner")
   owned_leads            Lead[]            @relation("lead_owner")
@@ -389,6 +407,11 @@ model User {
   crm_email_templates    CrmEmailTemplate[]
   crm_email_signatures   CrmEmailSignature[]
   crm_calendar_accounts  CrmCalendarAccount[]
+
+  @@index([is_platform_admin])
+  @@index([last_login_at])
+  @@index([last_active_at])
+  @@index([created_at])
 }
 
 model Contact {
@@ -1095,4 +1118,263 @@ model CrmCalendarEvent {
   @@unique([workspace_id, external_id])
   @@index([workspace_id, starts_at])
   @@index([account_id, starts_at])
+}
+
+// --- Platform support module ---
+
+model ActivitySession {
+  id           String   @id @default(cuid())
+  user_id      String
+  workspace_id String?
+  started_at   DateTime @default(now())
+  last_seen_at DateTime @default(now())
+  ended_at     DateTime?
+  created_at   DateTime @default(now())
+
+  user      User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  workspace Workspace? @relation(fields: [workspace_id], references: [id], onDelete: SetNull)
+
+  @@index([user_id, started_at])
+  @@index([user_id, last_seen_at])
+  @@index([workspace_id, started_at])
+}
+
+enum SupportConversationStatus {
+  OPEN
+  WAITING_ON_CUSTOMER
+  RESOLVED
+}
+
+enum SupportConversationPriority {
+  NORMAL
+  HIGH
+}
+
+enum SupportMessageSource {
+  IN_APP
+  EMAIL
+  SYSTEM
+}
+
+enum SupportMessageVisibility {
+  PUBLIC
+  INTERNAL
+}
+
+model SupportConversation {
+  id                 String                     @id @default(cuid())
+  customer_user_id   String
+  workspace_id       String?
+  subject            String
+  status             SupportConversationStatus  @default(OPEN)
+  priority           SupportConversationPriority @default(NORMAL)
+  assignee_admin_id  String?
+  source             String                     @default("messenger")
+  campaign_delivery_id String?
+  last_message_at    DateTime                   @default(now())
+  last_public_preview String?
+  customer_unread_count Int                     @default(0)
+  admin_unread_count Int                        @default(0)
+  created_at         DateTime                   @default(now())
+  updated_at         DateTime                   @updatedAt
+
+  customer  User            @relation("support_conversation_customer", fields: [customer_user_id], references: [id], onDelete: Cascade)
+  workspace Workspace?      @relation(fields: [workspace_id], references: [id], onDelete: SetNull)
+  messages  SupportMessage[]
+  readStates SupportReadState[]
+  replyTokens SupportReplyToken[]
+  emailDeliveries SupportEmailDelivery[]
+
+  @@index([status, last_message_at])
+  @@index([assignee_admin_id, status, last_message_at])
+  @@index([customer_user_id, last_message_at])
+  @@index([workspace_id, last_message_at])
+}
+
+model SupportMessage {
+  id              String                   @id @default(cuid())
+  conversation_id String
+  sender_user_id  String?
+  visibility      SupportMessageVisibility @default(PUBLIC)
+  source          SupportMessageSource     @default(IN_APP)
+  body_html       String
+  body_text       String
+  client_op_id    String?
+  sequence        Int
+  email_message_id String?
+  provider_email_id String?
+  delivery_status String?
+  created_at      DateTime                 @default(now())
+
+  conversation SupportConversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  sender       User?               @relation("support_message_sender", fields: [sender_user_id], references: [id], onDelete: SetNull)
+
+  @@unique([conversation_id, sequence])
+  @@unique([sender_user_id, client_op_id])
+  @@index([conversation_id, created_at])
+  @@index([provider_email_id])
+}
+
+model SupportReadState {
+  id                    String   @id @default(cuid())
+  conversation_id       String
+  user_id               String
+  last_read_sequence    Int      @default(0)
+  updated_at            DateTime @updatedAt
+
+  conversation SupportConversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  user         User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([conversation_id, user_id])
+}
+
+model SupportContactNote {
+  id               String   @id @default(cuid())
+  subject_user_id  String
+  author_admin_id  String
+  body             String
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  subject User @relation("support_note_subject", fields: [subject_user_id], references: [id], onDelete: Cascade)
+  author  User @relation("support_note_author", fields: [author_admin_id], references: [id], onDelete: Cascade)
+
+  @@index([subject_user_id, created_at])
+}
+
+model SupportReplyToken {
+  id              String    @id @default(cuid())
+  conversation_id String
+  recipient_user_id String
+  token_hash      String    @unique
+  revoked_at      DateTime?
+  created_at      DateTime  @default(now())
+
+  conversation SupportConversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+
+  @@index([conversation_id, recipient_user_id])
+}
+
+model SupportEmailDelivery {
+  id              String   @id @default(cuid())
+  conversation_id String
+  message_id      String?
+  to_email        String
+  provider_id     String?
+  status          String   @default("queued")
+  scheduled_at    DateTime @default(now())
+  sent_at         DateTime?
+  last_error      String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  conversation SupportConversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduled_at])
+  @@index([conversation_id, created_at])
+}
+
+model SupportJob {
+  id              String    @id @default(cuid())
+  type            String
+  payload_json    Json
+  status          String    @default("pending")
+  attempts        Int       @default(0)
+  lease_expires_at DateTime?
+  run_after       DateTime  @default(now())
+  last_error      String?
+  idempotency_key String?   @unique
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  @@index([status, run_after])
+}
+
+model SupportAuditEvent {
+  id           String   @id @default(cuid())
+  actor_user_id String?
+  action       String
+  target_type  String?
+  target_id    String?
+  metadata_json Json?
+  created_at   DateTime @default(now())
+
+  @@index([action, created_at])
+  @@index([actor_user_id, created_at])
+}
+
+model SavedAudience {
+  id           String   @id @default(cuid())
+  name         String
+  filters_json Json
+  created_by   String
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+}
+
+enum InAppCampaignStatus {
+  DRAFT
+  SCHEDULED
+  LIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+model InAppCampaign {
+  id              String              @id @default(cuid())
+  title           String
+  status          InAppCampaignStatus @default(DRAFT)
+  sender_user_id  String?
+  body_html       String
+  body_text       String
+  cta_label       String?
+  cta_url         String?
+  filters_json    Json
+  delivery_mode   String              @default("ongoing")
+  starts_at       DateTime?
+  ends_at         DateTime?
+  published_version Int               @default(1)
+  snapshot_json   Json?
+  created_by      String
+  created_at      DateTime            @default(now())
+  updated_at      DateTime            @updatedAt
+
+  deliveries CampaignDelivery[]
+
+  @@index([status, starts_at])
+}
+
+model CampaignDelivery {
+  id              String    @id @default(cuid())
+  campaign_id     String
+  user_id         String
+  workspace_id    String?
+  campaign_version Int      @default(1)
+  delivered_at    DateTime  @default(now())
+  viewed_at       DateTime?
+  clicked_at      DateTime?
+  replied_at      DateTime?
+  conversation_id String?
+
+  campaign  InAppCampaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  workspace Workspace?    @relation(fields: [workspace_id], references: [id], onDelete: SetNull)
+
+  @@unique([campaign_id, user_id, campaign_version])
+  @@index([user_id, delivered_at])
+  @@index([campaign_id, delivered_at])
+}
+
+model InboundEmailEvent {
+  id              String   @id @default(cuid())
+  provider_event_id String @unique
+  provider_email_id String?
+  status          String   @default("received")
+  raw_meta_json   Json?
+  created_at      DateTime @default(now())
+  processed_at    DateTime?
+  last_error      String?
+
+  @@index([status, created_at])
 }

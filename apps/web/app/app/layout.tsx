@@ -3,6 +3,7 @@ import { DM_Sans, Instrument_Serif } from "next/font/google";
 import { prisma } from "@repo/db";
 import { AppShellLayout } from "@/components/app-shell";
 import { getServerSession } from "@/lib/auth/server-session";
+import { isSupportMessengerEnabled } from "@/lib/support/flags";
 
 const fontSans = DM_Sans({
   subsets: ["latin"],
@@ -36,7 +37,11 @@ export default async function AppLayout({ children }: Readonly<{ children: React
 
   return (
     <div className={`${fontSans.variable} ${fontSerif.variable}`}>
-      <AppShellLayout userEmail={email} userName={displayName(user?.name, email)}>
+      <AppShellLayout
+        userEmail={email}
+        userName={displayName(user?.name, email)}
+        messengerEnabled={isSupportMessengerEnabled()}
+      >
         {children}
       </AppShellLayout>
     </div>

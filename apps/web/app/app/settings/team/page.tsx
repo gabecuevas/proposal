@@ -118,14 +118,14 @@ export default function SettingsTeamPage() {
         <p className="text-sm text-muted">Invite teammates and manage pending invitations.</p>
         <div className="mt-6 flex max-w-xl flex-wrap gap-2">
           <input
-            className="min-w-[220px] flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+            className="min-w-[220px] flex-1 rounded-none border border-border bg-surface px-3 py-2 text-sm"
             placeholder="Email"
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
           />
           <select
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+            className="rounded-none border border-border bg-surface px-3 py-2 text-sm"
             value={role}
             onChange={(event) => setRole(event.target.value as "ADMIN" | "MEMBER")}
           >
@@ -135,7 +135,7 @@ export default function SettingsTeamPage() {
           <button
             type="button"
             onClick={() => void sendInvite()}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+            className="rounded-none bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
           >
             Send invite
           </button>

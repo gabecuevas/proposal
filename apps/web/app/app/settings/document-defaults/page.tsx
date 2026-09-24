@@ -94,7 +94,7 @@ export default function SettingsDocumentDefaultsPage() {
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Default currency</span>
           <input
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-none border border-border bg-surface px-3 py-2"
             value={form.currency}
             onChange={(event) => setForm((prev) => ({ ...prev, currency: event.target.value.toUpperCase() }))}
             maxLength={3}
@@ -104,7 +104,7 @@ export default function SettingsDocumentDefaultsPage() {
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Time zone</span>
           <input
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-none border border-border bg-surface px-3 py-2"
             value={form.timezone}
             onChange={(event) => setForm((prev) => ({ ...prev, timezone: event.target.value }))}
             required
@@ -113,7 +113,7 @@ export default function SettingsDocumentDefaultsPage() {
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Locale</span>
           <input
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-none border border-border bg-surface px-3 py-2"
             value={form.locale}
             onChange={(event) => setForm((prev) => ({ ...prev, locale: event.target.value }))}
             required
@@ -122,7 +122,7 @@ export default function SettingsDocumentDefaultsPage() {
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Quote validity (days)</span>
           <input
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-none border border-border bg-surface px-3 py-2"
             type="number"
             min={1}
             max={365}
@@ -138,7 +138,7 @@ export default function SettingsDocumentDefaultsPage() {
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Invoice payment terms (days)</span>
           <input
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2"
+            className="w-full rounded-none border border-border bg-surface px-3 py-2"
             type="number"
             min={0}
             max={365}
@@ -156,7 +156,7 @@ export default function SettingsDocumentDefaultsPage() {
         <button
           type="submit"
           disabled={loading}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
+          className="rounded-none bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
         >
           {loading ? "Saving..." : "Save changes"}
         </button>

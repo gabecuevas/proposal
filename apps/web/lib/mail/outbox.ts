@@ -61,11 +61,21 @@ export async function processPendingMail(limit = 20): Promise<{ sent: number; fa
   let failed = 0;
 
   for (const row of pending) {
+    let replyTo: string | undefined;
+    if (row.sensitive_payload) {
+      try {
+        const parsed = JSON.parse(row.sensitive_payload) as { replyTo?: string };
+        replyTo = parsed.replyTo;
+      } catch {
+        replyTo = undefined;
+      }
+    }
     const result = await adapter.send({
       to: row.to_email,
       subject: row.subject,
       html: row.html_body,
       text: row.text_body,
+      replyTo,
     });
     if (result.accepted) {
       await prisma.mailOutbox.update({
