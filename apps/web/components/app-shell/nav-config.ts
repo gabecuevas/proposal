@@ -127,13 +127,15 @@ export const appSections: AppSection[] = [
     showInTopNav: false,
     createCta: false,
     items: [
-      { label: "Company settings", href: "/app/settings" },
+      { label: "Profile", href: "/app/settings/profile" },
+      { label: "Company", href: "/app/settings/company" },
+      { label: "Branding", href: "/app/settings/branding" },
+      { label: "Team", href: "/app/settings/team" },
+      { label: "Document defaults", href: "/app/settings/document-defaults" },
+      { label: "Security", href: "/app/settings/security" },
       { label: "Integrations", href: "/app/settings/integrations" },
-      { label: "Marketing templates", href: "/app/settings/marketing-templates" },
-      { label: "All users", href: "/app/settings/users" },
-      { label: "Calendar Sync", href: "/app/settings/integrations/calendar" },
-      { label: "Email Sync", href: "/app/settings/integrations/email" },
       { label: "Billing", href: "/app/settings/billing" },
+      { label: "Company settings", href: "/app/settings" },
       { label: "Analytics", href: "/app/analytics" },
       { label: "Compliance", href: "/app/settings#compliance" },
       { label: "Developer API", href: "/app/settings#api-keys" },
@@ -141,6 +143,13 @@ export const appSections: AppSection[] = [
     ],
   },
 ];
+
+/** Platform support admin entry — only appended after a trusted server check. */
+export const PLATFORM_ADMIN_NAV_ITEM: AppNavItem = {
+  label: "Admin",
+  href: "/admin/contacts",
+  matchPrefix: true,
+};
 
 export const EMAIL_INBOX_NAV: AppNavItem[] = [
   { label: "Inbox", href: "/app/contacts/inbox", icon: "inbox", countKey: "inbox" },

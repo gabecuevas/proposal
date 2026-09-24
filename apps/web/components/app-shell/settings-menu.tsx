@@ -140,7 +140,7 @@ export function SettingsMenu({ userName, userEmail, userInitials, active }: Sett
                 onClick={() => setOpen(false)}
                 className="block px-3 py-2 text-sm text-foreground transition-colors hover:bg-slate-50"
               >
-                Platform admin
+                Admin
               </Link>
             </div>
           ) : null}
