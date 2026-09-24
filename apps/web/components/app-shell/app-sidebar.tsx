@@ -18,7 +18,9 @@ import {
   navItemHrefHash,
   sidebarExtrasForSection,
   sidebarItemsForSection,
+  PLATFORM_ADMIN_NAV_ITEM,
   type AppSection,
+  type AppNavItem,
   type CountKey,
   type SectionId,
 } from "./nav-config";
@@ -38,6 +40,35 @@ type AppSidebarProps = {
 };
 
 type Counts = Partial<Record<CountKey, number>>;
+
+function usePlatformAdminNav(enabled: boolean): AppNavItem | null {
+  const [item, setItem] = useState<AppNavItem | null>(null);
+
+  useEffect(() => {
+    if (!enabled) {
+      setItem(null);
+      return;
+    }
+    let cancelled = false;
+    void fetch("/api/admin/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { isPlatformAdmin?: boolean } | null) => {
+        if (!cancelled) {
+          setItem(data?.isPlatformAdmin ? PLATFORM_ADMIN_NAV_ITEM : null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setItem(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled]);
+
+  return item;
+}
 
 function useTeamMemberCount(enabled: boolean): number | null {
   const [count, setCount] = useState<number | null>(null);
@@ -157,6 +188,11 @@ export function AppSidebar({
     Boolean(section.filters?.some((filter) => filter.id === "members")),
   );
   const navItems = sidebarItemsForSection(section, pathname);
+  const platformAdminItem = usePlatformAdminNav(section.id === "settings");
+  const settingsNavItems =
+    section.id === "settings" && platformAdminItem
+      ? [...navItems, platformAdminItem]
+      : navItems;
   const extras = sidebarExtrasForSection(section, pathname);
   const inboxShelf = isEmailInboxPath(pathname);
   const [createBusy, setCreateBusy] = useState(false);
@@ -269,7 +305,7 @@ export function AppSidebar({
         ) : null}
 
         <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
-          {navItems.map((item) => {
+          {settingsNavItems.map((item) => {
             const active = isNavItemActive(item, pathname, tabParam, hash);
             const count = item.countKey ? counts[item.countKey] : undefined;
             const itemHash = navItemHrefHash(item.href);
