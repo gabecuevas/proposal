@@ -33,7 +33,12 @@ export const companySetupSchema = z
     timezone: z.string().trim().min(1).max(80),
     currency: z.string().trim().min(3).max(3),
     logoAssetKey: z.string().trim().max(500).optional().nullable(),
-    onboardingOperationId: z.string().trim().min(8).max(80).optional(),
+    onboardingOperationId: z
+      .string()
+      .trim()
+      .max(80)
+      .optional()
+      .transform((value) => (value && value.length >= 8 ? value : undefined)),
   })
   .superRefine((value, ctx) => {
     if (!value.noWebsite && !value.website?.trim()) {
