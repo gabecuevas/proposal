@@ -81,7 +81,8 @@ export async function GET(request: NextRequest) {
   try {
     const { recordSuccessfulLogin } = await import("@/lib/support/activity");
     const { syncPlatformAdminFlag } = await import("@/lib/support/platform-admin");
-    await recordSuccessfulLogin(resolved.payload.userId);
+    const { ipLocationFromHeaders } = await import("@/lib/support/geo");
+    await recordSuccessfulLogin(resolved.payload.userId, ipLocationFromHeaders(request.headers));
     await syncPlatformAdminFlag(resolved.payload.userId, resolved.payload.email);
   } catch (error) {
     console.error("[auth/google] support post-login hooks failed", error);

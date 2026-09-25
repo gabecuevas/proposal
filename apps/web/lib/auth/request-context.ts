@@ -1,6 +1,7 @@
 import { prisma } from "@repo/db";
 import type { NextRequest } from "next/server";
 import { getApiKeyFromRequestAuthHeader, hashApiKey, isApiKeyExpired } from "./api-keys";
+import { isSudoSessionLive, recordSudoRequest } from "./account-status";
 import { hasRole, type WorkspaceRole } from "./rbac";
 import { requireSessionFromRequest } from "./session";
 
@@ -11,6 +12,8 @@ export type RequestAuthContext = {
   email: string;
   authType: "session" | "api-key";
   apiKeyId?: string;
+  /** Present when a platform admin is acting as this user (sudo). */
+  impersonatorUserId?: string;
 };
 
 export async function getRequestAuthContext(request: NextRequest): Promise<RequestAuthContext> {
@@ -57,9 +60,19 @@ export async function getRequestAuthContext(request: NextRequest): Promise<Reque
       workspace_id: session.workspaceId,
       user_id: session.userId,
     },
+    include: { user: { select: { disabled_at: true } } },
   });
   if (!member) {
     throw new Error("Forbidden");
+  }
+  if (member.user.disabled_at) {
+    throw new Error("Unauthorized");
+  }
+  if (session.impersonationId) {
+    if (!(await isSudoSessionLive(session))) {
+      throw new Error("Unauthorized");
+    }
+    await recordSudoRequest(session, request);
   }
 
   return {
@@ -68,6 +81,7 @@ export async function getRequestAuthContext(request: NextRequest): Promise<Reque
     role: member.role as WorkspaceRole,
     email: session.email,
     authType: "session",
+    impersonatorUserId: session.impersonatorUserId,
   };
 }
 

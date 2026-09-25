@@ -1,6 +1,7 @@
 import { prisma } from "@repo/db";
 import type { NextRequest } from "next/server";
 import { errorResponse } from "@/lib/api/response";
+import { ACCOUNT_DISABLED_MESSAGE } from "@/lib/auth/account-status";
 import { verifyPassword } from "@/lib/auth/password";
 import { buildSessionPayloadFromUser, postAuthRedirectPath } from "@/lib/auth/session-builder";
 import { jsonWithSessionCookie } from "@/lib/auth/session-cookie";
@@ -43,6 +44,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (user.disabled_at) {
+      return errorResponse(request, {
+        status: 403,
+        code: "account_disabled",
+        message: ACCOUNT_DISABLED_MESSAGE,
+      });
+    }
+
     const payload = await buildSessionPayloadFromUser(user);
     const redirectHint = postAuthRedirectPath(payload, body.next ?? null);
 
@@ -50,7 +59,8 @@ export async function POST(request: NextRequest) {
     try {
       const { recordSuccessfulLogin } = await import("@/lib/support/activity");
       const { syncPlatformAdminFlag } = await import("@/lib/support/platform-admin");
-      await recordSuccessfulLogin(user.id);
+      const { ipLocationFromHeaders } = await import("@/lib/support/geo");
+      await recordSuccessfulLogin(user.id, ipLocationFromHeaders(request.headers));
       await syncPlatformAdminFlag(user.id, user.email);
     } catch (error) {
       console.error("[auth/login] support post-login hooks failed", error);

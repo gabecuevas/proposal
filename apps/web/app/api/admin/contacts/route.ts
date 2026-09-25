@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { jsonWithRequestId } from "@/lib/api/response";
 import {
   exportContactsCsv,
+  parseContactFilters,
   searchPlatformContacts,
   type ContactSortField,
 } from "@/lib/support/contacts";
@@ -21,15 +22,16 @@ export async function GET(request: NextRequest) {
   const pageSize = Number(url.searchParams.get("pageSize") ?? "25");
   const sort = (url.searchParams.get("sort") ?? "last_active_at") as ContactSortField;
   const sortDir = url.searchParams.get("sortDir") === "asc" ? "asc" : "desc";
+  const filters = parseContactFilters(url.searchParams);
 
   if (format === "csv") {
-    const csv = await exportContactsCsv({ search });
+    const csv = await exportContactsCsv({ search, filters });
     await prisma.supportAuditEvent.create({
       data: {
         actor_user_id: admin.userId,
         action: "contacts.export_csv",
         target_type: "User",
-        metadata_json: { search: search ?? null },
+        metadata_json: { search: search ?? null, ...filters },
       },
     });
     return new Response(csv, {
@@ -48,6 +50,7 @@ export async function GET(request: NextRequest) {
     pageSize: Number.isFinite(pageSize) ? pageSize : 25,
     sort,
     sortDir,
+    filters,
   });
 
   return jsonWithRequestId(request, result);

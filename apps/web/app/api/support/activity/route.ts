@@ -6,6 +6,7 @@ import {
   isSupportMessengerEnabled,
 } from "@/lib/support/flags";
 import { recordMeaningfulActivity } from "@/lib/support/activity";
+import { ipLocationFromHeaders } from "@/lib/support/geo";
 
 export async function POST(request: NextRequest) {
   if (!isSupportMessengerEnabled() && !isSupportAdminEnabled()) {
@@ -15,6 +16,9 @@ export async function POST(request: NextRequest) {
   const session = await requireSessionFromRequest(request);
   if (!session) {
     return jsonWithRequestId(request, { ok: false }, { status: 401 });
+  }
+  if (session.impersonationId) {
+    return jsonWithRequestId(request, { ok: true, skipped: true });
   }
 
   let workspaceId: string | null = null;
@@ -28,6 +32,7 @@ export async function POST(request: NextRequest) {
   await recordMeaningfulActivity({
     userId: session.userId,
     workspaceId,
+    location: ipLocationFromHeaders(request.headers),
   });
 
   return jsonWithRequestId(request, { ok: true });
