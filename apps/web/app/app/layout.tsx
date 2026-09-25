@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { DM_Sans, Instrument_Serif } from "next/font/google";
+import { redirect } from "next/navigation";
 import { prisma } from "@repo/db";
 import { AppShellLayout } from "@/components/app-shell";
 import { getServerSession } from "@/lib/auth/server-session";
@@ -32,15 +33,39 @@ export default async function AppLayout({ children }: Readonly<{ children: React
   const session = await getServerSession();
   const email = session?.email ?? "unknown";
   const user = session
-    ? await prisma.user.findUnique({ where: { id: session.userId }, select: { name: true } })
+    ? await prisma.user.findUnique({
+        where: { id: session.userId },
+        select: { name: true, email: true, disabled_at: true },
+      })
     : null;
+
+  if (session && user?.disabled_at && !session.impersonationId) {
+    redirect("/api/auth/disabled");
+  }
+
+  let sudo: { targetEmail: string; adminEmail: string; expiresAt: string } | null = null;
+  if (session?.impersonationId) {
+    const record = await prisma.supportImpersonationSession.findUnique({
+      where: { id: session.impersonationId },
+      select: { admin_email: true, target_email: true, expires_at: true, ended_at: true },
+    });
+    if (!record || record.ended_at || record.expires_at <= new Date() || user?.disabled_at) {
+      redirect("/api/admin/sudo/end");
+    }
+    sudo = {
+      targetEmail: user?.email ?? record.target_email,
+      adminEmail: record.admin_email,
+      expiresAt: record.expires_at.toISOString(),
+    };
+  }
 
   return (
     <div className={`${fontSans.variable} ${fontSerif.variable}`}>
       <AppShellLayout
         userEmail={email}
         userName={displayName(user?.name, email)}
-        messengerEnabled={isSupportMessengerEnabled()}
+        messengerEnabled={isSupportMessengerEnabled() && !sudo}
+        sudo={sudo}
       >
         {children}
       </AppShellLayout>

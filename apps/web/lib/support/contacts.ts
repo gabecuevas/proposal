@@ -1,7 +1,10 @@
 import { Prisma } from "@repo/db";
 import { prisma } from "@repo/db";
 import { parseAudienceFilters, audienceFiltersToWhere } from "@/lib/support/audience";
+import { countQualifiedSessions, countTrackedSessions } from "@/lib/support/activity";
 import { rowsToCsv } from "@/lib/support/csv";
+import { formatIpCity } from "@/lib/support/geo";
+import { formatAccountId, formatUserId, parsePublicId } from "@/lib/support/public-ids";
 
 export type ContactSortField =
   | "email"
@@ -10,6 +13,74 @@ export type ContactSortField =
   | "last_active_at"
   | "created_at";
 
+export const CONTACT_STATUSES = ["active", "disabled", "archived"] as const;
+export const CONTACT_TYPES = ["owner", "user"] as const;
+export const CONTACT_FLAGS = ["frozen", "unverified"] as const;
+
+export type ContactStatus = (typeof CONTACT_STATUSES)[number];
+export type ContactType = (typeof CONTACT_TYPES)[number];
+export type ContactFlag = (typeof CONTACT_FLAGS)[number];
+
+export type ContactFilters = {
+  statuses: ContactStatus[];
+  types: ContactType[];
+  flags: ContactFlag[];
+};
+
+/** Default Contacts view hides archived accounts. */
+export const DEFAULT_CONTACT_STATUSES: ContactStatus[] = ["active", "disabled"];
+
+function parseList<T extends string>(value: string | null | undefined, allowed: readonly T[]): T[] {
+  if (!value) {
+    return [];
+  }
+  return [...new Set(value.split(","))].filter((v): v is T => allowed.includes(v as T));
+}
+
+export function parseContactFilters(params: URLSearchParams): ContactFilters {
+  const rawStatus = params.get("status");
+  return {
+    statuses: rawStatus === null ? DEFAULT_CONTACT_STATUSES : parseList(rawStatus, CONTACT_STATUSES),
+    types: parseList(params.get("type"), CONTACT_TYPES),
+    flags: parseList(params.get("flags"), CONTACT_FLAGS),
+  };
+}
+
+const statusWhereMap: Record<ContactStatus, Prisma.UserWhereInput> = {
+  active: { archived_at: null, disabled_at: null },
+  disabled: { archived_at: null, disabled_at: { not: null } },
+  archived: { archived_at: { not: null } },
+};
+
+const typeWhereMap: Record<ContactType, Prisma.UserWhereInput> = {
+  owner: { workspace_memberships: { some: { role: "OWNER" } } },
+  user: { workspace_memberships: { none: { role: "OWNER" } } },
+};
+
+const flagWhereMap: Record<ContactFlag, Prisma.UserWhereInput> = {
+  frozen: {
+    workspace_memberships: {
+      some: { role: "OWNER", workspace: { billing_frozen_at: { not: null } } },
+    },
+  },
+  unverified: { email_verified_at: null },
+};
+
+/** Statuses and types match any checked option (empty = any); every checked flag must match. */
+export function contactFiltersToWhere(filters: ContactFilters): Prisma.UserWhereInput[] {
+  const clauses: Prisma.UserWhereInput[] = [];
+  if (filters.statuses.length > 0 && filters.statuses.length < CONTACT_STATUSES.length) {
+    clauses.push({ OR: filters.statuses.map((s) => statusWhereMap[s]) });
+  }
+  if (filters.types.length > 0 && filters.types.length < CONTACT_TYPES.length) {
+    clauses.push({ OR: filters.types.map((t) => typeWhereMap[t]) });
+  }
+  for (const flag of filters.flags) {
+    clauses.push(flagWhereMap[flag]);
+  }
+  return clauses;
+}
+
 export async function searchPlatformContacts(query: {
   search?: string;
   page?: number;
@@ -17,6 +88,7 @@ export async function searchPlatformContacts(query: {
   sort?: ContactSortField;
   sortDir?: "asc" | "desc";
   filtersJson?: unknown;
+  filters?: ContactFilters;
 }) {
   const page = Math.max(1, query.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, query.pageSize ?? 25));
@@ -25,12 +97,26 @@ export async function searchPlatformContacts(query: {
   const audienceWhere = audienceFiltersToWhere(parseAudienceFilters(query.filtersJson));
 
   const where: Prisma.UserWhereInput = { ...audienceWhere };
+  const filterClauses = contactFiltersToWhere(
+    query.filters ?? { statuses: DEFAULT_CONTACT_STATUSES, types: [], flags: [] },
+  );
+  if (filterClauses.length > 0) {
+    where.AND = [
+      ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+      ...filterClauses,
+    ];
+  }
   if (query.search?.trim()) {
     const q = query.search.trim();
+    const publicId = parsePublicId(q);
     where.AND = [
       ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
       {
         OR: [
+          ...(publicId?.kind === "user" ? [{ user_number: publicId.number }] : []),
+          ...(publicId?.kind === "account"
+            ? [{ workspace_memberships: { some: { workspace: { account_number: publicId.number } } } }]
+            : []),
           { email: { contains: q, mode: "insensitive" } },
           { name: { contains: q, mode: "insensitive" } },
           {
@@ -43,7 +129,10 @@ export async function searchPlatformContacts(query: {
     ];
   }
 
-  const orderBy: Prisma.UserOrderByWithRelationInput = { [sort]: sortDir };
+  const orderBy: Prisma.UserOrderByWithRelationInput =
+    sort === "created_at" || sort === "email" || sort === "name"
+      ? { [sort]: sortDir }
+      : { [sort]: { sort: sortDir, nulls: "last" } };
 
   const [total, users] = await Promise.all([
     prisma.user.count({ where }),
@@ -54,15 +143,20 @@ export async function searchPlatformContacts(query: {
       take: pageSize,
       select: {
         id: true,
+        user_number: true,
         email: true,
         name: true,
         phone: true,
         city: true,
         city_source: true,
-        personal_timezone: true,
-        timezone_source: true,
+        ip_region: true,
+        ip_country: true,
+        ip_timezone: true,
         email_verified_at: true,
         is_platform_admin: true,
+        disabled_at: true,
+        disabled_reason: true,
+        archived_at: true,
         last_login_at: true,
         last_active_at: true,
         tracked_since: true,
@@ -71,7 +165,6 @@ export async function searchPlatformContacts(query: {
           select: {
             workspace_memberships: true,
             support_conversations: true,
-            activity_sessions: true,
           },
         },
         workspace_memberships: {
@@ -80,7 +173,9 @@ export async function searchPlatformContacts(query: {
             workspace: {
               select: {
                 id: true,
+                account_number: true,
                 name: true,
+                billing_frozen_at: true,
                 _count: { select: { members: true } },
               },
             },
@@ -91,6 +186,7 @@ export async function searchPlatformContacts(query: {
       },
     }),
   ]);
+  const sessionCounts = await countQualifiedSessions(users.map((u) => u.id));
 
   return {
     total,
@@ -98,22 +194,33 @@ export async function searchPlatformContacts(query: {
     pageSize,
     contacts: users.map((u) => {
       const primary = u.workspace_memberships[0] ?? null;
+      const billingFrozen = u.workspace_memberships.some(
+        (m) => m.role === "OWNER" && m.workspace.billing_frozen_at,
+      );
       return {
+        disabledAt: u.disabled_at?.toISOString() ?? null,
+        disabledReason: u.disabled_reason,
+        archivedAt: u.archived_at?.toISOString() ?? null,
+        billingFrozen,
+        status: u.archived_at ? "Archived" : u.disabled_at ? "Disabled" : "Active",
         id: u.id,
+        userId: formatUserId(u.user_number),
+        accountId: primary ? formatAccountId(primary.workspace.account_number) : null,
         email: u.email,
         name: u.name,
         phone: u.phone,
-        city: u.city ?? "Unknown",
-        citySource: u.city_source,
-        timezone: u.personal_timezone ?? "Unknown",
-        timezoneSource: u.timezone_source,
+        city:
+          u.city_source === "ip"
+            ? formatIpCity({ city: u.city, region: u.ip_region, country: u.ip_country })
+            : "Unknown",
+        timezone: u.ip_timezone ?? "Unknown",
         emailVerified: Boolean(u.email_verified_at),
         isPlatformAdmin: u.is_platform_admin,
         lastLoginAt: u.last_login_at?.toISOString() ?? null,
         lastActiveAt: u.last_active_at?.toISOString() ?? null,
         trackedSince: u.tracked_since?.toISOString() ?? null,
         createdAt: u.created_at.toISOString(),
-        sessionCount: u._count.activity_sessions,
+        sessionCount: sessionCounts.get(u.id) ?? 0,
         workspaceCount: u._count.workspace_memberships,
         conversationCount: u._count.support_conversations,
         company: primary?.workspace.name ?? "Unknown",
@@ -121,6 +228,7 @@ export async function searchPlatformContacts(query: {
         accountUserCount: primary?.workspace._count.members ?? null,
         memberships: u.workspace_memberships.map((m) => ({
           workspaceId: m.workspace.id,
+          accountId: formatAccountId(m.workspace.account_number),
           workspaceName: m.workspace.name,
           role: m.role,
           accountUserCount: m.workspace._count.members,
@@ -133,6 +241,7 @@ export async function searchPlatformContacts(query: {
 export async function exportContactsCsv(query: {
   search?: string;
   filtersJson?: unknown;
+  filters?: ContactFilters;
 }): Promise<string> {
   const result = await searchPlatformContacts({
     ...query,
@@ -169,6 +278,10 @@ export async function exportContactsCsv(query: {
       "city",
       "timezone",
       "emailVerified",
+      "status",
+      "billingFrozen",
+      "accountId",
+      "userId",
     ],
     rows.map((r) => [
       r.name,
@@ -183,8 +296,30 @@ export async function exportContactsCsv(query: {
       r.city,
       r.timezone,
       r.emailVerified ? "yes" : "no",
+      r.status,
+      r.billingFrozen ? "yes" : "no",
+      r.accountId ?? "",
+      r.userId,
     ]),
   );
+}
+
+export type ContactUserStatus = "Active" | "Disabled" | "Archived";
+export type ContactAccountStatus = "Active" | "Disabled" | "Archived";
+
+function userStatus(user: { disabled_at: Date | null; archived_at: Date | null }): ContactUserStatus {
+  return user.archived_at ? "Archived" : user.disabled_at ? "Disabled" : "Active";
+}
+
+/** Billing is shown separately; "Cancelled" arrives once subscriptions exist. */
+export function accountStatus(input: {
+  ownerArchived: boolean;
+  memberCount: number;
+  disabledCount: number;
+}): ContactAccountStatus {
+  if (input.ownerArchived) return "Archived";
+  if (input.memberCount > 0 && input.disabledCount === input.memberCount) return "Disabled";
+  return "Active";
 }
 
 export async function getPlatformContactDetail(userId: string) {
@@ -192,29 +327,56 @@ export async function getPlatformContactDetail(userId: string) {
     where: { id: userId },
     select: {
       id: true,
+      user_number: true,
       email: true,
       name: true,
       phone: true,
       city: true,
       city_source: true,
+      ip_region: true,
+      ip_country: true,
+      ip_timezone: true,
       personal_timezone: true,
       timezone_source: true,
       email_verified_at: true,
       is_platform_admin: true,
+      disabled_at: true,
+      archived_at: true,
       last_login_at: true,
       last_active_at: true,
       tracked_since: true,
       created_at: true,
-      _count: { select: { activity_sessions: true } },
       workspace_memberships: {
+        orderBy: { created_at: "asc" },
         select: {
           role: true,
           created_at: true,
           workspace: {
             select: {
               id: true,
+              account_number: true,
               name: true,
+              owner_user_id: true,
+              billing_frozen_at: true,
+              createdAt: true,
               _count: { select: { members: true } },
+              members: {
+                orderBy: { created_at: "asc" },
+                take: 50,
+                select: {
+                  role: true,
+                  user: {
+                    select: {
+                      id: true,
+                      user_number: true,
+                      name: true,
+                      email: true,
+                      disabled_at: true,
+                      archived_at: true,
+                    },
+                  },
+                },
+              },
             },
           },
         },
@@ -245,22 +407,60 @@ export async function getPlatformContactDetail(userId: string) {
   if (!user) {
     return null;
   }
+  const accounts = user.workspace_memberships.map((m) => {
+    const w = m.workspace;
+    const members = w.members.map((member) => ({
+      userId: formatUserId(member.user.user_number),
+      id: member.user.id,
+      name: member.user.name,
+      email: member.user.email,
+      role: member.role,
+      userType: member.role === "OWNER" ? "Account Owner" : "User",
+      status: userStatus(member.user),
+    }));
+    const owner =
+      w.members.find((member) => member.user.id === w.owner_user_id) ??
+      w.members.find((member) => member.role === "OWNER") ??
+      null;
+    return {
+      id: w.id,
+      accountId: formatAccountId(w.account_number),
+      name: w.name,
+      status: accountStatus({
+        ownerArchived: Boolean(owner?.user.archived_at),
+        memberCount: w.members.length,
+        disabledCount: w.members.filter((member) => member.user.disabled_at).length,
+      }),
+      billingFrozen: Boolean(w.billing_frozen_at),
+      createdAt: w.createdAt.toISOString(),
+      userCount: w._count.members,
+      role: m.role,
+      members,
+    };
+  });
+
   return {
     id: user.id,
+    userId: formatUserId(user.user_number),
+    status: userStatus(user),
+    account: accounts[0] ?? null,
+    otherAccounts: accounts.slice(1),
     email: user.email,
     name: user.name,
     phone: user.phone,
-    city: user.city ?? "Unknown",
-    citySource: user.city_source,
-    timezone: user.personal_timezone ?? "Unknown",
-    timezoneSource: user.timezone_source,
+    city:
+      user.city_source === "ip"
+        ? formatIpCity({ city: user.city, region: user.ip_region, country: user.ip_country })
+        : "Unknown",
+    timezone: user.ip_timezone ?? "Unknown",
+    profileTimezone: user.personal_timezone,
     emailVerified: Boolean(user.email_verified_at),
     isPlatformAdmin: user.is_platform_admin,
     lastLoginAt: user.last_login_at?.toISOString() ?? null,
     lastActiveAt: user.last_active_at?.toISOString() ?? null,
     trackedSince: user.tracked_since?.toISOString() ?? null,
     createdAt: user.created_at.toISOString(),
-    sessionCount: user._count.activity_sessions,
+    sessionCount: await countTrackedSessions(user.id),
     memberships: user.workspace_memberships.map((m) => ({
       workspaceId: m.workspace.id,
       workspaceName: m.workspace.name,

@@ -1,7 +1,7 @@
 import { prisma } from "@repo/db";
 import type { NextRequest } from "next/server";
 import { errorResponse } from "@/lib/api/response";
-import { requireSessionFromRequest, type SessionPayload } from "@/lib/auth/session";
+import { isSudoSession, requireSessionFromRequest, type SessionPayload } from "@/lib/auth/session";
 import { isSupportAdminEnabled, platformAdminEmails } from "@/lib/support/flags";
 
 export type PlatformAdminContext = {
@@ -49,6 +49,13 @@ export async function requirePlatformAdmin(
       message: "Unauthorized",
     });
   }
+  if (isSudoSession(session)) {
+    return errorResponse(request, {
+      status: 403,
+      code: "sudo_active",
+      message: "Exit sudo before using admin tools",
+    });
+  }
 
   const isAdmin = await syncPlatformAdminFlag(session.userId, session.email);
   if (!isAdmin) {
@@ -77,6 +84,27 @@ export async function requirePlatformAdmin(
     name: user.name,
     session,
   };
+}
+
+/**
+ * Destructive actions (sudo, delete) require the admin to be named in
+ * PLATFORM_ADMIN_EMAILS, not only flagged in the database.
+ */
+export async function requireEnvPlatformAdmin(
+  request: NextRequest,
+): Promise<PlatformAdminContext | ReturnType<typeof errorResponse>> {
+  const admin = await requirePlatformAdmin(request);
+  if (isErrorResponse(admin)) {
+    return admin;
+  }
+  if (!platformAdminEmails().includes(admin.email.trim().toLowerCase())) {
+    return errorResponse(request, {
+      status: 403,
+      code: "forbidden",
+      message: "This action is limited to admins listed in PLATFORM_ADMIN_EMAILS",
+    });
+  }
+  return admin;
 }
 
 export function isErrorResponse(

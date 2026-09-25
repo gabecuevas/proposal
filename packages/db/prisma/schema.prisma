@@ -9,6 +9,8 @@ datasource db {
 
 model Workspace {
   id            String   @id @default(cuid())
+  /// Human-readable Account ID (shown as ACC-000123).
+  account_number Int     @unique @default(autoincrement())
   name          String
   slug          String?  @unique
   logo_asset_key String?
@@ -29,6 +31,7 @@ model Workspace {
   company_setup_completed_at DateTime?
   sample_mode_enabled Boolean @default(false)
   owner_user_id String?
+  billing_frozen_at DateTime?
   audit_retention_days Int @default(90)
   audit_export_token_ttl_minutes Int @default(15)
   cpq_approval_discount_threshold Int @default(15)
@@ -362,6 +365,8 @@ model SignatureField {
 
 model User {
   id                     String            @id @default(cuid())
+  /// Human-readable User ID (shown as USR-000123).
+  user_number            Int               @unique @default(autoincrement())
   email                  String            @unique
   name                   String
   password_hash          String
@@ -375,7 +380,14 @@ model User {
   timezone_source        String?
   city                   String?
   city_source            String?
+  ip_region              String?
+  ip_country             String?
+  ip_timezone            String?
+  location_updated_at    DateTime?
   is_platform_admin      Boolean           @default(false)
+  disabled_at            DateTime?
+  disabled_reason        String?
+  archived_at            DateTime?
   last_login_at          DateTime?
   last_active_at         DateTime?
   tracked_since          DateTime?
@@ -1301,6 +1313,23 @@ model SupportAuditEvent {
 
   @@index([action, created_at])
   @@index([actor_user_id, created_at])
+}
+
+/// Admin "sudo" sessions. No FKs so the record survives user deletion.
+model SupportImpersonationSession {
+  id             String    @id @default(cuid())
+  admin_user_id  String
+  admin_email    String
+  target_user_id String
+  target_email   String
+  started_at     DateTime  @default(now())
+  expires_at     DateTime
+  ended_at       DateTime?
+  ended_reason   String?
+  request_count  Int       @default(0)
+
+  @@index([admin_user_id, started_at])
+  @@index([target_user_id, started_at])
 }
 
 model SavedAudience {

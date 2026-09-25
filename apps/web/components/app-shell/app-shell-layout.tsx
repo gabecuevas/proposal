@@ -8,6 +8,7 @@ import { AppBreadcrumbs } from "./app-breadcrumbs";
 import { AppSidebar } from "./app-sidebar";
 import { AppTopBar } from "./app-top-bar";
 import { isImmersivePath, resolveSection } from "./nav-config";
+import { SudoBanner, type SudoBannerInfo } from "./sudo-banner";
 
 type AppShellLayoutProps = {
   children: ReactNode;
@@ -15,6 +16,7 @@ type AppShellLayoutProps = {
   userName: string;
   userInitials?: string;
   messengerEnabled?: boolean;
+  sudo?: SudoBannerInfo | null;
 };
 
 function initialsFromEmail(email: string): string {
@@ -43,6 +45,7 @@ function AppShellChrome({
   userName,
   userInitials,
   messengerEnabled = false,
+  sudo = null,
 }: AppShellLayoutProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -101,11 +104,20 @@ function AppShellChrome({
   }, [isCompact]);
 
   if (isImmersivePath(pathname)) {
-    return <div className="app-theme h-screen w-full overflow-hidden bg-background">{children}</div>;
+    if (!sudo) {
+      return <div className="app-theme h-screen w-full overflow-hidden bg-background">{children}</div>;
+    }
+    return (
+      <div className="app-theme flex h-screen w-full flex-col overflow-hidden bg-background">
+        {sudo ? <SudoBanner sudo={sudo} /> : null}
+        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+      </div>
+    );
   }
 
   return (
     <div className="app-theme flex h-screen w-full flex-col overflow-hidden bg-background">
+      {sudo ? <SudoBanner sudo={sudo} /> : null}
       <AppTopBar
         activeSectionId={section.id}
         userInitials={resolvedInitials}

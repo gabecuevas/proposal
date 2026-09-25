@@ -9,7 +9,9 @@ import { MARKETING_TEMPLATE_CATEGORIES } from "@/lib/marketing/template-library"
 
 function useMarketingChromeVisible() {
   const pathname = usePathname();
-  return !pathname.startsWith("/app") && !pathname.startsWith("/sign/");
+  return (
+    !pathname.startsWith("/app") && !pathname.startsWith("/sign/") && !pathname.startsWith("/admin")
+  );
 }
 
 type MegaItem = { href: string; title: string; description: string };

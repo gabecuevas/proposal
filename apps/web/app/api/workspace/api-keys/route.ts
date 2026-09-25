@@ -49,6 +49,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await getRequestAuthContext(request);
   assertRole(auth, "ADMIN");
+  if (auth.impersonatorUserId) {
+    return errorResponse(request, {
+      status: 403,
+      code: "sudo_forbidden",
+      message: "API keys cannot be created during a sudo session",
+    });
+  }
 
   const payload = (await request.json()) as {
     name?: string;

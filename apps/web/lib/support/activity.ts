@@ -1,10 +1,13 @@
-import { prisma } from "@repo/db";
+import { Prisma, prisma } from "@repo/db";
+import { ipLocationUserData, type IpLocation } from "./geo";
 
 const SESSION_GAP_MS = 30 * 60 * 1000;
 const ACTIVITY_THROTTLE_MS = 60_000;
-
 /** Record successful authentication as last_login (not token refresh). */
-export async function recordSuccessfulLogin(userId: string): Promise<void> {
+export async function recordSuccessfulLogin(
+  userId: string,
+  location?: IpLocation | null,
+): Promise<void> {
   const now = new Date();
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -19,6 +22,7 @@ export async function recordSuccessfulLogin(userId: string): Promise<void> {
       last_login_at: now,
       last_active_at: now,
       ...(user.tracked_since ? {} : { tracked_since: now }),
+      ...ipLocationUserData(location),
     },
   });
 }
@@ -30,6 +34,7 @@ export async function recordSuccessfulLogin(userId: string): Promise<void> {
 export async function recordMeaningfulActivity(input: {
   userId: string;
   workspaceId?: string | null;
+  location?: IpLocation | null;
 }): Promise<void> {
   const now = new Date();
   const user = await prisma.user.findUnique({
@@ -49,6 +54,7 @@ export async function recordMeaningfulActivity(input: {
     data: {
       last_active_at: now,
       ...(user.tracked_since ? {} : { tracked_since: now }),
+      ...ipLocationUserData(input.location),
     },
   });
 
@@ -89,5 +95,21 @@ export async function recordMeaningfulActivity(input: {
 }
 
 export async function countTrackedSessions(userId: string): Promise<number> {
-  return prisma.activitySession.count({ where: { user_id: userId } });
+  const counts = await countQualifiedSessions([userId]);
+  return counts.get(userId) ?? 0;
+}
+
+/** Sessions lasting at least five minutes, keyed by user id. */
+export async function countQualifiedSessions(userIds: string[]): Promise<Map<string, number>> {
+  if (userIds.length === 0) {
+    return new Map();
+  }
+  const rows = await prisma.$queryRaw<Array<{ user_id: string; count: bigint }>>`
+    SELECT "user_id", COUNT(*)::bigint AS "count"
+    FROM "ActivitySession"
+    WHERE "user_id" IN (${Prisma.join(userIds)})
+      AND "last_seen_at" - "started_at" >= interval '5 minutes'
+    GROUP BY "user_id"
+  `;
+  return new Map(rows.map((row) => [row.user_id, Number(row.count)]));
 }

@@ -11,7 +11,7 @@ export type OAuthResolveInput = {
 
 export type OAuthResolveResult =
   | { ok: true; payload: SessionPayload }
-  | { ok: false; code: "google_account_exists" };
+  | { ok: false; code: "google_account_exists" | "account_disabled" };
 
 export async function resolveOAuthSession(input: OAuthResolveInput): Promise<OAuthResolveResult> {
   const normalizedEmail = input.email.trim().toLowerCase();
@@ -27,6 +27,9 @@ export async function resolveOAuthSession(input: OAuthResolveInput): Promise<OAu
     }
     if (!existingUser.google_sub) {
       return { ok: false, code: "google_account_exists" };
+    }
+    if (existingUser.disabled_at) {
+      return { ok: false, code: "account_disabled" };
     }
 
     const user = await prisma.user.update({

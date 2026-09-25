@@ -76,7 +76,11 @@ export default function LoginPage() {
       ? "Google sign-in is not configured yet."
       : oauthError === "google_account_exists"
         ? "This email is registered with a password. Log in with email and password."
-        : oauthError
+        : oauthError === "account_disabled"
+          ? "This account has been disabled. Contact SendDox support for help."
+          : oauthError === "sudo_ended"
+            ? "Your sudo session ended. Sign in again."
+            : oauthError
           ? "Google sign-in failed. Please try again."
           : "";
 
