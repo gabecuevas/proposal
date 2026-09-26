@@ -12,7 +12,8 @@ export type CreateDocumentFromKindResult =
 /**
  * Shared create routing for Library / Dashboard / Documents split buttons.
  * New Document → blank Flow Document. Proposal → Creator workflow.
- * Quote/Invoice → commercial draft, then immersive editor. Template → editor.
+ * Quote/Invoice → commercial draft. Callers open the delivery steps
+ * (Add Contact → Edit Document → Review & Send) for drafts. Template → editor.
  */
 export async function createFromDocumentKind(
   kind: DocumentCreateKind,

@@ -218,7 +218,10 @@ export function AppSidebar({
         return;
       }
       if (result.action === "commercial" || result.action === "flow") {
-        router.push(`/app/documents/${result.documentId}`);
+        openWorkflow({
+          kind: result.action === "commercial" ? result.kind : "document",
+          documentId: result.documentId,
+        });
         onNavigate();
         return;
       }

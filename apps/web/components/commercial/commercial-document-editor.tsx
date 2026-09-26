@@ -18,8 +18,6 @@ import "@/components/flow-document/flow-document-prototype.css";
 import {
   createBlankCommercialDocument,
   DEFAULT_COMMERCIAL_THEME,
-  LINE_ITEM_REQUIRED_MESSAGE,
-  hasProductOrService,
   type CommercialDocType,
   type CommercialDocument,
 } from "@/lib/commercial/schema";
@@ -387,9 +385,6 @@ export function CommercialDocumentEditor({
     commercialRef.current = next;
     setCommercial(next);
     setStatus("idle");
-    if (hasProductOrService(next)) {
-      setError((current) => (current === LINE_ITEM_REQUIRED_MESSAGE ? null : current));
-    }
   }
 
   function getFieldText(doc: CommercialDocument, field: CommercialTextFieldId): string {
@@ -531,10 +526,6 @@ export function CommercialDocumentEditor({
   }
 
   async function handleSend() {
-    if (!hasProductOrService(commercialRef.current)) {
-      setError(LINE_ITEM_REQUIRED_MESSAGE);
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
