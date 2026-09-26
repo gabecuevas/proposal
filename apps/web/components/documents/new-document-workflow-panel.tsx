@@ -590,7 +590,14 @@ export function NewDocumentWorkflowPanel({
     try {
       const response = await fetch(`/api/documents/${documentId}/send`, { method: "POST" });
       if (!response.ok) {
-        throw new Error("Could not deliver document");
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { code?: string; message?: string };
+        } | null;
+        throw new Error(
+          payload?.error?.code === "line_item_required" && payload.error.message
+            ? payload.error.message
+            : "Could not deliver document",
+        );
       }
       setSaveStatus("Delivered");
       onClose();

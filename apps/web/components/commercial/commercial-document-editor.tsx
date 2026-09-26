@@ -18,22 +18,27 @@ import "@/components/flow-document/flow-document-prototype.css";
 import {
   createBlankCommercialDocument,
   DEFAULT_COMMERCIAL_THEME,
+  LINE_ITEM_REQUIRED_MESSAGE,
+  hasProductOrService,
   type CommercialDocType,
   type CommercialDocument,
 } from "@/lib/commercial/schema";
 import { ensureCommercialDocument } from "@/lib/commercial/parse";
 import type { CommercialDocumentRecord } from "@/lib/commercial/store";
 import {
+  COMMERCIAL_VARIABLE_GROUPS,
   countCommercialTokenUsageMap,
   countCommercialTokenUsages,
   insertCommercialTokenAt,
+  readVariablePath,
 } from "@/lib/commercial/variables";
 import { flowGoogleFontsStylesheetHref } from "@/lib/flow-document/google-fonts";
 import { AUTOSAVE_DELAY_MS } from "@/lib/editor/autosave";
 import { SaveQueue } from "@/lib/editor/save-queue";
 
-/** Accent bar green sampled from the Quote brand icon. */
+/** Accent bar colors sampled from the Quote and Invoice brand icons. */
 const QUOTE_ACCENT = "#146440";
+const INVOICE_ACCENT = "#5b3187";
 const DOCUMENTS_HREF = "/app/documents";
 const TEMPLATES_HREF = "/app/templates";
 
@@ -95,7 +100,8 @@ export function CommercialDocumentEditor({
   const [templateOpen, setTemplateOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [activeShelfPanel, setActiveShelfPanel] = useState<"variables" | "page" | null>(null);
-  const [variableValues, setVariableValues] = useState<Record<string, string>>({});
+  const [variables, setVariables] = useState<Record<string, unknown>>({});
+  const variablesRef = useRef<Record<string, unknown>>({});
   const [saveRetryToken, setSaveRetryToken] = useState(0);
   const [fieldCaret, setFieldCaret] = useState<{
     field: CommercialTextFieldId;
@@ -108,6 +114,8 @@ export function CommercialDocumentEditor({
       commercialRef.current = document.commercial;
       versionRef.current = document.doc_version;
       activeDocumentIdRef.current = document.id;
+      variablesRef.current = (document.variables_json as Record<string, unknown>) ?? {};
+      setVariables(variablesRef.current);
       setCommercial(document.commercial);
       setActiveDocumentId(document.id);
       dirtyRef.current = false;
@@ -258,10 +266,11 @@ export function CommercialDocumentEditor({
     }
 
     const expectedVersion = versionRef.current;
+    const variablesSnapshot = variablesRef.current;
     const response = await fetch(`/api/commercial/documents/${activeDocumentIdRef.current}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ expectedVersion, commercial: snapshot }),
+      body: JSON.stringify({ expectedVersion, commercial: snapshot, variables: variablesSnapshot }),
     });
     if (!response.ok) {
       const payload = (await response.json().catch(() => ({}))) as {
@@ -280,7 +289,7 @@ export function CommercialDocumentEditor({
 
     // If the user typed while this request was in flight, keep their local
     // edits and schedule another autosave — never clobber the Item field.
-    if (commercialRef.current !== snapshot) {
+    if (commercialRef.current !== snapshot || variablesRef.current !== variablesSnapshot) {
       dirtyRef.current = true;
       setSaveRetryToken((token) => token + 1);
       return document;
@@ -334,6 +343,42 @@ export function CommercialDocumentEditor({
     return () => window.clearTimeout(handle);
   }, [commercial, loading, locked, persistCommercial, saveRetryToken]);
 
+  const variableValues = useMemo(() => {
+    const values: Record<string, string> = {};
+    for (const group of COMMERCIAL_VARIABLE_GROUPS) {
+      for (const variable of group.variables) {
+        const value = readVariablePath(variables, variable.key);
+        values[variable.key] = value == null ? "" : String(value);
+      }
+    }
+    return values;
+  }, [variables]);
+
+  function updateVariable(key: string, value: string) {
+    if (locked) {
+      return;
+    }
+    const [ns, ...rest] = key.split(".");
+    const field = rest.join(".");
+    if (!ns || !field) {
+      return;
+    }
+    const current = variablesRef.current[ns];
+    const group =
+      current && typeof current === "object" && !Array.isArray(current)
+        ? (current as Record<string, unknown>)
+        : {};
+    const next = { ...variablesRef.current, [ns]: { ...group, [field]: value } };
+    variablesRef.current = next;
+    setVariables(next);
+    if (isTemplate) {
+      return;
+    }
+    dirtyRef.current = true;
+    setStatus("idle");
+    setSaveRetryToken((token) => token + 1);
+  }
+
   function updateCommercial(next: CommercialDocument) {
     if (locked) {
       return;
@@ -342,6 +387,9 @@ export function CommercialDocumentEditor({
     commercialRef.current = next;
     setCommercial(next);
     setStatus("idle");
+    if (hasProductOrService(next)) {
+      setError((current) => (current === LINE_ITEM_REQUIRED_MESSAGE ? null : current));
+    }
   }
 
   function getFieldText(doc: CommercialDocument, field: CommercialTextFieldId): string {
@@ -477,6 +525,26 @@ export function CommercialDocumentEditor({
       window.open(`/api/commercial/documents/${saved.id}/pdf`, "_blank", "noopener,noreferrer");
     } catch (err) {
       setError(err instanceof Error ? err.message : "PDF failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSend() {
+    if (!hasProductOrService(commercialRef.current)) {
+      setError(LINE_ITEM_REQUIRED_MESSAGE);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const saved = await ensurePersisted();
+      if (!saved) {
+        throw new Error("Save before sending");
+      }
+      openWorkflow({ documentId: saved.id, initialStep: 4 });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Send failed");
     } finally {
       setBusy(false);
     }
@@ -672,7 +740,7 @@ export function CommercialDocumentEditor({
       label: "Send",
       description: "Prepare this document to send to recipients.",
       onSelect: () => {
-        router.push(`/app/documents/${activeDocumentId}`);
+        void handleSend();
       },
       disabled: busy || loading,
     });
@@ -689,7 +757,11 @@ export function CommercialDocumentEditor({
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-white">
       <div className="sticky top-0 z-10 shrink-0 border-b border-[#dadce0] bg-white">
-        <div className="h-[7px] w-full" style={{ backgroundColor: QUOTE_ACCENT }} aria-hidden />
+        <div
+          className="h-[7px] w-full"
+          style={{ backgroundColor: commercial.type === "invoice" ? INVOICE_ACCENT : QUOTE_ACCENT }}
+          aria-hidden
+        />
         <div className="flex items-center gap-2 px-3 pt-2 pb-2">
           <Link
             href={backHref}
@@ -733,7 +805,10 @@ export function CommercialDocumentEditor({
                 disabled={loading}
                 className={cn(
                   "rounded px-2 py-0.5 hover:bg-[#f1f3f4] disabled:opacity-40",
-                  fileMenuOpen && "bg-[#e6f4ec] text-[#146440]",
+                  fileMenuOpen &&
+                    (commercial.type === "invoice"
+                      ? "bg-[#efe9f5] text-[#5b3187]"
+                      : "bg-[#e6f4ec] text-[#146440]"),
                 )}
                 aria-haspopup="menu"
                 aria-expanded={fileMenuOpen}
@@ -840,9 +915,7 @@ export function CommercialDocumentEditor({
             locked={busy || loading || locked}
             onClose={() => setActiveShelfPanel(null)}
             onInsert={insertVariable}
-            onChangeValue={(key, value) =>
-              setVariableValues((prev) => ({ ...prev, [key]: value }))
-            }
+            onChangeValue={updateVariable}
           />
         ) : null}
         {activeShelfPanel === "page" ? (
@@ -919,43 +992,10 @@ export function CommercialDocumentEditor({
 }
 
 function QuoteDocIcon({ type }: { type: CommercialDocType }) {
-  if (type === "invoice") {
-    return (
-      <svg width="40" height="40" viewBox="0 0 72 72" aria-hidden className="h-10 w-10">
-        <rect x="16" y="8" width="40" height="52" rx="4" fill="none" stroke={QUOTE_ACCENT} strokeWidth="3.5" />
-        <path d="M48 8v12h12" fill="none" stroke={QUOTE_ACCENT} strokeWidth="3.5" strokeLinejoin="round" />
-        <text
-          x="36"
-          y="34"
-          textAnchor="middle"
-          fill={QUOTE_ACCENT}
-          fontSize="18"
-          fontWeight="700"
-          fontFamily="system-ui, sans-serif"
-        >
-          $
-        </text>
-        <rect x="14" y="42" width="44" height="16" rx="8" fill={QUOTE_ACCENT} />
-        <text
-          x="36"
-          y="53.5"
-          textAnchor="middle"
-          fill="#fff"
-          fontSize="9"
-          fontWeight="700"
-          fontFamily="system-ui, sans-serif"
-          letterSpacing="0.06em"
-        >
-          INVOICE
-        </text>
-      </svg>
-    );
-  }
-
   return (
     // eslint-disable-next-line @next/next/no-img-element -- static brand asset; match Flow DocsIcon
     <img
-      src="/brand/quote-doc-icon.png"
+      src={type === "invoice" ? "/brand/invoice-doc-icon.png" : "/brand/quote-doc-icon.png"}
       alt=""
       width={40}
       height={40}

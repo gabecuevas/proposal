@@ -8,6 +8,7 @@ import {
   updateDocumentDraft,
   updateDocumentStatus,
 } from "@/lib/editor/document-store";
+import { hydrateDraftIdentityVariables } from "@/lib/documents/identity-variables";
 import { StaleDocumentWriteError } from "@/lib/editor/save-queue";
 import type { EditorDoc, PricingModel, VariableContext } from "@/lib/editor/types";
 
@@ -16,6 +17,11 @@ type Params = { params: Promise<{ documentId: string }> };
 export async function GET(request: NextRequest, { params }: Params) {
   const auth = await getRequestAuthContext(request);
   const { documentId } = await params;
+  await hydrateDraftIdentityVariables({
+    documentId,
+    workspaceId: auth.workspaceId,
+    userId: auth.userId,
+  }).catch(() => false);
   const document = await getDocument(documentId, auth.workspaceId);
   if (!document) {
     return NextResponse.json({ error: "Document not found" }, { status: 404 });

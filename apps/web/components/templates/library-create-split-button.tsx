@@ -6,6 +6,7 @@ import { cn } from "@repo/ui/utils";
 import { IconChevronDown, IconTemplates } from "@/components/app-shell/shell-icons";
 import {
   FlowDocTypeIcon,
+  InvoiceDocTypeIcon,
   PdfDocTypeIcon,
   QuoteDocTypeIcon,
 } from "@/components/documents/document-type-icon";
@@ -22,7 +23,7 @@ const KIND_ICONS: Record<DocumentCreateKind, ReactNode> = {
   template: <IconTemplates className="h-5 w-5 shrink-0 text-muted" />,
   proposal: <FlowDocTypeIcon size={MENU_ICON_SIZE} title="Proposal" />,
   quote: <QuoteDocTypeIcon size={MENU_ICON_SIZE} />,
-  invoice: <QuoteDocTypeIcon size={MENU_ICON_SIZE} title="Invoice" />,
+  invoice: <InvoiceDocTypeIcon size={MENU_ICON_SIZE} />,
 };
 
 type Props = {

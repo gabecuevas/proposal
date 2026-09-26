@@ -27,6 +27,7 @@ export const COMMERCIAL_VARIABLE_ALIASES: Record<string, string[]> = {
     "company_name",
   ],
   "Recipient.FullName": ["Recipient.FullName", "Client.FullName", "client.name"],
+  "Recipient.CompanyAddress": ["Recipient.CompanyAddress", "Company.Address", "contact.address.full"],
   "Recipient.Email": ["Recipient.Email", "Client.Email", "client.email"],
   "Recipient.Phone": ["Recipient.Phone", "Client.Phone"],
 };
@@ -51,6 +52,7 @@ export const COMMERCIAL_VARIABLE_GROUPS: CommercialVariableGroup[] = [
     variables: [
       { key: "Recipient.CompanyName", label: "Company name" },
       { key: "Recipient.FullName", label: "Full name" },
+      { key: "Recipient.CompanyAddress", label: "Company address" },
       { key: "Recipient.Email", label: "Email" },
       { key: "Recipient.Phone", label: "Phone" },
     ],
@@ -98,13 +100,25 @@ export function countCommercialTokenUsageMap(texts: string[]): Record<string, nu
   return counts;
 }
 
+/** Read `Recipient.FullName` from `{ Recipient: { FullName } }`. */
+export function readVariablePath(context: Record<string, unknown>, path: string): unknown {
+  let current: unknown = context;
+  for (const part of path.split(".")) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
+
 export function resolveCommercialToken(
   token: string,
   context: Record<string, unknown>,
 ): string | null {
   const aliases = COMMERCIAL_VARIABLE_ALIASES[token] ?? [token];
   for (const key of aliases) {
-    const value = context[key];
+    const value = context[key] ?? readVariablePath(context, key);
     if (value == null) {
       continue;
     }

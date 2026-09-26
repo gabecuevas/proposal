@@ -1,7 +1,12 @@
 import type { NextRequest } from "next/server";
 import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
 import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
-import { QuoteApprovalRequiredError, DocumentAlreadySentError, sendDocument } from "@/lib/editor/document-store";
+import {
+  QuoteApprovalRequiredError,
+  DocumentAlreadySentError,
+  LineItemRequiredError,
+  sendDocument,
+} from "@/lib/editor/document-store";
 import { logApiEvent } from "@/lib/observability/logger";
 import { getRequestId } from "@/lib/observability/request-id";
 import { enqueueWebhookEvent } from "@/lib/webhooks/queue";
@@ -22,6 +27,13 @@ export async function POST(request: NextRequest, { params }: Params) {
       return errorResponse(request, {
         status: 409,
         code: "quote_approval_required",
+        message: error.message,
+      });
+    }
+    if (error instanceof LineItemRequiredError) {
+      return errorResponse(request, {
+        status: 422,
+        code: "line_item_required",
         message: error.message,
       });
     }

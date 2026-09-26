@@ -44,9 +44,14 @@ export function FlowDocTypeIcon(props: IconProps) {
   return <BrandTypeIcon src="/brand/flow-doc-icon.png" title={props.title ?? "Document"} {...props} />;
 }
 
-/** Brand Quote/Invoice icon used for commercial documents in lists and chrome. */
+/** Brand Quote icon used for quotes in lists and chrome. */
 export function QuoteDocTypeIcon(props: IconProps) {
   return <BrandTypeIcon src="/brand/quote-doc-icon.png" title={props.title ?? "Quote"} {...props} />;
+}
+
+/** Brand Invoice icon used for invoices in lists and chrome. */
+export function InvoiceDocTypeIcon(props: IconProps) {
+  return <BrandTypeIcon src="/brand/invoice-doc-icon.png" title={props.title ?? "Invoice"} {...props} />;
 }
 
 /** Brand PDF icon used for PDF templates in lists. */
@@ -96,7 +101,11 @@ export function DocumentTypeCell({
     const label = kind === "invoice" ? "Invoice" : "Quote";
     return (
       <TypeIconLabel label={label} className={className}>
-        <QuoteDocTypeIcon size={TYPE_LIST_ICON_SIZE} title={label} />
+        {kind === "invoice" ? (
+          <InvoiceDocTypeIcon size={TYPE_LIST_ICON_SIZE} />
+        ) : (
+          <QuoteDocTypeIcon size={TYPE_LIST_ICON_SIZE} />
+        )}
       </TypeIconLabel>
     );
   }
@@ -131,10 +140,17 @@ export function TemplateTypeCell({
       </TypeIconLabel>
     );
   }
-  if (kind === "Quote" || kind === "Invoice") {
+  if (kind === "Quote") {
     return (
-      <TypeIconLabel label={kind} className={className}>
-        <QuoteDocTypeIcon size={TYPE_LIST_ICON_SIZE} title={kind} />
+      <TypeIconLabel label="Quote" className={className}>
+        <QuoteDocTypeIcon size={TYPE_LIST_ICON_SIZE} />
+      </TypeIconLabel>
+    );
+  }
+  if (kind === "Invoice") {
+    return (
+      <TypeIconLabel label="Invoice" className={className}>
+        <InvoiceDocTypeIcon size={TYPE_LIST_ICON_SIZE} />
       </TypeIconLabel>
     );
   }

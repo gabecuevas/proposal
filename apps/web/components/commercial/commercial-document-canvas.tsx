@@ -207,7 +207,7 @@ export function CommercialDocumentCanvas({
               {labels.title || (isInvoice ? "INVOICE" : "QUOTE")}
             </h1>
           </div>
-          <div className="mt-3 space-y-2">
+          <div className="mt-3 space-y-1">
             <MetaRow
               label={
                 labels.documentNumber || (isInvoice ? "Invoice Number" : "Quote Number")
@@ -253,7 +253,7 @@ export function CommercialDocumentCanvas({
         </div>
       </div>
 
-      <div className="mt-6 grid gap-3 md:grid-cols-2">
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
         <PartyBlock
           label={labels.billTo}
           value={commercial.billTo.text}
