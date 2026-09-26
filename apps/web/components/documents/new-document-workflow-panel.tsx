@@ -35,7 +35,12 @@ import {
 } from "@/lib/editor/document-kind";
 import type { VariableContext } from "@/lib/editor/types";
 import { UseTemplateStepWizard } from "@/components/documents/use-template-wizard-chrome";
-import { isCommercialDocument } from "@/lib/commercial/schema";
+import {
+  LINE_ITEM_REQUIRED_MESSAGE,
+  hasProductOrService,
+  isCommercialDocument,
+  type CommercialDocument,
+} from "@/lib/commercial/schema";
 
 type StepId = 1 | 2 | 3 | 4;
 
@@ -133,6 +138,7 @@ export function NewDocumentWorkflowPanel({
   const [document, setDocument] = useState<DocumentPayload | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [lineItemAlertOpen, setLineItemAlertOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [deliverySubject, setDeliverySubject] = useState("");
   const [deliveryMessage, setDeliveryMessage] = useState(profile.deliveryIntro);
@@ -193,7 +199,8 @@ export function NewDocumentWorkflowPanel({
       }
       setDocumentId(doc.id);
       setDocument(doc);
-      setTitle(documentTitleFromEditorJson(doc.editor_json, profile.blankTitle));
+      const docTitle = draftTitle(doc, profile.blankTitle);
+      setTitle(docTitle);
       setDueDate(documentDueDateFromEditorJson(doc.editor_json));
       setRecipients(
         (doc.recipients_json ?? [])
@@ -208,7 +215,7 @@ export function NewDocumentWorkflowPanel({
       );
       setSelectedRecipientId(doc.recipients_json[0]?.id ?? "");
       setDeliverySubject(
-        `New ${profile.noun.toLowerCase()}: ${documentTitleFromEditorJson(doc.editor_json, profile.blankTitle)}`,
+        `New ${profile.noun.toLowerCase()}: ${docTitle}`,
       );
       const kindFromDoc = documentKindFromVariables(doc.variables_json);
       if (kindFromDoc) {
@@ -396,6 +403,9 @@ export function NewDocumentWorkflowPanel({
     const data = (await response.json()) as { document?: DocumentPayload };
     if (data.document) {
       setDocument(data.document);
+    }
+    if (document && isCommercialDocument(document.pricing_json) && nextTitle.trim()) {
+      await renameCommercialDraft(documentId, nextTitle.trim()).catch(() => false);
     }
     setSaveStatus("Draft saved");
     return true;
@@ -585,19 +595,23 @@ export function NewDocumentWorkflowPanel({
     if (!documentId) {
       return;
     }
+    if (document && isCommercialDocument(document.pricing_json) && !hasProductOrService(document.pricing_json)) {
+      setLineItemAlertOpen(true);
+      return;
+    }
     setBusy(true);
     setError("");
     try {
       const response = await fetch(`/api/documents/${documentId}/send`, { method: "POST" });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as {
-          error?: { code?: string; message?: string };
+          error?: { code?: string };
         } | null;
-        throw new Error(
-          payload?.error?.code === "line_item_required" && payload.error.message
-            ? payload.error.message
-            : "Could not deliver document",
-        );
+        if (payload?.error?.code === "line_item_required") {
+          setLineItemAlertOpen(true);
+          return;
+        }
+        throw new Error("Could not deliver document");
       }
       setSaveStatus("Delivered");
       onClose();
@@ -827,8 +841,79 @@ export function NewDocumentWorkflowPanel({
           ) : null}
         </div>
       </div>
+      {lineItemAlertOpen ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 p-4">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="line-item-required-title"
+            aria-describedby="line-item-required-body"
+            className="w-full max-w-sm rounded-xl border border-border bg-surface p-5 shadow-2xl"
+          >
+            <h3 id="line-item-required-title" className="text-base font-semibold text-foreground">
+              Product or Service required
+            </h3>
+            <p id="line-item-required-body" className="mt-2 text-sm text-muted">
+              {LINE_ITEM_REQUIRED_MESSAGE}.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setLineItemAlertOpen(false)}
+                className="rounded-md px-3 py-1.5 text-sm text-muted hover:bg-slate-100"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => {
+                  setLineItemAlertOpen(false);
+                  onClose();
+                  if (documentId) {
+                    router.push(`/app/documents/${documentId}?afterUse=1`);
+                  }
+                }}
+                className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-95"
+              >
+                Add Product or Service
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function draftTitle(doc: DocumentPayload, fallback: string): string {
+  if (isCommercialDocument(doc.pricing_json) && doc.pricing_json.internalName?.trim()) {
+    return doc.pricing_json.internalName.trim();
+  }
+  return documentTitleFromEditorJson(doc.editor_json, fallback);
+}
+
+/** Quote/Invoice names live in `pricing_json.internalName`, not the editor title. */
+async function renameCommercialDraft(documentId: string, name: string): Promise<boolean> {
+  const current = await fetch(`/api/commercial/documents/${documentId}`);
+  if (!current.ok) {
+    return false;
+  }
+  const { document } = (await current.json()) as {
+    document?: { doc_version: number; commercial: CommercialDocument };
+  };
+  if (!document || document.commercial.internalName === name) {
+    return Boolean(document);
+  }
+  const response = await fetch(`/api/commercial/documents/${documentId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      expectedVersion: document.doc_version,
+      commercial: { ...document.commercial, internalName: name },
+    }),
+  });
+  return response.ok;
 }
 
 function usesNativeDocumentEditor(doc: DocumentPayload, kind: WorkflowDocumentKind): boolean {
