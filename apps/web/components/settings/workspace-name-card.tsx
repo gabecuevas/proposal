@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { cn } from "@repo/ui/utils";
 import { crmInputClass } from "@/components/crm/variable-pills";
+import {
+  DEFAULT_CURRENCY,
+  SUPPORTED_CURRENCIES,
+  currencyLabel,
+  normalizeCurrency,
+} from "@/lib/commercial/currencies";
 import { assetUrl } from "@/lib/storage/asset-url";
 import {
   COMPANY_LOGO_DISPLAY_HEIGHT,
@@ -18,6 +24,9 @@ export function WorkspaceNameCard() {
   const [error, setError] = useState("");
   const [logoModalOpen, setLogoModalOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [currency, setCurrency] = useState<string>(DEFAULT_CURRENCY);
+  const [isOwner, setIsOwner] = useState(false);
+  const [roleLoaded, setRoleLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -27,11 +36,15 @@ export function WorkspaceNameCard() {
         return;
       }
       const payload = (await response.json()) as {
-        workspace?: { name?: string; logoAssetKey?: string | null };
+        workspace?: { name?: string; logoAssetKey?: string | null; currency?: string | null };
+        viewerRole?: string;
       };
       if (!cancelled) {
         setName(payload.workspace?.name ?? "");
         setLogoKey(payload.workspace?.logoAssetKey ?? null);
+        setCurrency(normalizeCurrency(payload.workspace?.currency));
+        setIsOwner(payload.viewerRole === "OWNER");
+        setRoleLoaded(true);
       }
     }
     void load();
@@ -53,6 +66,24 @@ export function WorkspaceNameCard() {
       return;
     }
     setStatus("Company settings saved.");
+  }
+
+  async function saveCurrency() {
+    setStatus("");
+    setError("");
+    const response = await fetch("/api/workspace", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currency }),
+    });
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      setError(payload?.error?.message ?? "Failed to save default currency");
+      return;
+    }
+    setStatus(`Default currency set to ${currency}. New Quotes and Invoices will use it.`);
   }
 
   async function saveLogoKey(nextKey: string | null) {
@@ -154,6 +185,39 @@ export function WorkspaceNameCard() {
             Save
           </button>
         </div>
+      </div>
+
+      <div className="mt-5">
+        <p className="mb-1.5 text-sm font-medium text-foreground">Default currency</p>
+        <p className="mb-3 text-xs text-muted">
+          Used for new Quotes and Invoices. Each document can still be switched to another currency.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <select
+            className={`max-w-md flex-1 ${crmInputClass()} disabled:opacity-60`}
+            value={currency}
+            disabled={!isOwner}
+            onChange={(event) => setCurrency(event.target.value)}
+            aria-label="Default currency"
+          >
+            {SUPPORTED_CURRENCIES.map((code) => (
+              <option key={code} value={code}>
+                {currencyLabel(code)}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={!isOwner}
+            onClick={() => void saveCurrency()}
+            className="rounded-none bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-40"
+          >
+            Save
+          </button>
+        </div>
+        {roleLoaded && !isOwner ? (
+          <p className="mt-2 text-xs text-muted">Only Account Owners can change the default currency.</p>
+        ) : null}
       </div>
 
       {status ? <p className="mt-2 text-sm text-emerald-700">{status}</p> : null}

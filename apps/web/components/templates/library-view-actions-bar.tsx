@@ -63,6 +63,7 @@ type Props = {
   /** Library create split button (New Document / Template / Proposal / Quote). */
   showCreate?: boolean;
   onCreateKind?: (kind: import("@/lib/editor/document-kind").DocumentCreateKind) => void;
+  createFolderId?: string | null;
 };
 
 export function LibraryViewActionsBar({
@@ -85,6 +86,7 @@ export function LibraryViewActionsBar({
   sampleMode = false,
   showCreate = false,
   onCreateKind,
+  createFolderId = null,
 }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -133,6 +135,7 @@ export function LibraryViewActionsBar({
           <LibraryCreateSplitButton
             variant="toolbar"
             primaryKind="template"
+            folderId={createFolderId}
             onSelect={(kind: DocumentCreateKind) => onCreateKind(kind)}
           />
         ) : null}

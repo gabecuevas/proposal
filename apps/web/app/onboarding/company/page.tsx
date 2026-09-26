@@ -5,6 +5,7 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { OnboardingProgress } from "@/components/auth/onboarding-progress";
 import { SendDoxLogo } from "@/components/brand/senddox-logo";
+import { SUPPORTED_CURRENCIES, currencyLabel } from "@/lib/commercial/currencies";
 
 export default function OnboardingCompanyPage() {
   const router = useRouter();
@@ -150,11 +151,11 @@ export default function OnboardingCompanyPage() {
               onChange={(event) => setCurrency(event.target.value)}
               required
             >
-              <option value="USD">USD (US Dollar)</option>
-              <option value="CAD">CAD (Canadian Dollar)</option>
-              <option value="GBP">GBP (Pound Sterling)</option>
-              <option value="EUR">EUR (Euro)</option>
-              <option value="AUD">AUD (Australian Dollar)</option>
+              {SUPPORTED_CURRENCIES.map((code) => (
+                <option key={code} value={code}>
+                  {currencyLabel(code)}
+                </option>
+              ))}
             </select>
           </label>
         </div>

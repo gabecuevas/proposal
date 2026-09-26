@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
 import { validateCompanyWebsite } from "@/lib/auth/company-website";
 import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
+import { isSupportedCurrency } from "@/lib/commercial/currencies";
 import { assetUrl } from "@/lib/storage/asset-url";
 
 const workspaceSelect = {
@@ -96,7 +97,7 @@ export async function GET(request: NextRequest) {
       message: "Workspace not found",
     });
   }
-  return jsonWithRequestId(request, { workspace: mapWorkspace(workspace) });
+  return jsonWithRequestId(request, { workspace: mapWorkspace(workspace), viewerRole: auth.role });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -226,7 +227,22 @@ export async function PATCH(request: NextRequest) {
     data.timezone = body.timezone?.trim() || null;
   }
   if (body.currency !== undefined) {
-    data.currency = body.currency?.trim().toUpperCase() || null;
+    if (auth.role !== "OWNER") {
+      return errorResponse(request, {
+        status: 403,
+        code: "forbidden",
+        message: "Only an Account Owner can change the default currency.",
+      });
+    }
+    const currency = body.currency?.trim().toUpperCase() ?? "";
+    if (!isSupportedCurrency(currency)) {
+      return errorResponse(request, {
+        status: 400,
+        code: "validation_error",
+        message: "Choose a supported currency.",
+      });
+    }
+    data.currency = currency;
   }
   if (body.locale !== undefined) {
     data.locale = body.locale?.trim() || null;
@@ -269,5 +285,5 @@ export async function PATCH(request: NextRequest) {
     data,
     select: workspaceSelect,
   });
-  return jsonWithRequestId(request, { workspace: mapWorkspace(workspace) });
+  return jsonWithRequestId(request, { workspace: mapWorkspace(workspace), viewerRole: auth.role });
 }

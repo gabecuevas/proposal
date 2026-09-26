@@ -70,6 +70,7 @@ model Workspace {
   sentVersions  DocumentSentVersion[]
   documentNumberSequences DocumentNumberSequence[]
   documentIssuedNumbers DocumentIssuedNumber[]
+  catalogItems  CatalogItem[]
   owner         User?            @relation("workspace_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
 }
 
@@ -246,6 +247,10 @@ model DocumentNumberSequence {
   workspace_id String
   kind         String
   next_number  Int      @default(1)
+  /// Format of the most recent series, e.g. "SD-" + zero-padded 4 digits → SD-0035.
+  prefix       String   @default("")
+  suffix       String   @default("")
+  pad_width    Int      @default(0)
   updated_at   DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
@@ -265,6 +270,25 @@ model DocumentIssuedNumber {
   document  Document  @relation(fields: [document_id], references: [id], onDelete: Cascade)
 
   @@unique([workspace_id, kind, document_number])
+}
+
+model CatalogItem {
+  id               String    @id @default(cuid())
+  workspace_id     String
+  /// "product" | "service"
+  kind             String
+  name             String
+  description      String?
+  unit_price_minor Int       @default(0)
+  currency         String    @default("USD")
+  created_by       String?
+  archived_at      DateTime?
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+
+  @@index([workspace_id, kind])
 }
 
 model ContentBlockFolder {

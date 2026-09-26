@@ -774,6 +774,7 @@ export default function AppTemplatesPage() {
         showNewFolder={browseFolders && !browsingSamples}
         onNewFolder={() => openAction("new-folder")}
         showCreate={!browsingSamples}
+        createFolderId={currentFolderId}
         onCreateKind={(kind) => {
           void (async () => {
             const { createFromDocumentKind } = await import("@/lib/documents/create-from-kind");

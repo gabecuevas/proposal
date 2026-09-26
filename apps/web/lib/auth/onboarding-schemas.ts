@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isSupportedCurrency } from "@/lib/commercial/currencies";
 
 export const TERMS_VERSION = "2026-09-23";
 export const PRIVACY_VERSION = "2026-09-23";
@@ -31,7 +32,11 @@ export const companySetupSchema = z
     industry: z.string().trim().max(120).optional().or(z.literal("")),
     country: z.string().trim().min(2).max(2),
     timezone: z.string().trim().min(1).max(80),
-    currency: z.string().trim().min(3).max(3),
+    currency: z
+      .string()
+      .trim()
+      .transform((value) => value.toUpperCase())
+      .refine(isSupportedCurrency, "Choose a supported currency"),
     logoAssetKey: z.string().trim().max(500).optional().nullable(),
     onboardingOperationId: z
       .string()
