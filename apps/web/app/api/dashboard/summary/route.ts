@@ -2,18 +2,20 @@ import { prisma } from "@repo/db";
 import type { NextRequest } from "next/server";
 import { jsonWithRequestId } from "@/lib/api/response";
 import { getRequestAuthContext } from "@/lib/auth/request-context";
+import { countDraftsWithContact } from "@/lib/editor/document-store";
 
 const defaultStatuses = ["DRAFTED", "SENT", "VIEWED", "COMMENTED", "SIGNED", "PAID", "EXPIRED", "VOID", "TRASHED"] as const;
 
 export async function GET(request: NextRequest) {
   const auth = await getRequestAuthContext(request);
 
-  const [statusCounts, recentDocuments, recentEvents] = await Promise.all([
+  const [statusCounts, draftCount, recentDocuments, recentEvents] = await Promise.all([
     prisma.document.groupBy({
       by: ["status"],
       where: { workspace_id: auth.workspaceId },
       _count: { _all: true },
     }),
+    countDraftsWithContact(auth.workspaceId),
     prisma.document.findMany({
       where: { workspace_id: auth.workspaceId },
       orderBy: [{ updated_at: "desc" }, { id: "desc" }],
@@ -42,6 +44,7 @@ export async function GET(request: NextRequest) {
   for (const row of statusCounts) {
     counts[row.status] = row._count._all;
   }
+  counts.DRAFTED = draftCount;
 
   return jsonWithRequestId(request, {
     counts,

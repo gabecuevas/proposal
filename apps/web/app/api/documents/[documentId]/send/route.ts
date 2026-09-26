@@ -7,6 +7,8 @@ import {
   LineItemRequiredError,
   sendDocument,
 } from "@/lib/editor/document-store";
+import { getCanonicalAppOrigin } from "@/lib/auth/app-origin";
+import { enqueueDocumentDeliveryEmails } from "@/lib/documents/deliver-document";
 import { logApiEvent } from "@/lib/observability/logger";
 import { getRequestId } from "@/lib/observability/request-id";
 import { enqueueWebhookEvent } from "@/lib/webhooks/queue";
@@ -19,6 +21,11 @@ export async function POST(request: NextRequest, { params }: Params) {
   assertRole(auth, "MEMBER");
 
   const { documentId } = await params;
+  const body = (await request.json().catch(() => ({}))) as {
+    delivery?: "email" | "manual";
+    subject?: unknown;
+    message?: unknown;
+  };
   let document;
   try {
     document = await sendDocument(documentId, auth.workspaceId, auth.userId);
@@ -54,6 +61,29 @@ export async function POST(request: NextRequest, { params }: Params) {
     });
   }
 
+  let emailedRecipients = 0;
+  if (body.delivery === "email") {
+    try {
+      emailedRecipients = await enqueueDocumentDeliveryEmails({
+        document,
+        senderUserId: auth.userId,
+        subject: typeof body.subject === "string" ? body.subject : "",
+        message: typeof body.message === "string" ? body.message : "",
+        origin: getCanonicalAppOrigin(request),
+      });
+    } catch (error) {
+      logApiEvent(request, {
+        level: "error",
+        event: "document.delivery_email_failed",
+        requestId,
+        status: 200,
+        workspaceId: auth.workspaceId,
+        userId: auth.userId,
+        details: { documentId: document.id, error: error instanceof Error ? error.message : "unknown" },
+      });
+    }
+  }
+
   await enqueueWebhookEvent({
     workspaceId: auth.workspaceId,
     eventType: "document.sent",
@@ -77,7 +107,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     userId: auth.userId,
     details: {
       documentId: document.id,
+      delivery: body.delivery ?? null,
+      emailedRecipients,
     },
   });
-  return jsonWithRequestId(request, { document, requestId });
+  return jsonWithRequestId(request, { document, emailedRecipients, requestId });
 }

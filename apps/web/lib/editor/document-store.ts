@@ -513,7 +513,7 @@ export async function createDocumentFromTemplate(
 export async function listDocuments(
   workspaceId: string,
   options?: { limit?: number; before?: Date; status?: DocumentStatus; query?: string },
-): Promise<DocumentRecord[]> {
+): Promise<Array<DocumentRecord & { has_contact: boolean }>> {
   const query = options?.query?.trim();
   const rows = await prisma.document.findMany({
     where: {
@@ -529,28 +529,15 @@ export async function listDocuments(
   });
 
   const documents = rows.map(parseDocument);
-  const lookupIds = new Set<string>();
-  for (const document of documents) {
-    if (document.contact_id) {
-      lookupIds.add(document.contact_id);
-    }
-    for (const recipient of document.recipients_json) {
-      if (recipient.contact_id) {
-        lookupIds.add(recipient.contact_id);
-      } else if (recipient.id) {
-        lookupIds.add(recipient.id);
-      }
-    }
-  }
+  const lookupIds = new Set(documents.flatMap(candidateContactIds));
 
-  if (lookupIds.size === 0) {
-    return documents;
-  }
-
-  const contacts = await prisma.contact.findMany({
-    where: { workspace_id: workspaceId, id: { in: [...lookupIds] } },
-    include: { company: { select: { name: true } } },
-  });
+  const contacts =
+    lookupIds.size === 0
+      ? []
+      : await prisma.contact.findMany({
+          where: { workspace_id: workspaceId, id: { in: [...lookupIds] } },
+          include: { company: { select: { name: true } } },
+        });
   const byId = new Map(contacts.map((contact) => [contact.id, contact]));
 
   return documents.map((document) => {
@@ -567,11 +554,55 @@ export async function listDocuments(
         name: crm.full_name || recipient.name,
         email: crm.email || recipient.email,
         company_name: crm.company?.name ?? crm.company_name ?? recipient.company_name ?? null,
-        contact_id: recipient.contact_id ?? crm.id,
+        contact_id: crm.id,
       };
     });
-    return { ...document, recipients_json: recipients };
+    const hasContact = candidateContactIds(document).some((id) => byId.has(id));
+    return { ...document, recipients_json: recipients, has_contact: hasContact };
   });
+}
+
+/** Ids on a document that may point at a CRM contact (document link or recipient snapshots). */
+function candidateContactIds(document: {
+  contact_id?: string | null;
+  recipients_json: Array<{ id?: string; contact_id?: string | null }>;
+}): string[] {
+  const ids: string[] = [];
+  if (document.contact_id) {
+    ids.push(document.contact_id);
+  }
+  for (const recipient of document.recipients_json) {
+    if (recipient.contact_id) {
+      ids.push(recipient.contact_id);
+    } else if (recipient.id) {
+      ids.push(recipient.id);
+    }
+  }
+  return ids;
+}
+
+/** Drafts only count once they are linked to an existing CRM contact. */
+export async function countDraftsWithContact(workspaceId: string): Promise<number> {
+  const rows = await prisma.document.findMany({
+    where: { workspace_id: workspaceId, status: "DRAFTED" },
+    select: { id: true, contact_id: true, recipients_json: true },
+  });
+  const documents = rows.map((row) => ({
+    contact_id: row.contact_id,
+    recipients_json: Array.isArray(row.recipients_json)
+      ? (row.recipients_json as Array<{ id?: string; contact_id?: string | null }>)
+      : [],
+  }));
+  const lookupIds = new Set(documents.flatMap(candidateContactIds));
+  if (lookupIds.size === 0) {
+    return 0;
+  }
+  const contacts = await prisma.contact.findMany({
+    where: { workspace_id: workspaceId, id: { in: [...lookupIds] } },
+    select: { id: true },
+  });
+  const existing = new Set(contacts.map((contact) => contact.id));
+  return documents.filter((document) => candidateContactIds(document).some((id) => existing.has(id))).length;
 }
 
 export async function createBlankDocument(input: {
