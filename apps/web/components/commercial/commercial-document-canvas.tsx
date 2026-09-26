@@ -12,6 +12,12 @@ import {
   quantityToDisplay,
 } from "@/lib/commercial/calculate";
 import {
+  SUPPORTED_CURRENCIES,
+  currencyLabel,
+  currencySymbol,
+  withDocumentCurrency,
+} from "@/lib/commercial/currencies";
+import {
   createBlankLineItem,
   DEFAULT_COMMERCIAL_THEME,
   PERCENT_SCALE,
@@ -26,6 +32,7 @@ import {
   CompanyLogoModal,
 } from "@/components/settings/company-logo-modal";
 import { CommercialTokenField } from "./commercial-token-field";
+import { LineItemDescriptionField } from "./line-item-description-field";
 
 export type CommercialTextFieldId = "sender" | "billTo" | "shipTo" | "notes" | "terms";
 
@@ -76,6 +83,8 @@ export function CommercialDocumentCanvas({
     FLOW_GOOGLE_FONTS.find((font) => font.id === theme.titleFontId) ?? FLOW_GOOGLE_FONTS[0]!;
   const isInvoice = commercial.type === "invoice";
   const money = (minor: number) => formatMoneyMinor(minor, commercial.currency, commercial.locale);
+  const symbol = currencySymbol(commercial.currency, commercial.locale);
+  const symbolPadding = symbol.length <= 1 ? "pl-5" : symbol.length === 2 ? "pl-7" : "pl-9";
   const displayLogoKey = commercial.logoAssetKey || companyLogoKey;
   const tableHeaderFg = contrastTextColor(theme.tableHeaderBg);
 
@@ -235,6 +244,11 @@ export function CommercialDocumentCanvas({
               readOnly={readOnly}
               onChange={(value) => patch({ poNumber: value })}
             />
+            <CurrencyRow
+              value={commercial.currency}
+              readOnly={readOnly}
+              onChange={(currency) => onChange(withDocumentCurrency(commercial, currency))}
+            />
           </div>
         </div>
       </div>
@@ -278,12 +292,21 @@ export function CommercialDocumentCanvas({
             {commercial.lineItems.map((item, index) => (
               <tr key={item.id} className="align-top">
                 <td className="px-1 py-2">
-                  <textarea
+                  <LineItemDescriptionField
                     value={item.description}
+                    currency={commercial.currency}
+                    locale={commercial.locale}
                     readOnly={readOnly}
-                    placeholder="Description of item/service..."
-                    rows={1}
-                    onChange={(event) => updateLine(item.id, { description: event.target.value })}
+                    onChange={(description) => updateLine(item.id, { description })}
+                    onPick={(catalogItem) =>
+                      updateLine(item.id, {
+                        description: catalogItem.name,
+                        catalogItemId: catalogItem.id,
+                        ...(catalogItem.currency === commercial.currency
+                          ? { rateMinor: catalogItem.unitPriceMinor }
+                          : {}),
+                      })
+                    }
                     className={cn(fieldClass, "min-h-[36px] resize-y")}
                     aria-label={`${labels.item} ${index + 1}`}
                   />
@@ -308,13 +331,13 @@ export function CommercialDocumentCanvas({
                 <td className="px-1 py-2">
                   <div className="relative">
                     <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[#64748b]">
-                      $
+                      {symbol}
                     </span>
                     <MoneyAmountInput
                       minor={item.rateMinor}
                       currency={commercial.currency}
                       readOnly={readOnly}
-                      className={cn(fieldClass, "pl-5 text-right")}
+                      className={cn(fieldClass, symbolPadding, "text-right")}
                       aria-label={`${labels.rate} ${index + 1}`}
                       onCommit={(rateMinor) => updateLine(item.id, { rateMinor })}
                     />
@@ -478,13 +501,13 @@ export function CommercialDocumentCanvas({
                 <span>{labels.amountPaid}</span>
                 <div className="relative w-24">
                   <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[#64748b]">
-                    $
+                    {symbol}
                   </span>
                   <MoneyAmountInput
                     minor={commercial.amountPaidMinor}
                     currency={commercial.currency}
                     readOnly={readOnly}
-                    className={cn(fieldClass, "pl-5 text-right")}
+                    className={cn(fieldClass, symbolPadding, "text-right")}
                     aria-label={labels.amountPaid}
                     onCommit={(amountPaidMinor) => patch({ amountPaidMinor })}
                   />
@@ -526,6 +549,38 @@ function MetaRow({
         className={cn(fieldClass, "ml-auto w-[140px] shrink-0")}
         aria-label={label}
       />
+    </div>
+  );
+}
+
+function CurrencyRow({
+  value,
+  onChange,
+  readOnly,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  readOnly?: boolean;
+}) {
+  const known = (SUPPORTED_CURRENCIES as readonly string[]).includes(value);
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="shrink-0 text-[13px] text-[#0f2744]">Currency</span>
+      <select
+        value={value}
+        disabled={readOnly}
+        onChange={(event) => onChange(event.target.value)}
+        className={cn(fieldClass, "ml-auto w-[140px] shrink-0 disabled:bg-[#f8fafc] disabled:opacity-100")}
+        aria-label="Currency"
+        title={currencyLabel(value)}
+      >
+        {known ? null : <option value={value}>{value}</option>}
+        {SUPPORTED_CURRENCIES.map((code) => (
+          <option key={code} value={code}>
+            {code} ({currencySymbol(code)})
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -913,7 +968,7 @@ function AdjustmentEditor({
         }
         className="rounded border border-[#d7dee8] px-1 text-[10px] text-[#64748b] hover:bg-slate-50"
       >
-        {isPercent ? "%" : "$"}
+        {isPercent ? "%" : currencySymbol(commercial.currency, commercial.locale)}
       </button>
     </div>
   );

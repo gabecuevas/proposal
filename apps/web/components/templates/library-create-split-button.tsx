@@ -1,13 +1,29 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@repo/ui/utils";
-import { IconChevronDown } from "@/components/app-shell/shell-icons";
+import { IconChevronDown, IconTemplates } from "@/components/app-shell/shell-icons";
+import {
+  FlowDocTypeIcon,
+  PdfDocTypeIcon,
+  QuoteDocTypeIcon,
+} from "@/components/documents/document-type-icon";
 import {
   DOCUMENT_CREATE_KINDS,
   documentKindProfile,
   type DocumentCreateKind,
 } from "@/lib/editor/document-kind";
+
+const MENU_ICON_SIZE = 20;
+
+const KIND_ICONS: Record<DocumentCreateKind, ReactNode> = {
+  document: <FlowDocTypeIcon size={MENU_ICON_SIZE} />,
+  template: <IconTemplates className="h-5 w-5 shrink-0 text-muted" />,
+  proposal: <FlowDocTypeIcon size={MENU_ICON_SIZE} title="Proposal" />,
+  quote: <QuoteDocTypeIcon size={MENU_ICON_SIZE} />,
+  invoice: <QuoteDocTypeIcon size={MENU_ICON_SIZE} title="Invoice" />,
+};
 
 type Props = {
   primaryKind?: DocumentCreateKind;
@@ -15,6 +31,8 @@ type Props = {
   className?: string;
   /** Compact styling for toolbars vs full-width sidebar CTA. */
   variant?: "sidebar" | "toolbar";
+  /** Library folder that "New PDF" uploads land in. */
+  folderId?: string | null;
 };
 
 export function LibraryCreateSplitButton({
@@ -22,9 +40,14 @@ export function LibraryCreateSplitButton({
   onSelect,
   className,
   variant = "sidebar",
+  folderId = null,
 }: Props) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [pdfStatus, setPdfStatus] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
   const primary = documentKindProfile(primaryKind);
 
   useEffect(() => {
@@ -49,7 +72,35 @@ export function LibraryCreateSplitButton({
     };
   }, [open]);
 
+  async function onPdfChosen(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      setPdfError("Choose a PDF file.");
+      return;
+    }
+    setPdfError(null);
+    setPdfStatus("Uploading PDF…");
+    try {
+      const { createTemplateFromFile } = await import("@/lib/templates/create-from-upload");
+      const pdf = file.type === "application/pdf" ? file : new File([file], file.name, { type: "application/pdf" });
+      const template = await createTemplateFromFile(pdf, (progress) => setPdfStatus(progress.stage), {
+        folderId,
+      });
+      router.push(`/app/templates/${template.id}`);
+    } catch (error) {
+      setPdfError(error instanceof Error ? error.message : "PDF upload failed");
+    } finally {
+      setPdfStatus(null);
+    }
+  }
+
   const isSidebar = variant === "sidebar";
+  const menuItemClass =
+    "flex w-full items-center gap-2.5 whitespace-nowrap px-3 py-1.5 text-left hover:bg-slate-50";
 
   return (
     <div ref={rootRef} className={cn("relative", className)}>
@@ -86,6 +137,23 @@ export function LibraryCreateSplitButton({
         </button>
       </div>
 
+      <input
+        ref={pdfInputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        className="hidden"
+        onChange={(event) => void onPdfChosen(event)}
+      />
+
+      {pdfStatus || pdfError ? (
+        <p
+          className={cn("mt-1 text-[11px]", pdfError ? "text-red-600" : "text-muted", !isSidebar && "absolute right-0 whitespace-nowrap")}
+          role={pdfError ? "alert" : "status"}
+        >
+          {pdfError ?? pdfStatus}
+        </p>
+      ) : null}
+
       {open ? (
         <div
           role="menu"
@@ -94,23 +162,34 @@ export function LibraryCreateSplitButton({
             !isSidebar && "right-0 left-auto min-w-[11rem]",
           )}
         >
-          {DOCUMENT_CREATE_KINDS.map((kind) => {
-            const profile = documentKindProfile(kind);
-            return (
-              <button
-                key={kind}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setOpen(false);
-                  onSelect(kind);
-                }}
-                className="flex w-full items-center px-3 py-2 text-left hover:bg-slate-50"
-              >
-                {profile.label}
-              </button>
-            );
-          })}
+          {DOCUMENT_CREATE_KINDS.map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onSelect(kind);
+              }}
+              className={menuItemClass}
+            >
+              {KIND_ICONS[kind]}
+              {documentKindProfile(kind).label}
+            </button>
+          ))}
+          <button
+            type="button"
+            role="menuitem"
+            disabled={Boolean(pdfStatus)}
+            onClick={() => {
+              setOpen(false);
+              pdfInputRef.current?.click();
+            }}
+            className={cn(menuItemClass, "disabled:opacity-50")}
+          >
+            <PdfDocTypeIcon size={MENU_ICON_SIZE} />
+            New PDF
+          </button>
         </div>
       ) : null}
     </div>

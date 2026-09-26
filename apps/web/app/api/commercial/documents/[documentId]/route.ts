@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
 import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
+import { DocumentNumberInUseError } from "@/lib/commercial/numbering";
 import {
   CommercialConflictError,
   CommercialImmutableError,
@@ -52,6 +53,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   } catch (error) {
     if (error instanceof CommercialConflictError) {
       return errorResponse(request, { status: 409, code: "version_conflict", message: error.message });
+    }
+    if (error instanceof DocumentNumberInUseError) {
+      return errorResponse(request, { status: 409, code: "document_number_in_use", message: error.message });
     }
     if (error instanceof CommercialImmutableError) {
       return errorResponse(request, { status: 409, code: "immutable", message: error.message });

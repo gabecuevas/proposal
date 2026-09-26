@@ -11,6 +11,7 @@ import {
   withDocumentKindVariables,
   type WorkflowDocumentKind,
 } from "@/lib/editor/document-kind";
+import { isSupportedCurrency, normalizeCurrency } from "./currencies";
 import { createBlankCommercialDocument, type CommercialDocType, type CommercialDocument, isCommercialDocument } from "./schema";
 import {
   convertQuoteToInvoicePayload,
@@ -157,12 +158,15 @@ export async function createCommercialDraft(input: {
 
   const row = await prisma.$transaction(async (tx) => {
     const number = await allocateDocumentNumber(input.workspaceId, input.type, tx);
-    let commercial = createBlankCommercialDocument(input.type, { documentNumber: number });
     const templateId: string | null = input.templateId ?? null;
 
     const workspace = await tx.workspace.findUnique({
       where: { id: input.workspaceId },
-      select: { logo_asset_key: true },
+      select: { logo_asset_key: true, currency: true },
+    });
+    let commercial = createBlankCommercialDocument(input.type, {
+      documentNumber: number,
+      currency: normalizeCurrency(workspace?.currency),
     });
     if (workspace?.logo_asset_key) {
       commercial = { ...commercial, logoAssetKey: workspace.logo_asset_key };
@@ -293,6 +297,17 @@ export async function updateCommercialDocument(input: {
     throw new Error(blocking[0]!.message);
   }
 
+  commercial.currency = commercial.currency.toUpperCase();
+  const previousCurrency = parseCommercialDocument(existing.pricing_json, type)?.currency;
+  if (previousCurrency !== commercial.currency) {
+    if (!isSupportedCurrency(commercial.currency)) {
+      throw new Error("Choose a supported currency.");
+    }
+    if (previousCurrency && (await sumCompletedPaymentsMinor(input.documentId, input.workspaceId)) > 0) {
+      throw new Error("Currency can't be changed after payments have been recorded.");
+    }
+  }
+
   const variables = withDocumentKindVariables(
     {
       ...(existing.variables_json as VariableContext),
@@ -304,47 +319,50 @@ export async function updateCommercialDocument(input: {
     "commercial",
   );
 
-  try {
-    await prisma.$transaction(async (tx) => {
-      await claimDocumentNumber({
-        workspaceId: input.workspaceId,
-        kind: type,
-        documentId: input.documentId,
-        documentNumber: commercial.documentNumber || (await allocateDocumentNumber(input.workspaceId, type, tx)),
-        tx,
+  await prisma.$transaction(async (tx) => {
+    if (!commercial.documentNumber.trim()) {
+      const current = await tx.documentIssuedNumber.findUnique({
+        where: { document_id: input.documentId },
+        select: { document_number: true, kind: true },
       });
-      const updated = await tx.document.updateMany({
-        where: {
-          id: input.documentId,
-          workspace_id: input.workspaceId,
-          doc_version: input.expectedVersion,
-        },
-        data: {
-          pricing_json: commercial as unknown as InputJsonValue,
-          variables_json: variables as InputJsonValue,
-          contact_id: commercial.contactId,
-          doc_version: { increment: 1 },
-        },
-      });
-      if (updated.count === 0) {
-        throw new CommercialConflictError();
-      }
-      await tx.documentActivityEvent.create({
-        data: {
-          workspace_id: input.workspaceId,
-          document_id: input.documentId,
-          event_type: "DOCUMENT_UPDATED",
-          actor_user_id: input.actorUserId,
-          metadata_json: { source: "commercial_builder" },
-        },
-      });
-    });
-  } catch (error) {
-    if (error instanceof Error && error.message === "Document number already in use") {
-      throw error;
+      commercial.documentNumber =
+        current && current.kind === type
+          ? current.document_number
+          : await allocateDocumentNumber(input.workspaceId, type, tx);
     }
-    throw error;
-  }
+    await claimDocumentNumber({
+      workspaceId: input.workspaceId,
+      kind: type,
+      documentId: input.documentId,
+      documentNumber: commercial.documentNumber,
+      tx,
+    });
+    const updated = await tx.document.updateMany({
+      where: {
+        id: input.documentId,
+        workspace_id: input.workspaceId,
+        doc_version: input.expectedVersion,
+      },
+      data: {
+        pricing_json: commercial as unknown as InputJsonValue,
+        variables_json: variables as InputJsonValue,
+        contact_id: commercial.contactId,
+        doc_version: { increment: 1 },
+      },
+    });
+    if (updated.count === 0) {
+      throw new CommercialConflictError();
+    }
+    await tx.documentActivityEvent.create({
+      data: {
+        workspace_id: input.workspaceId,
+        document_id: input.documentId,
+        event_type: "DOCUMENT_UPDATED",
+        actor_user_id: input.actorUserId,
+        metadata_json: { source: "commercial_builder" },
+      },
+    });
+  });
 
   const next = await getCommercialDocument(input.documentId, input.workspaceId);
   if (!next) {
@@ -482,6 +500,9 @@ export async function recordManualPayment(input: {
   const doc = await getCommercialDocument(input.documentId, input.workspaceId);
   if (!doc || doc.commercial.type !== "invoice") {
     throw new Error("Manual payments are only supported on invoices");
+  }
+  if (input.currency.toUpperCase() !== doc.commercial.currency.toUpperCase()) {
+    throw new Error(`Payments on this invoice must be in ${doc.commercial.currency}`);
   }
 
   const existing = await prisma.documentPayment.findUnique({

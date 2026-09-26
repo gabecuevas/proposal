@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { SheetPadded } from "@/components/ui/sheet-table";
+import { currencyLabel } from "@/lib/commercial/currencies";
 
 type WorkspaceDefaults = {
   currency: string;
@@ -54,7 +56,6 @@ export default function SettingsDocumentDefaultsPage() {
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
       body: JSON.stringify({
-        currency: form.currency,
         timezone: form.timezone,
         locale: form.locale,
         quoteValidityDays: form.quoteValidityDays,
@@ -91,16 +92,15 @@ export default function SettingsDocumentDefaultsPage() {
         Applied when creating new quotes and invoices. Existing documents are not changed.
       </p>
       <form className="mt-6 max-w-md space-y-4" onSubmit={(event) => void onSubmit(event)}>
-        <label className="block text-sm">
+        <div className="text-sm">
           <span className="mb-1 block text-muted">Default currency</span>
-          <input
-            className="w-full rounded-none border border-border bg-surface px-3 py-2"
-            value={form.currency}
-            onChange={(event) => setForm((prev) => ({ ...prev, currency: event.target.value.toUpperCase() }))}
-            maxLength={3}
-            required
-          />
-        </label>
+          <p className="text-foreground">
+            {currencyLabel(form.currency)}{" "}
+            <Link href="/app/settings/company" className="text-primary hover:underline">
+              Change in Company settings
+            </Link>
+          </p>
+        </div>
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Time zone</span>
           <input

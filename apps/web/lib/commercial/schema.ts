@@ -168,7 +168,7 @@ export const PERCENT_SCALE = 100;
 /** Currency minor-unit precision. Unknown → 2. */
 export function currencyPrecision(currency: string): number {
   const code = currency.toUpperCase();
-  if (code === "JPY" || code === "KRW" || code === "VND") {
+  if (code === "JPY" || code === "KRW" || code === "VND" || code === "CLP") {
     return 0;
   }
   if (code === "BHD" || code === "KWD" || code === "OMR" || code === "JOD") {

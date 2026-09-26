@@ -257,13 +257,13 @@ export function CrmDataGrid<T>({
     <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col bg-surface">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2">
         <input
-          className="h-8 min-w-0 flex-1 rounded-md border border-border bg-surface px-3 text-sm outline-none ring-primary/15 focus:ring-2"
+          className="h-8 w-[20%] min-w-48 rounded-md border border-border bg-surface px-3 text-sm outline-none ring-primary/15 focus:ring-2"
           value={search.value}
           onChange={(event) => search.onChange(event.target.value)}
           onKeyDown={(event) => event.key === "Enter" && search.onSubmit()}
           placeholder={search.placeholder}
         />
-        <p className="text-sm text-muted">{pluralize(rows.length, recordNoun, recordNounPlural)}</p>
+        <p className="ml-auto text-sm text-muted">{pluralize(rows.length, recordNoun, recordNounPlural)}</p>
         <button
           type="button"
           onClick={onAdd}
