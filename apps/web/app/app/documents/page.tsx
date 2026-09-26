@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useNewDocumentWorkflow } from "@/components/documents/new-document-workflow-context";
+import { workflowResumeTarget } from "@/lib/documents/workflow-resume";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ConfirmStatusChangeModal,
@@ -46,6 +48,7 @@ type DocumentItem = {
   editor_json: EditorDoc;
   variables_json?: VariableContext;
   recipients_json: Recipient[];
+  has_contact?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -95,27 +98,25 @@ function firstRecipient(recipients: Recipient[]): {
   };
 }
 
-function hasRecipients(document: DocumentItem): boolean {
-  return Array.isArray(document.recipients_json) && document.recipients_json.length > 0;
-}
-
 const DOCUMENT_TABLE_COLUMNS: ResizableColumnDef[] = [
   { id: "select", defaultWidth: 40 },
   { id: "title", defaultWidth: 200 },
   { id: "company", defaultWidth: 150 },
   { id: "name", defaultWidth: 150 },
   { id: "email", defaultWidth: 180 },
-  { id: "status", defaultWidth: 100 },
-  { id: "created", defaultWidth: 120 },
-  { id: "type", defaultWidth: 72 },
   { id: "sender", defaultWidth: 130 },
+  { id: "type", defaultWidth: 104 },
+  { id: "created", defaultWidth: 120 },
   { id: "due", defaultWidth: 120 },
   { id: "updated", defaultWidth: 110 },
+  { id: "status", defaultWidth: 100 },
   { id: "actions", defaultWidth: 44 },
 ];
 
 export default function DocumentsPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const { openWorkflow } = useNewDocumentWorkflow();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
@@ -127,12 +128,25 @@ export default function DocumentsPage() {
   const [statusTarget, setStatusTarget] = useState<DocumentStatusChangeTarget | null>(null);
   const [renameTarget, setRenameTarget] = useState<DocumentItem | null>(null);
   const { widthFor, tableMinWidth, beginResize, onResizeMove, endResize } = useResizableColumns(
-    "documents-table-v3",
+    "documents-table-v4",
     DOCUMENT_TABLE_COLUMNS,
   );
 
   const activeTab = toDocumentTrackingTab(searchParams.get("tab"));
   const isDraftTab = activeTab === "draft";
+
+  function resumeDraft(document: DocumentItem) {
+    const target = workflowResumeTarget({
+      documentId: document.id,
+      variables: document.variables_json,
+      hasRecipients: document.recipients_json.some((recipient) => recipient.email?.trim()),
+    });
+    if (target.type === "editor") {
+      router.push(target.href);
+      return;
+    }
+    openWorkflow({ kind: target.kind, documentId: document.id, initialStep: target.step });
+  }
 
   const loadDocuments = useCallback(async () => {
     setError("");
@@ -168,8 +182,8 @@ export default function DocumentsPage() {
       if (!matchesDocumentTab(activeTab, d.status)) {
         return false;
       }
-      // Drafts are documents started in + New Document with at least one recipient.
-      if (activeTab === "draft" && !hasRecipients(d)) {
+      // A draft is only listed once it is linked to a CRM contact.
+      if (activeTab === "draft" && !d.has_contact) {
         return false;
       }
       return true;
@@ -433,20 +447,12 @@ export default function DocumentsPage() {
               Recipient Email
             </ResizableSheetTh>
             <ResizableSheetTh
-              width={widthFor("status")}
-              onResizeStart={(event) => beginResize(event, "status")}
+              width={widthFor("sender")}
+              onResizeStart={(event) => beginResize(event, "sender")}
               onResizeMove={onResizeMove}
               onResizeEnd={endResize}
             >
-              Status
-            </ResizableSheetTh>
-            <ResizableSheetTh
-              width={widthFor("created")}
-              onResizeStart={(event) => beginResize(event, "created")}
-              onResizeMove={onResizeMove}
-              onResizeEnd={endResize}
-            >
-              Created date
+              Sender
             </ResizableSheetTh>
             <ResizableSheetTh
               width={widthFor("type")}
@@ -457,12 +463,12 @@ export default function DocumentsPage() {
               Type
             </ResizableSheetTh>
             <ResizableSheetTh
-              width={widthFor("sender")}
-              onResizeStart={(event) => beginResize(event, "sender")}
+              width={widthFor("created")}
+              onResizeStart={(event) => beginResize(event, "created")}
               onResizeMove={onResizeMove}
               onResizeEnd={endResize}
             >
-              Sender
+              Created date
             </ResizableSheetTh>
             <ResizableSheetTh
               width={widthFor("due")}
@@ -479,6 +485,14 @@ export default function DocumentsPage() {
               onResizeEnd={endResize}
             >
               Updated
+            </ResizableSheetTh>
+            <ResizableSheetTh
+              width={widthFor("status")}
+              onResizeStart={(event) => beginResize(event, "status")}
+              onResizeMove={onResizeMove}
+              onResizeEnd={endResize}
+            >
+              Status
             </ResizableSheetTh>
             <th
               className={sheetTh("w-10")}
@@ -513,6 +527,12 @@ export default function DocumentsPage() {
                 <td className={sheetTd()} style={{ width: widthFor("title"), maxWidth: widthFor("title") }}>
                   <Link
                     href={`/app/documents/${document.id}`}
+                    onClick={(event) => {
+                      if (isDraftTab && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+                        event.preventDefault();
+                        resumeDraft(document);
+                      }
+                    }}
                     className="flex min-w-0 items-center gap-2 font-medium text-primary"
                   >
                     <span className="truncate" title={title}>
@@ -542,28 +562,23 @@ export default function DocumentsPage() {
                   {recipient.email}
                 </td>
                 <td
-                  className={sheetTd("whitespace-nowrap")}
-                  style={{ width: widthFor("status"), maxWidth: widthFor("status") }}
+                  className={sheetTd("truncate text-foreground")}
+                  style={{ width: widthFor("sender"), maxWidth: widthFor("sender") }}
+                  title={sender}
                 >
-                  <span className={statusBadgeClass(document.status)}>
-                    {documentStatusDisplayLabel(document.status)}
-                  </span>
+                  {sender}
+                </td>
+                <td
+                  className={sheetTd("whitespace-nowrap")}
+                  style={{ width: widthFor("type"), maxWidth: widthFor("type") }}
+                >
+                  <DocumentTypeCell variables={document.variables_json} />
                 </td>
                 <td
                   className={sheetTd("whitespace-nowrap")}
                   style={{ width: widthFor("created"), maxWidth: widthFor("created") }}
                 >
                   {formatShortDate(document.created_at)}
-                </td>
-                <td className={sheetTd()} style={{ width: widthFor("type"), maxWidth: widthFor("type") }}>
-                  <DocumentTypeCell variables={document.variables_json} />
-                </td>
-                <td
-                  className={sheetTd("truncate text-foreground")}
-                  style={{ width: widthFor("sender"), maxWidth: widthFor("sender") }}
-                  title={sender}
-                >
-                  {sender}
                 </td>
                 <td
                   className={sheetTd("whitespace-nowrap")}
@@ -576,6 +591,14 @@ export default function DocumentsPage() {
                   style={{ width: widthFor("updated"), maxWidth: widthFor("updated") }}
                 >
                   {formatRelativeTime(document.updated_at)}
+                </td>
+                <td
+                  className={sheetTd("whitespace-nowrap")}
+                  style={{ width: widthFor("status"), maxWidth: widthFor("status") }}
+                >
+                  <span className={statusBadgeClass(document.status)}>
+                    {documentStatusDisplayLabel(document.status)}
+                  </span>
                 </td>
                 <td
                   className={sheetTd("w-10 text-center")}

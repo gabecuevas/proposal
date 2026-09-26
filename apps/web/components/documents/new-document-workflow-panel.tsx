@@ -35,6 +35,12 @@ import {
 } from "@/lib/editor/document-kind";
 import type { VariableContext } from "@/lib/editor/types";
 import { UseTemplateStepWizard } from "@/components/documents/use-template-wizard-chrome";
+import { rememberWorkflowStep } from "@/lib/documents/workflow-resume";
+import {
+  DeliveryVariablesShelf,
+  PublicLinkModal,
+  deliveryVariableGroups,
+} from "@/components/documents/delivery-step-extras";
 import {
   LINE_ITEM_REQUIRED_MESSAGE,
   hasProductOrService,
@@ -74,6 +80,7 @@ type DocumentPayload = {
   editor_json: EditorDoc;
   variables_json?: VariableContext;
   pricing_json?: unknown;
+  contact_id?: string | null;
   recipients_json: Array<{
     id: string;
     name: string;
@@ -143,7 +150,100 @@ export function NewDocumentWorkflowPanel({
   const [deliverySubject, setDeliverySubject] = useState("");
   const [deliveryMessage, setDeliveryMessage] = useState(profile.deliveryIntro);
   const [saveDefaultMessage, setSaveDefaultMessage] = useState(false);
+  const [defaultMessageStatus, setDefaultMessageStatus] = useState("");
   const [selectedRecipientId, setSelectedRecipientId] = useState("");
+  const [publicUrl, setPublicUrl] = useState("");
+  const [publicLinkOpen, setPublicLinkOpen] = useState(false);
+  const [manuallyDelivered, setManuallyDelivered] = useState(false);
+  const defaultLoadedForRef = useRef("");
+  const deliveryKind: WorkflowDocumentKind = document
+    ? documentKindFromVariables(document.variables_json)
+    : kind;
+
+  useEffect(() => {
+    if (!open) {
+      defaultLoadedForRef.current = "";
+      setSaveDefaultMessage(false);
+      setDefaultMessageStatus("");
+      setPublicUrl("");
+      setPublicLinkOpen(false);
+      setManuallyDelivered(false);
+      return;
+    }
+    if (!documentId || !document || document.id !== documentId) {
+      return;
+    }
+    const key = `${documentId}:${deliveryKind}`;
+    if (defaultLoadedForRef.current === key) {
+      return;
+    }
+    defaultLoadedForRef.current = key;
+    let cancelled = false;
+    void (async () => {
+      const response = await fetch(`/api/workspace/delivery-message?kind=${deliveryKind}`).catch(() => null);
+      if (!response?.ok || cancelled) {
+        return;
+      }
+      const data = (await response.json()) as { default?: { message: string } | null };
+      if (!cancelled && data.default?.message) {
+        setDeliveryMessage(data.default.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [deliveryKind, document, documentId, open]);
+
+  useEffect(() => {
+    if (!open || step !== 4 || !documentId || publicUrl) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const response = await fetch(`/api/documents/${documentId}/public-link`).catch(() => null);
+      if (!response?.ok || cancelled) {
+        return;
+      }
+      const data = (await response.json()) as { url?: string };
+      if (!cancelled && data.url) {
+        setPublicUrl(data.url);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [documentId, open, publicUrl, step]);
+
+  useEffect(() => {
+    if (!saveDefaultMessage || !deliveryMessage.trim()) {
+      return;
+    }
+    setDefaultMessageStatus("Saving…");
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        const response = await fetch("/api/workspace/delivery-message", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind: deliveryKind, message: deliveryMessage }),
+        }).catch(() => null);
+        setDefaultMessageStatus(response?.ok ? "Saved as your default message" : "Could not save default message");
+      })();
+    }, 600);
+    return () => window.clearTimeout(handle);
+  }, [deliveryKind, deliveryMessage, saveDefaultMessage]);
+
+  useEffect(() => {
+    if (!open || !documentId || !document || document.id !== documentId) {
+      return;
+    }
+    if (step === 2) {
+      rememberWorkflowStep(documentId, "contact");
+    } else if (step === 3) {
+      rememberWorkflowStep(documentId, "edit");
+    } else if (step === 4) {
+      rememberWorkflowStep(documentId, "review");
+    }
+  }, [document, documentId, open, step]);
 
   useEffect(() => {
     if (!open) {
@@ -393,8 +493,10 @@ export function NewDocumentWorkflowPanel({
           title: nextTitle.trim(),
           dueDate: nextDueDate.trim() || null,
         }),
-        recipients_json: recipientsJson,
-        contact_id: nextRecipients[0]?.contactId ?? null,
+        // Never wipe the saved recipients (and their contact link) when none are selected.
+        ...(recipientsJson.length > 0
+          ? { recipients_json: recipientsJson, contact_id: nextRecipients[0]?.contactId ?? null }
+          : {}),
       }),
     });
     if (!response.ok) {
@@ -451,6 +553,7 @@ export function NewDocumentWorkflowPanel({
         }
         setSelectedRecipientId((current) => current || document.recipients_json[0]?.id || recipients[0]?.id || "");
         if (usesNativeDocumentEditor(document, kind)) {
+          rememberWorkflowStep(documentId, "edit");
           onClose();
           router.push(`/app/documents/${documentId}?afterUse=1`);
           return;
@@ -574,6 +677,20 @@ export function NewDocumentWorkflowPanel({
 
   async function flushAndClose() {
     if (documentId && document) {
+      const linkedToContact =
+        Boolean(document.contact_id) ||
+        recipients.some((item) => item.contactId) ||
+        document.recipients_json.some((item) => item.contact_id);
+      if (!linkedToContact && document.status === "DRAFTED") {
+        // Drafts require a contact; an abandoned one goes to Trash so it stays recoverable.
+        await fetch(`/api/documents/${documentId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "TRASHED" }),
+        }).catch(() => undefined);
+        onClose();
+        return;
+      }
       await persistDraftDetails();
     }
     onClose();
@@ -602,24 +719,76 @@ export function NewDocumentWorkflowPanel({
     setBusy(true);
     setError("");
     try {
-      const response = await fetch(`/api/documents/${documentId}/send`, { method: "POST" });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as {
-          error?: { code?: string };
-        } | null;
-        if (payload?.error?.code === "line_item_required") {
-          setLineItemAlertOpen(true);
-          return;
-        }
-        throw new Error("Could not deliver document");
+      const sent = await postSend({ delivery: "email", subject: deliverySubject, message: deliveryMessage });
+      if (!sent) {
+        return;
       }
       setSaveStatus("Delivered");
       onClose();
-      router.push(`/app/documents/${documentId}`);
+      router.push("/app/documents?tab=in-progress");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not deliver");
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Returns false when sending was blocked by the Product or Service rule. */
+  async function postSend(body: { delivery: "email" | "manual"; subject?: string; message?: string }) {
+    const response = await fetch(`/api/documents/${documentId}/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (response.ok) {
+      return true;
+    }
+    const payload = (await response.json().catch(() => null)) as {
+      error?: { code?: string; message?: string };
+    } | null;
+    if (payload?.error?.code === "line_item_required") {
+      setPublicLinkOpen(false);
+      setLineItemAlertOpen(true);
+      return false;
+    }
+    if (payload?.error?.code === "document_already_sent") {
+      return true;
+    }
+    throw new Error(payload?.error?.message || "Could not deliver document");
+  }
+
+  function openDeliverMyself() {
+    if (document && isCommercialDocument(document.pricing_json) && !hasProductOrService(document.pricing_json)) {
+      setLineItemAlertOpen(true);
+      return;
+    }
+    setError("");
+    setPublicLinkOpen(true);
+  }
+
+  async function markDeliveredManually() {
+    if (!documentId || manuallyDelivered) {
+      return;
+    }
+    setBusy(true);
+    try {
+      if (await postSend({ delivery: "manual" })) {
+        setManuallyDelivered(true);
+        setSaveStatus("Delivered");
+      }
+    } catch (err) {
+      setPublicLinkOpen(false);
+      setError(err instanceof Error ? err.message : "Could not mark as delivered");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function closePublicLink() {
+    setPublicLinkOpen(false);
+    if (manuallyDelivered) {
+      onClose();
+      router.push("/app/documents?tab=in-progress");
     }
   }
 
@@ -668,6 +837,7 @@ export function NewDocumentWorkflowPanel({
                 const mapped: StepId = wizardStep === 1 ? 2 : wizardStep === 2 ? 3 : 4;
                 if (mapped <= step || (documentId && mapped <= 4)) {
                   if (mapped === 3 && documentId && document && usesNativeDocumentEditor(document, kind)) {
+                    rememberWorkflowStep(documentId, "edit");
                     onClose();
                     router.push(`/app/documents/${documentId}?afterUse=1`);
                     return;
@@ -827,20 +997,45 @@ export function NewDocumentWorkflowPanel({
               deliveryMessage={deliveryMessage}
               onMessageChange={setDeliveryMessage}
               saveDefaultMessage={saveDefaultMessage}
-              onSaveDefaultMessageChange={setSaveDefaultMessage}
-              busy={busy}
-              onBack={() => setStep(3)}
-              onDeliver={() => void deliverDocument()}
-              onDeliverMyself={() => {
-                onClose();
-                if (documentId) {
-                  router.push(`/app/documents/${documentId}`);
+              onSaveDefaultMessageChange={(checked) => {
+                setSaveDefaultMessage(checked);
+                if (!checked) {
+                  setDefaultMessageStatus("");
                 }
               }}
+              defaultMessageStatus={defaultMessageStatus}
+              variableGroups={deliveryVariableGroups({
+                variables: document.variables_json,
+                recipient: document.recipients_json.find((item) => item.email?.trim()) ?? null,
+                publicUrl,
+                title,
+              })}
+              busy={busy}
+              onBack={() => {
+                if (documentId && usesNativeDocumentEditor(document, kind)) {
+                  rememberWorkflowStep(documentId, "edit");
+                  onClose();
+                  router.push(`/app/documents/${documentId}?afterUse=1`);
+                  return;
+                }
+                setStep(3);
+              }}
+              onDeliver={() => void deliverDocument()}
+              onDeliverMyself={openDeliverMyself}
             />
           ) : null}
         </div>
       </div>
+      {publicLinkOpen ? (
+        <PublicLinkModal
+          url={publicUrl}
+          noun={documentKindProfile(deliveryKind).noun}
+          delivered={manuallyDelivered}
+          busy={busy}
+          onShared={() => void markDeliveredManually()}
+          onClose={closePublicLink}
+        />
+      ) : null}
       {lineItemAlertOpen ? (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 p-4">
           <div
@@ -871,6 +1066,7 @@ export function NewDocumentWorkflowPanel({
                   setLineItemAlertOpen(false);
                   onClose();
                   if (documentId) {
+                    rememberWorkflowStep(documentId, "edit");
                     router.push(`/app/documents/${documentId}?afterUse=1`);
                   }
                 }}
@@ -1597,6 +1793,8 @@ function StepDeliver({
   onMessageChange,
   saveDefaultMessage,
   onSaveDefaultMessageChange,
+  defaultMessageStatus,
+  variableGroups,
   busy,
   onBack,
   onDeliver,
@@ -1612,14 +1810,39 @@ function StepDeliver({
   onMessageChange: (value: string) => void;
   saveDefaultMessage: boolean;
   onSaveDefaultMessageChange: (value: boolean) => void;
+  defaultMessageStatus: string;
+  variableGroups: ReturnType<typeof deliveryVariableGroups>;
   busy: boolean;
   onBack: () => void;
   onDeliver: () => void;
   onDeliverMyself: () => void;
 }) {
+  const subjectRef = useRef<HTMLInputElement>(null);
+  const messageRef = useRef<HTMLTextAreaElement>(null);
+  const lastFieldRef = useRef<"subject" | "message">("message");
+
+  function insertToken(token: string) {
+    const isSubject = lastFieldRef.current === "subject";
+    const element = isSubject ? subjectRef.current : messageRef.current;
+    const value = isSubject ? deliverySubject : deliveryMessage;
+    const start = element?.selectionStart ?? value.length;
+    const end = element?.selectionEnd ?? value.length;
+    const next = `${value.slice(0, start)}${token}${value.slice(end)}`;
+    if (isSubject) {
+      onSubjectChange(next);
+    } else {
+      onMessageChange(next);
+    }
+    const caret = start + token.length;
+    window.requestAnimationFrame(() => {
+      element?.focus();
+      element?.setSelectionRange(caret, caret);
+    });
+  }
+
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-1 flex-col overflow-auto">
-      <div className="grid min-h-full flex-1 gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-1 flex-col overflow-auto">
+      <div className="grid min-h-full flex-1 gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)_minmax(0,16rem)]">
         <div className="space-y-3">
           <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
@@ -1675,7 +1898,11 @@ function StepDeliver({
           <label className="mt-4 block text-xs font-medium text-muted">
             Subject
             <input
+              ref={subjectRef}
               value={deliverySubject}
+              onFocus={() => {
+                lastFieldRef.current = "subject";
+              }}
               onChange={(event) => onSubjectChange(event.target.value)}
               className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-primary/40"
             />
@@ -1684,7 +1911,11 @@ function StepDeliver({
           <label className="mt-3 block min-h-0 flex-1 text-xs font-medium text-muted">
             Delivery Message
             <textarea
+              ref={messageRef}
               value={deliveryMessage}
+              onFocus={() => {
+                lastFieldRef.current = "message";
+              }}
               onChange={(event) => onMessageChange(event.target.value)}
               rows={12}
               className="mt-1 min-h-[12rem] h-[calc(100%-1.25rem)] w-full rounded-md border border-border bg-background px-3 py-2 text-sm leading-relaxed outline-none focus:border-primary/40"
@@ -1698,6 +1929,11 @@ function StepDeliver({
               onChange={(event) => onSaveDefaultMessageChange(event.target.checked)}
             />
             Save as my default message
+            {saveDefaultMessage && defaultMessageStatus ? (
+              <span className="text-xs text-muted" role="status">
+                · {defaultMessageStatus}
+              </span>
+            ) : null}
           </label>
 
           <div className="mt-auto space-y-2 pt-4">
@@ -1711,8 +1947,9 @@ function StepDeliver({
             </button>
             <button
               type="button"
+              disabled={busy}
               onClick={onDeliverMyself}
-              className="w-full rounded-md border border-primary bg-surface px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10"
+              className="w-full rounded-md border border-primary bg-surface px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 disabled:opacity-60"
             >
               I&apos;ll deliver it myself
             </button>
@@ -1725,6 +1962,8 @@ function StepDeliver({
             </button>
           </div>
         </div>
+
+        <DeliveryVariablesShelf groups={variableGroups} onInsert={insertToken} />
       </div>
     </div>
   );

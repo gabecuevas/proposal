@@ -28,7 +28,7 @@ const PROFILES: Record<DocumentCreateKind, DocumentKindProfile> = {
     blankTitle: "Untitled Document",
     workflowTitle: "New Document",
     deliveryIntro:
-      "Hi {{recipient_full_name}},\n\nBelow is the link to the document. As you look through, please add any comments or questions. I look forward to your feedback!\n\nThanks,\n{{sender_full_name}}",
+      "Hi [Recipient.FullName],\n\nBelow is the link to the document. As you look through, please add any comments or questions. I look forward to your feedback!\n\n[Document.Link]\n\nThanks,\n[Sender.FullName]",
   },
   template: {
     id: "template",
@@ -45,7 +45,7 @@ const PROFILES: Record<DocumentCreateKind, DocumentKindProfile> = {
     blankTitle: "Untitled Proposal",
     workflowTitle: "New Proposal",
     deliveryIntro:
-      "Hi {{recipient_full_name}},\n\nBelow is the link to the proposal. As you look through, please add any comments or questions. I look forward to your feedback!\n\nThanks,\n{{sender_full_name}}",
+      "Hi [Recipient.FullName],\n\nBelow is the link to the proposal. As you look through, please add any comments or questions. I look forward to your feedback!\n\n[Document.Link]\n\nThanks,\n[Sender.FullName]",
   },
   quote: {
     id: "quote",
@@ -54,7 +54,7 @@ const PROFILES: Record<DocumentCreateKind, DocumentKindProfile> = {
     blankTitle: "Untitled Quote",
     workflowTitle: "New Quote",
     deliveryIntro:
-      "Hi {{recipient_full_name}},\n\nPlease find your quote at the link below. Let me know if you have any questions.\n\nThanks,\n{{sender_full_name}}",
+      "Hi [Recipient.FullName],\n\nPlease find your quote at the link below. Let me know if you have any questions.\n\n[Document.Link]\n\nThanks,\n[Sender.FullName]",
   },
   invoice: {
     id: "invoice",
@@ -63,7 +63,7 @@ const PROFILES: Record<DocumentCreateKind, DocumentKindProfile> = {
     blankTitle: "Untitled Invoice",
     workflowTitle: "New Invoice",
     deliveryIntro:
-      "Hi {{recipient_full_name}},\n\nPlease find your invoice at the link below. Let me know if you have any questions.\n\nThanks,\n{{sender_full_name}}",
+      "Hi [Recipient.FullName],\n\nPlease find your invoice at the link below. Let me know if you have any questions.\n\n[Document.Link]\n\nThanks,\n[Sender.FullName]",
   },
 };
 

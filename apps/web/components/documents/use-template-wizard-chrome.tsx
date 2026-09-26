@@ -1,9 +1,10 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@repo/ui/utils";
 import { useNewDocumentWorkflow } from "@/components/documents/new-document-workflow-context";
+import { rememberWorkflowStep } from "@/lib/documents/workflow-resume";
 
 const STEPS = [
   { id: 1, label: "Add Contact" },
@@ -109,7 +110,13 @@ export function UseTemplateStepWizard({
 function UseTemplateWizardChromeInner({ documentId }: { documentId: string }) {
   const searchParams = useSearchParams();
   const { openWorkflow } = useNewDocumentWorkflow();
-  if (searchParams.get("afterUse") !== "1") {
+  const inWorkflow = searchParams.get("afterUse") === "1";
+  useEffect(() => {
+    if (inWorkflow && documentId) {
+      rememberWorkflowStep(documentId, "edit");
+    }
+  }, [documentId, inWorkflow]);
+  if (!inWorkflow) {
     return null;
   }
 

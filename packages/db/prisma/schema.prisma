@@ -71,6 +71,7 @@ model Workspace {
   documentNumberSequences DocumentNumberSequence[]
   documentIssuedNumbers DocumentIssuedNumber[]
   catalogItems  CatalogItem[]
+  deliveryMessageDefaults DeliveryMessageDefault[]
   owner         User?            @relation("workspace_owner", fields: [owner_user_id], references: [id], onDelete: SetNull)
 }
 
@@ -291,6 +292,24 @@ model CatalogItem {
   @@index([workspace_id, kind])
 }
 
+/// Per-user default Review & Send message for each document kind.
+model DeliveryMessageDefault {
+  id           String   @id @default(cuid())
+  workspace_id String
+  user_id      String
+  /// "document" | "proposal" | "quote" | "invoice"
+  kind         String
+  subject      String?
+  message      String
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([workspace_id, user_id, kind])
+}
+
 model ContentBlockFolder {
   id           String   @id @default(cuid())
   workspace_id String
@@ -441,6 +460,7 @@ model User {
   crm_timeline_events    CrmTimelineEvent[]
   crm_email_accounts     CrmEmailAccount[]
   crm_email_templates    CrmEmailTemplate[]
+  delivery_message_defaults DeliveryMessageDefault[]
   crm_email_signatures   CrmEmailSignature[]
   crm_calendar_accounts  CrmCalendarAccount[]
 
