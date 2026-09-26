@@ -186,6 +186,15 @@ export function isCommercialDocument(value: unknown): value is CommercialDocumen
   );
 }
 
+export const LINE_ITEM_REQUIRED_MESSAGE = "You must add a Product or Service before sending";
+
+/** True when at least one line item names a product or service. */
+export function hasProductOrService(doc: Pick<CommercialDocument, "lineItems">): boolean {
+  return (doc.lineItems ?? []).some(
+    (item) => Boolean(item.catalogItemId) || item.description.trim().length > 0,
+  );
+}
+
 export function emptyAdjustment(): CommercialAdjustment {
   return { enabled: false, mode: "percent", valueScaled: 0 };
 }

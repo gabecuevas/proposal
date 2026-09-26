@@ -10,6 +10,7 @@ export const RECIPIENT_VARIABLES: CrmVariableKey[] = [
   { key: "Recipient.FullName", label: "Full name" },
   { key: "Recipient.Email", label: "Email" },
   { key: "Recipient.CompanyName", label: "Company name" },
+  { key: "Recipient.CompanyAddress", label: "Company address" },
   { key: "Recipient.Phone", label: "Phone" },
   { key: "Recipient.Title", label: "Title" },
 ];
@@ -117,6 +118,7 @@ export function crmToDocumentVariables(
       FullName: person?.full_name ?? "",
       Email: person?.email ?? "",
       CompanyName: companyName,
+      CompanyAddress: companyAddress(company) || (person ? personAddress(person) : ""),
       Phone: person?.phone ?? "",
       Title: person?.title ?? "",
     },

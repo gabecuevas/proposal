@@ -346,7 +346,7 @@ export async function updateCommercialDocument(input: {
       data: {
         pricing_json: commercial as unknown as InputJsonValue,
         variables_json: variables as InputJsonValue,
-        contact_id: commercial.contactId,
+        contact_id: commercial.contactId ?? existing.contact_id,
         doc_version: { increment: 1 },
       },
     });

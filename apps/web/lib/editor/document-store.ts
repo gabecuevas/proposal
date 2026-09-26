@@ -29,6 +29,11 @@ import {
 } from "@/lib/crm/variables";
 import { applyTitleToDoc } from "@/lib/ui/document-title";
 import {
+  LINE_ITEM_REQUIRED_MESSAGE,
+  hasProductOrService,
+  isCommercialDocument,
+} from "@/lib/commercial/schema";
+import {
   parseDocumentKind,
   parseEditorLayout,
   withDocumentKindVariables,
@@ -144,6 +149,15 @@ export class SentDocumentImmutableError extends Error {
   constructor(message = "Sent documents are immutable") {
     super(message);
     this.name = "SentDocumentImmutableError";
+  }
+}
+
+export class LineItemRequiredError extends Error {
+  readonly code = "LINE_ITEM_REQUIRED";
+
+  constructor(message = LINE_ITEM_REQUIRED_MESSAGE) {
+    super(message);
+    this.name = "LineItemRequiredError";
   }
 }
 
@@ -947,6 +961,9 @@ export async function sendDocument(
   }
   if (existing.sent_version || !isDraftEditableStatus(existing.status)) {
     throw new DocumentAlreadySentError();
+  }
+  if (isCommercialDocument(existing.pricing_json) && !hasProductOrService(existing.pricing_json)) {
+    throw new LineItemRequiredError();
   }
 
   const workspace = await prisma.workspace.findUnique({

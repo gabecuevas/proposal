@@ -9,12 +9,19 @@ import {
   updateCommercialDocument,
 } from "@/lib/commercial/store";
 import { parseCommercialDocument } from "@/lib/commercial/parse";
+import { hydrateDraftIdentityVariables } from "@/lib/documents/identity-variables";
+import type { VariableContext } from "@/lib/editor/types";
 
 type Params = { params: Promise<{ documentId: string }> };
 
 export async function GET(request: NextRequest, { params }: Params) {
   const auth = await getRequestAuthContext(request);
   const { documentId } = await params;
+  await hydrateDraftIdentityVariables({
+    documentId,
+    workspaceId: auth.workspaceId,
+    userId: auth.userId,
+  }).catch(() => false);
   const document = await getCommercialDocument(documentId, auth.workspaceId);
   if (!document) {
     return errorResponse(request, { status: 404, code: "not_found", message: "Document not found" });
@@ -25,6 +32,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 type PatchBody = {
   expectedVersion?: number;
   commercial?: unknown;
+  variables?: unknown;
 };
 
 export async function PATCH(request: NextRequest, { params }: Params) {
@@ -48,6 +56,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       actorUserId: auth.userId,
       expectedVersion: body.expectedVersion,
       commercial,
+      variables:
+        body.variables && typeof body.variables === "object" && !Array.isArray(body.variables)
+          ? (body.variables as VariableContext)
+          : undefined,
     });
     return jsonWithRequestId(request, { document });
   } catch (error) {
