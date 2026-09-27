@@ -34,6 +34,8 @@ type Props = {
   variant?: "sidebar" | "toolbar";
   /** Library folder that "New PDF" uploads land in. */
   folderId?: string | null;
+  /** Replaces the direct upload for "New PDF" (e.g. open a Library picker). */
+  onNewPdf?: () => void;
 };
 
 export function LibraryCreateSplitButton({
@@ -42,6 +44,7 @@ export function LibraryCreateSplitButton({
   className,
   variant = "sidebar",
   folderId = null,
+  onNewPdf,
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -184,6 +187,10 @@ export function LibraryCreateSplitButton({
             disabled={Boolean(pdfStatus)}
             onClick={() => {
               setOpen(false);
+              if (onNewPdf) {
+                onNewPdf();
+                return;
+              }
               pdfInputRef.current?.click();
             }}
             className={cn(menuItemClass, "disabled:opacity-50")}
