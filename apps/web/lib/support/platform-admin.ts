@@ -30,6 +30,14 @@ export async function syncPlatformAdminFlag(userId: string, email: string): Prom
   return user.is_platform_admin;
 }
 
+/** Server-side check for an already verified session. Sudo sessions never count as admin. */
+export async function isPlatformAdminSession(session: SessionPayload | null): Promise<boolean> {
+  if (!session || !isSupportAdminEnabled() || isSudoSession(session)) {
+    return false;
+  }
+  return syncPlatformAdminFlag(session.userId, session.email);
+}
+
 export async function requirePlatformAdmin(
   request: NextRequest,
 ): Promise<PlatformAdminContext | ReturnType<typeof errorResponse>> {

@@ -15,6 +15,7 @@ type AppShellLayoutProps = {
   userEmail: string;
   userName: string;
   userInitials?: string;
+  userAvatarUrl?: string | null;
   messengerEnabled?: boolean;
   sudo?: SudoBannerInfo | null;
 };
@@ -44,6 +45,7 @@ function AppShellChrome({
   userEmail,
   userName,
   userInitials,
+  userAvatarUrl = null,
   messengerEnabled = false,
   sudo = null,
 }: AppShellLayoutProps) {
@@ -121,6 +123,7 @@ function AppShellChrome({
       <AppTopBar
         activeSectionId={section.id}
         userInitials={resolvedInitials}
+        userAvatarUrl={userAvatarUrl}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
       />
@@ -134,6 +137,7 @@ function AppShellChrome({
           userEmail={userEmail}
           userName={userName}
           userInitials={resolvedInitials}
+          userAvatarUrl={userAvatarUrl}
           open={sidebarOpen}
           onNavigate={closeIfCompact}
         />

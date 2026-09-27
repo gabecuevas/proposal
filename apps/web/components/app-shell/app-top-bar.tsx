@@ -14,6 +14,7 @@ import {
 } from "./shell-icons";
 import { topNavSections, type SectionId } from "./nav-config";
 import { APP_SIDEBAR_WIDTH_CLASS } from "./shell-metrics";
+import { UserAvatar } from "./user-avatar";
 
 const sectionIcons: Record<Exclude<SectionId, "settings">, (props: { className?: string }) => React.ReactElement> = {
   dashboard: IconHome,
@@ -40,6 +41,7 @@ function IconHelp({ className }: { className?: string }) {
 type AppTopBarProps = {
   activeSectionId: SectionId;
   userInitials: string;
+  userAvatarUrl?: string | null;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
 };
@@ -47,6 +49,7 @@ type AppTopBarProps = {
 export function AppTopBar({
   activeSectionId,
   userInitials,
+  userAvatarUrl,
   sidebarOpen,
   onToggleSidebar,
 }: AppTopBarProps) {
@@ -141,12 +144,7 @@ export function AppTopBar({
         >
           <IconBell className="mx-auto" />
         </button>
-        <div
-          className="ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground"
-          title="Account"
-        >
-          {initials}
-        </div>
+        <UserAvatar initials={initials} avatarUrl={userAvatarUrl} className="ml-1 h-8 w-8" title="Account" />
       </div>
     </header>
   );

@@ -38,6 +38,7 @@
     "@tiptap/pm": "^2.26.4",
     "@tiptap/react": "^2.26.4",
     "@tiptap/starter-kit": "^2.26.4",
+    "@vercel/blob": "^2.8.0",
     "bcryptjs": "^3.0.2",
     "bullmq": "^5.61.2",
     "class-variance-authority": "^0.7.1",

@@ -129,17 +129,11 @@ export const appSections: AppSection[] = [
     items: [
       { label: "Profile", href: "/app/settings/profile" },
       { label: "Company", href: "/app/settings/company" },
-      { label: "Branding", href: "/app/settings/branding" },
       { label: "Team", href: "/app/settings/team" },
       { label: "Document defaults", href: "/app/settings/document-defaults" },
-      { label: "Security", href: "/app/settings/security" },
       { label: "Integrations", href: "/app/settings/integrations" },
       { label: "Billing", href: "/app/settings/billing" },
-      { label: "Company settings", href: "/app/settings" },
       { label: "Analytics", href: "/app/analytics" },
-      { label: "Compliance", href: "/app/settings#compliance" },
-      { label: "Developer API", href: "/app/settings#api-keys" },
-      { label: "Webhooks", href: "/app/settings#webhooks" },
     ],
   },
 ];
@@ -277,5 +271,5 @@ export function isNavItemActive(
   if (itemTab) {
     return tabParam === itemTab;
   }
-  return !hash && !tabParam;
+  return !tabParam;
 }

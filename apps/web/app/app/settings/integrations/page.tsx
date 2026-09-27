@@ -19,18 +19,6 @@ type IntegrationRow = {
 
 const BASE_INTEGRATIONS: IntegrationRow[] = [
   {
-    name: "Webhooks",
-    description: "Send document events to your own endpoints.",
-    href: "/app/settings#webhooks",
-    status: "Available",
-  },
-  {
-    name: "Developer API",
-    description: "Create keys for automations and custom integrations.",
-    href: "/app/settings#api-keys",
-    status: "Available",
-  },
-  {
     name: "Calendar Sync",
     description: "Sync Google Calendar events alongside CRM activities for each user.",
     href: "/app/settings/integrations/calendar",

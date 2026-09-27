@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { createPortal } from "react-dom";
 import { PdfDocTypeIcon } from "@/components/documents/document-type-icon";
 import type { EditorDoc } from "@/lib/editor/types";
 import { assetUrl } from "@/lib/storage/asset-url";
@@ -153,13 +154,15 @@ export function PdfLibraryPickerModal({ open, onClose, onPick }: Props) {
     }
   }
 
-  if (!open) {
+  if (!open || typeof document === "undefined") {
     return null;
   }
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-start justify-center bg-slate-900/40 p-4 pt-16"
+      className={`fixed inset-0 z-[100] flex items-start justify-center bg-slate-900/40 p-4 ${
+        previewing ? "pt-4" : "pt-16"
+      }`}
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !busy) {
@@ -171,8 +174,8 @@ export function PdfLibraryPickerModal({ open, onClose, onPick }: Props) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="pdf-library-picker-title"
-        className={`flex max-h-[85vh] w-full flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl ${
-          previewing ? "max-w-3xl" : "max-w-2xl"
+        className={`flex w-full flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl ${
+          previewing ? "h-[calc(100vh-2rem)] max-w-5xl" : "max-h-[85vh] max-w-2xl"
         }`}
       >
         {previewing ? (
@@ -303,7 +306,8 @@ export function PdfLibraryPickerModal({ open, onClose, onPick }: Props) {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -353,7 +357,7 @@ function PdfPreview({
           Close
         </button>
       </div>
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-100 p-4">
+      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto bg-slate-100 px-4 py-6 sm:px-8">
         {pages.map((key, index) => (
           // eslint-disable-next-line @next/next/no-img-element -- authenticated upload route, not optimizable
           <img
@@ -361,7 +365,7 @@ function PdfPreview({
             src={assetUrl(key)}
             alt={`${template.name} page ${index + 1}`}
             loading="lazy"
-            className="mx-auto block w-full max-w-[612px] bg-white shadow-sm"
+            className="mx-auto block w-full max-w-[850px] bg-white shadow-md"
           />
         ))}
       </div>

@@ -7,6 +7,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { get as blobGet, put as blobPut } from "@vercel/blob";
 
 export type StoredObject = {
   bytes: Uint8Array;
@@ -24,6 +25,11 @@ function getS3Config() {
     return null;
   }
   return { endpoint, bucket, accessKeyId, secretAccessKey, region };
+}
+
+/** Serverless hosts have no durable disk, so a connected Vercel Blob store takes precedence. */
+export function isBlobStoreConfigured(): boolean {
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
 }
 
 function localRoot(): string {
@@ -70,6 +76,16 @@ export async function putObject(key: string, bytes: Uint8Array, contentType: str
     throw new Error("Invalid object key");
   }
 
+  if (isBlobStoreConfigured()) {
+    await blobPut(key, Buffer.from(bytes), {
+      access: "private",
+      contentType,
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    });
+    return;
+  }
+
   const config = getS3Config();
   if (!config) {
     const target = resolveLocalPath(key);
@@ -98,6 +114,19 @@ export async function putObject(key: string, bytes: Uint8Array, contentType: str
 export async function getObject(key: string): Promise<StoredObject | null> {
   if (!isValidObjectKey(key)) {
     return null;
+  }
+
+  if (isBlobStoreConfigured()) {
+    try {
+      const result = await blobGet(key, { access: "private" });
+      if (!result || result.statusCode !== 200) {
+        return null;
+      }
+      const bytes = new Uint8Array(await new Response(result.stream).arrayBuffer());
+      return { bytes, contentType: result.blob.contentType || "application/octet-stream" };
+    } catch {
+      return null;
+    }
   }
 
   const config = getS3Config();

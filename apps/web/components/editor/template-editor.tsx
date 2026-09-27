@@ -45,6 +45,8 @@ type Props = {
   contentBlocks: ContentBlockSummary[];
   /** Read-only Master Template Preview Mode (Sample Templates → Preview). */
   masterPreview?: boolean;
+  /** Platform admin editing a Master Template; saves apply to every workspace's copy source. */
+  masterEdit?: boolean;
   closeHref?: string;
 };
 
@@ -70,6 +72,7 @@ export function TemplateEditor({
   initialPricing,
   contentBlocks,
   masterPreview = false,
+  masterEdit = false,
   closeHref = "/app/templates",
 }: Props) {
   const router = useRouter();
@@ -107,6 +110,7 @@ export function TemplateEditor({
   const pageSizeRef = useRef(pageSize);
   pageSizeRef.current = pageSize;
   const saveQueueRef = useRef(new SaveQueue());
+  const lastSaveOkRef = useRef(true);
   const lastSavedSerializedRef = useRef(lastSavedSerialized);
   lastSavedSerializedRef.current = lastSavedSerialized;
   const lastSavedNameRef = useRef(lastSavedName);
@@ -218,9 +222,11 @@ export function TemplateEditor({
           }),
         });
         if (!response.ok) {
+          lastSaveOkRef.current = false;
           setStatus("Save failed");
           return;
         }
+        lastSaveOkRef.current = true;
         lastSavedSerializedRef.current = persisted;
         lastSavedNameRef.current = liveName;
         setSerialized(persisted);
@@ -231,6 +237,7 @@ export function TemplateEditor({
         }
         setStatus("Saved");
       } catch {
+        lastSaveOkRef.current = false;
         setStatus("Save failed");
       }
     });
@@ -404,6 +411,13 @@ export function TemplateEditor({
     });
   }
 
+  async function saveMasterAndClose() {
+    await saveNow();
+    if (lastSaveOkRef.current) {
+      router.push(closeHref);
+    }
+  }
+
   async function copySampleToLibrary() {
     setCopyBusy(true);
     setStatus("Copying…");
@@ -451,17 +465,23 @@ export function TemplateEditor({
           onInsertField={masterPreview ? undefined : insertSignerField}
           variableKeys={Object.keys(variableRegistry)}
           fileItems={
-            masterPreview
+            masterPreview || masterEdit
               ? undefined
               : [
                   { label: "Make a copy", onClick: () => void duplicateTemplate() },
                   { label: "Create document…", onClick: () => void startUseTemplateWorkflow() },
                 ]
           }
-          primaryActionLabel={masterPreview ? "Copy to My Library" : "Create document"}
+          primaryActionLabel={
+            masterPreview ? "Copy to My Library" : masterEdit ? "Save Master Template" : "Create document"
+          }
           primaryActionShowsSendIcon={false}
           onPrimaryAction={
-            masterPreview ? () => void copySampleToLibrary() : () => void startUseTemplateWorkflow()
+            masterPreview
+              ? () => void copySampleToLibrary()
+              : masterEdit
+                ? () => void saveMasterAndClose()
+                : () => void startUseTemplateWorkflow()
           }
           previewMode={masterPreview}
           primaryActionBusy={copyBusy}

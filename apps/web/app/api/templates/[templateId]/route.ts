@@ -6,11 +6,18 @@ import {
   getSampleTemplate,
   getTemplate,
   setTemplateShares,
+  updateSampleTemplateContent,
   updateTemplate,
 } from "@/lib/editor/template-store";
 import type { EditorDoc, PricingModel, VariableRegistry } from "@/lib/editor/types";
+import { requireSessionFromRequest } from "@/lib/auth/session";
+import { isPlatformAdminSession } from "@/lib/support/platform-admin";
 
 type Params = { params: Promise<{ templateId: string }> };
+
+async function isPlatformAdminRequest(request: NextRequest): Promise<boolean> {
+  return isPlatformAdminSession(await requireSessionFromRequest(request));
+}
 
 export async function GET(request: NextRequest, { params }: Params) {
   const auth = await getRequestAuthContext(request);
@@ -37,6 +44,33 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     shareUserIds?: string[];
     duplicate?: boolean;
   };
+
+  const sample = await getSampleTemplate(templateId);
+  if (sample) {
+    if (!(await isPlatformAdminRequest(request))) {
+      return NextResponse.json(
+        { error: "Only the platform administrator can edit master templates" },
+        { status: 403 },
+      );
+    }
+    if (payload.duplicate || Array.isArray(payload.shareUserIds)) {
+      return NextResponse.json(
+        { error: "Use the Sample Templates actions for master templates" },
+        { status: 400 },
+      );
+    }
+    const template = await updateSampleTemplateContent(templateId, {
+      name: payload.name,
+      editor_json: payload.editor_json,
+      variable_registry: payload.variable_registry,
+      pricing_json: payload.pricing_json,
+      updatedBy: auth.userId,
+    });
+    if (!template) {
+      return NextResponse.json({ error: "Template not found" }, { status: 404 });
+    }
+    return NextResponse.json({ template });
+  }
 
   if (payload.duplicate) {
     const template = await duplicateTemplate({
@@ -77,6 +111,12 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   const auth = await getRequestAuthContext(request);
   assertRole(auth, "MEMBER");
   const { templateId } = await params;
+  if ((await getSampleTemplate(templateId)) && !(await isPlatformAdminRequest(request))) {
+    return NextResponse.json(
+      { error: "Only the platform administrator can delete master templates" },
+      { status: 403 },
+    );
+  }
   const ok = await deleteTemplate(templateId, auth.workspaceId);
   if (!ok) {
     return NextResponse.json({ error: "Template not found" }, { status: 404 });
