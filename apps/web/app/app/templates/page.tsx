@@ -191,6 +191,28 @@ export default function AppTemplatesPage() {
     Array<SampleTemplateFolder & { template_count: number }>
   >(SAMPLE_TEMPLATE_FOLDERS.map((folder) => ({ ...folder, template_count: 0 })));
   const [sampleTemplates, setSampleTemplates] = useState<TemplateItem[]>([]);
+  const [canEditMasters, setCanEditMasters] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/me")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { isPlatformAdmin?: boolean } | null) => {
+        if (!cancelled) {
+          setCanEditMasters(Boolean(data?.isPlatformAdmin));
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function masterEditHref(templateId: string): string {
+    return `/app/templates/${templateId}?edit=1${
+      sampleFolderSlug ? `&folder=${encodeURIComponent(sampleFolderSlug)}` : ""
+    }`;
+  }
 
   function openUseTemplateWorkflow(template: TemplateItem) {
     openWorkflow({
@@ -1001,6 +1023,14 @@ export default function AppTemplatesPage() {
                               >
                                 Copy to My Library
                               </button>
+                              {canEditMasters ? (
+                                <Link
+                                  href={masterEditHref(template.id)}
+                                  className="shrink-0 rounded border border-primary px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10"
+                                >
+                                  Edit
+                                </Link>
+                              ) : null}
                             </div>
                           </td>
                           <td className={sheetTd()}>{formatDate(template.created_at)}</td>
@@ -1076,6 +1106,14 @@ export default function AppTemplatesPage() {
                             >
                               Copy to My Library
                             </button>
+                            {canEditMasters ? (
+                              <Link
+                                href={masterEditHref(template.id)}
+                                className="rounded-md border border-primary px-2 py-1.5 text-center text-xs font-medium text-primary hover:bg-primary/10"
+                              >
+                                Edit
+                              </Link>
+                            ) : null}
                           </div>
                         </div>
                       );

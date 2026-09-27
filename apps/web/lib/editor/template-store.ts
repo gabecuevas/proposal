@@ -163,13 +163,14 @@ export async function createTemplate(input: {
   sample_folder_slug?: string | null;
   /** Legacy CPQ PricingModel or commercial_v1 CommercialDocument. */
   pricing_json?: PricingModel | Record<string, unknown> | unknown;
+  variable_registry?: VariableRegistry;
 }): Promise<TemplateEditorRecord> {
   const row = await prisma.template.create({
     data: {
       workspace_id: input.workspaceId,
       name: input.name,
       tags: input.tags ?? [],
-      variable_registry_json: defaultVariableRegistry,
+      variable_registry_json: input.variable_registry ?? defaultVariableRegistry,
       pricing_json: (input.pricing_json ?? defaultPricingModel) as object,
       editor_json: input.editor_json ? normalizeEditorDoc(input.editor_json) : defaultEditorDoc,
       schema_version: CURRENT_DOC_VERSION,
@@ -235,34 +236,58 @@ export async function listTemplates(
   return rows.map((row) => parseTemplateJson(row, userMap));
 }
 
+type TemplateContentUpdate = {
+  name?: string;
+  editor_json?: EditorDoc;
+  variable_registry?: VariableRegistry;
+  /** Legacy CPQ PricingModel or commercial_v1 CommercialDocument. */
+  pricing_json?: PricingModel | unknown;
+  folder_id?: string | null;
+  updatedBy?: string;
+};
+
 export async function updateTemplate(
   templateId: string,
   workspaceId: string,
-  input: {
-    name?: string;
-    editor_json?: EditorDoc;
-    variable_registry?: VariableRegistry;
-    /** Legacy CPQ PricingModel or commercial_v1 CommercialDocument. */
-    pricing_json?: PricingModel | unknown;
-    folder_id?: string | null;
-    updatedBy?: string;
-  },
+  input: TemplateContentUpdate,
 ): Promise<TemplateEditorRecord | null> {
   const existing = await getTemplate(templateId, workspaceId);
   if (!existing) {
     return null;
   }
+  return applyTemplateUpdate(existing, input);
+}
 
+/** Content edits to a master template. Callers must verify platform admin access. */
+export async function updateSampleTemplateContent(
+  templateId: string,
+  input: Omit<TemplateContentUpdate, "folder_id">,
+): Promise<TemplateEditorRecord | null> {
+  const existing = await getSampleTemplate(templateId);
+  if (!existing) {
+    return null;
+  }
+  return applyTemplateUpdate(existing, input);
+}
+
+async function applyTemplateUpdate(
+  existing: TemplateEditorRecord,
+  input: TemplateContentUpdate,
+): Promise<TemplateEditorRecord> {
   const row = await prisma.template.update({
-    where: { id: templateId },
+    where: { id: existing.id },
     data: {
-      name: input.name ?? existing.name,
+      name: input.name?.trim() || existing.name,
       editor_json: input.editor_json ? normalizeEditorDoc(input.editor_json) : existing.editor_json,
       schema_version: CURRENT_DOC_VERSION,
       tags: existing.tags,
       variable_registry_json: input.variable_registry ?? existing.variable_registry,
-      pricing_json: input.pricing_json ?? existing.pricing_json,
-      folder_id: input.folder_id === undefined ? existing.folder_id : input.folder_id,
+      pricing_json: (input.pricing_json ?? existing.pricing_json) as object,
+      folder_id: existing.is_sample
+        ? null
+        : input.folder_id === undefined
+          ? existing.folder_id
+          : input.folder_id,
       updated_by: input.updatedBy ?? existing.updated_by,
     },
     include: { shares: true },
@@ -377,6 +402,7 @@ export async function copySampleTemplateToLibrary(input: {
     createdBy: input.createdBy,
     editor_json: existing.editor_json,
     pricing_json: existing.pricing_json,
+    variable_registry: existing.variable_registry,
     tags: [
       ...existing.tags.filter((tag) => tag !== "sample" && !tag.startsWith("sample-folder:")),
       "from-sample",
@@ -442,6 +468,7 @@ export async function duplicateSampleTemplate(input: {
     createdBy: input.createdBy,
     editor_json: existing.editor_json,
     pricing_json: existing.pricing_json,
+    variable_registry: existing.variable_registry,
     tags: [
       ...existing.tags.filter((tag) => tag !== "copy"),
       "sample",

@@ -10,6 +10,7 @@ import {
   templateUsesFlowEditor,
 } from "@/lib/editor/template-store";
 import { getServerSession } from "@/lib/auth/server-session";
+import { isPlatformAdminSession } from "@/lib/support/platform-admin";
 import { unwrapTextBoxesInEditorDoc } from "@/lib/flow-document/normalize-content";
 import { ensureCommercialDocument } from "@/lib/commercial/parse";
 import { isCommercialDocument } from "@/lib/commercial/schema";
@@ -18,7 +19,7 @@ import type { PricingModel } from "@/lib/editor/types";
 
 type Params = {
   params: Promise<{ templateId: string }>;
-  searchParams: Promise<{ preview?: string; folder?: string }>;
+  searchParams: Promise<{ preview?: string; edit?: string; folder?: string }>;
 };
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default async function TemplateDetailPage({ params, searchParams }: Param
 
   const { templateId } = await params;
   const query = await searchParams;
-  const previewRequested = query.preview === "1";
+  const editRequested = query.edit === "1";
   const sampleFolder = typeof query.folder === "string" ? query.folder.trim() : "";
 
   const [workspaceTemplate, contentBlocks] = await Promise.all([
@@ -45,8 +46,10 @@ export default async function TemplateDetailPage({ params, searchParams }: Param
     notFound();
   }
 
-  const masterPreview = previewRequested && Boolean(template.is_sample);
-  const closeHref = masterPreview
+  const masterEdit =
+    Boolean(template.is_sample) && editRequested && (await isPlatformAdminSession(session));
+  const masterPreview = Boolean(template.is_sample) && !masterEdit;
+  const closeHref = template.is_sample
     ? sampleFolder
       ? `/app/templates?samples=1&folder=${encodeURIComponent(sampleFolder)}`
       : "/app/templates?samples=1"
@@ -99,6 +102,7 @@ export default async function TemplateDetailPage({ params, searchParams }: Param
       }
       contentBlocks={contentBlocks}
       masterPreview={masterPreview}
+      masterEdit={masterEdit}
       closeHref={closeHref}
     />
   );

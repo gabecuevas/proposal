@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@repo/db";
 import { AppShellLayout } from "@/components/app-shell";
 import { getServerSession } from "@/lib/auth/server-session";
+import { assetUrl } from "@/lib/storage/asset-url";
 import { isSupportMessengerEnabled } from "@/lib/support/flags";
 
 const fontSans = DM_Sans({
@@ -35,7 +36,7 @@ export default async function AppLayout({ children }: Readonly<{ children: React
   const user = session
     ? await prisma.user.findUnique({
         where: { id: session.userId },
-        select: { name: true, email: true, disabled_at: true },
+        select: { name: true, email: true, disabled_at: true, avatar_asset_key: true },
       })
     : null;
 
@@ -64,6 +65,7 @@ export default async function AppLayout({ children }: Readonly<{ children: React
       <AppShellLayout
         userEmail={email}
         userName={displayName(user?.name, email)}
+        userAvatarUrl={user?.avatar_asset_key ? assetUrl(user.avatar_asset_key) : null}
         messengerEnabled={isSupportMessengerEnabled() && !sudo}
         sudo={sudo}
       >

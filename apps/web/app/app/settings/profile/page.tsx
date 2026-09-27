@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { PasswordChangeCard } from "@/components/settings/password-change-card";
 import { SheetPadded } from "@/components/ui/sheet-table";
 import { assetUrl } from "@/lib/storage/asset-url";
 
@@ -27,6 +29,7 @@ const fieldClass =
   "w-full rounded-none border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary";
 
 export default function SettingsProfilePage() {
+  const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [name, setName] = useState("");
@@ -144,6 +147,7 @@ export default function SettingsProfilePage() {
       setNoWebsite(Boolean(payload.profile.noWebsite));
     }
     setMessage("Profile saved.");
+    router.refresh();
   }
 
   const initials = name
@@ -326,6 +330,8 @@ export default function SettingsProfilePage() {
           {loading ? "Saving..." : "Save changes"}
         </button>
       </form>
+
+      <PasswordChangeCard email={email} />
     </SheetPadded>
   );
 }

@@ -4,6 +4,7 @@ import { prisma, type AuthTokenPurpose, type Prisma } from "@repo/db";
 export const EMAIL_VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
 export const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const PASSWORD_CHANGE_TTL_MS = 30 * 60 * 1000;
 
 export function hashOpaqueToken(rawToken: string): string {
   return createHash("sha256").update(rawToken).digest("hex");
@@ -19,6 +20,7 @@ export async function issueAuthToken(params: {
   userId: string;
   purpose: AuthTokenPurpose;
   pendingEmail?: string | null;
+  pendingPasswordHash?: string | null;
   generation?: number;
   ttlMs: number;
   tx?: Tx;
@@ -44,6 +46,7 @@ export async function issueAuthToken(params: {
       purpose: params.purpose,
       token_hash: tokenHash,
       pending_email: params.pendingEmail ?? null,
+      pending_password_hash: params.pendingPasswordHash ?? null,
       generation: params.generation ?? 0,
       expires_at: expiresAt,
     },

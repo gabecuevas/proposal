@@ -737,6 +737,8 @@ model AuthToken {
   purpose         AuthTokenPurpose
   token_hash      String         @unique
   pending_email   String?
+  /// bcrypt hash applied only after the PASSWORD_CHANGE email link is confirmed.
+  pending_password_hash String?
   generation      Int            @default(0)
   expires_at      DateTime
   consumed_at     DateTime?
@@ -940,6 +942,7 @@ enum WorkspaceRole {
 enum AuthTokenPurpose {
   EMAIL_VERIFY
   PASSWORD_RESET
+  PASSWORD_CHANGE
 }
 
 enum LeadStatus {

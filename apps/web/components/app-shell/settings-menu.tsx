@@ -5,11 +5,13 @@ import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@repo/ui/utils";
 import { useLogout } from "@/components/auth/logout-button";
 import { IconMore, IconSettings, IconSignOut } from "./shell-icons";
+import { UserAvatar } from "./user-avatar";
 
 type SettingsMenuProps = {
   userName: string;
   userEmail: string;
   userInitials: string;
+  userAvatarUrl?: string | null;
   active: boolean;
 };
 
@@ -17,18 +19,22 @@ const menuGroups = [
   [
     { label: "Profile", href: "/app/settings/profile" },
     { label: "Company", href: "/app/settings/company" },
-    { label: "Branding", href: "/app/settings/branding" },
   ],
   [
     { label: "Team", href: "/app/settings/team" },
     { label: "Document defaults", href: "/app/settings/document-defaults" },
-    { label: "Security", href: "/app/settings/security" },
     { label: "Integrations", href: "/app/settings/integrations" },
     { label: "Billing", href: "/app/settings/billing" },
   ],
 ];
 
-export function SettingsMenu({ userName, userEmail, userInitials, active }: SettingsMenuProps) {
+export function SettingsMenu({
+  userName,
+  userEmail,
+  userInitials,
+  userAvatarUrl,
+  active,
+}: SettingsMenuProps) {
   const [open, setOpen] = useState(false);
   const [showPlatformAdmin, setShowPlatformAdmin] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -107,9 +113,7 @@ export function SettingsMenu({ userName, userEmail, userInitials, active }: Sett
           className="fixed z-50 w-64 overflow-hidden rounded-xl border border-border bg-surface shadow-lg"
         >
           <div className="flex items-center gap-3 px-3 py-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">
-              {userInitials}
-            </div>
+            <UserAvatar initials={userInitials} avatarUrl={userAvatarUrl} className="h-9 w-9" />
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-foreground">{userName}</p>
               <p className="truncate text-xs text-muted" title={userEmail}>

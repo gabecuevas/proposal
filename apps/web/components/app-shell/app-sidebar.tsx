@@ -36,6 +36,7 @@ type AppSidebarProps = {
   userEmail: string;
   userName: string;
   userInitials: string;
+  userAvatarUrl?: string | null;
   open: boolean;
   onNavigate: () => void;
 };
@@ -179,6 +180,7 @@ export function AppSidebar({
   userEmail,
   userName,
   userInitials,
+  userAvatarUrl,
   open,
   onNavigate,
 }: AppSidebarProps) {
@@ -399,6 +401,7 @@ export function AppSidebar({
             userName={userName}
             userEmail={userEmail}
             userInitials={userInitials}
+            userAvatarUrl={userAvatarUrl}
             active={section.id === "settings"}
           />
         </div>

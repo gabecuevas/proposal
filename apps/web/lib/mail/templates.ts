@@ -61,6 +61,54 @@ export function passwordResetEmail(params: {
   return { subject, html, text };
 }
 
+export function passwordChangeConfirmEmail(params: {
+  name: string;
+  confirmUrl: string;
+}) {
+  const name = escapeHtml(params.name);
+  const url = escapeHtml(params.confirmUrl);
+  const subject = "Confirm your SendDox password change";
+  const text = [
+    `Hi ${params.name},`,
+    "",
+    "We received a request to change your SendDox password. Your password will not change until you confirm.",
+    "",
+    `Confirm password change: ${params.confirmUrl}`,
+    "",
+    "This link expires in 30 minutes.",
+    "If you did not request this, ignore this email and consider resetting your password.",
+  ].join("\n");
+  const html = `<!DOCTYPE html>
+<html><body style="font-family:system-ui,sans-serif;color:#0f172a;line-height:1.5">
+  <p>Hi ${name},</p>
+  <p>We received a request to change your SendDox password. Your password will not change until you confirm.</p>
+  <p><a href="${url}" style="display:inline-block;background:#1e3a5f;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Confirm password change</a></p>
+  <p style="color:#64748b;font-size:14px">Or paste this link into your browser:<br>${url}</p>
+  <p style="color:#64748b;font-size:14px">This link expires in 30 minutes. If you did not request this, ignore this email and consider resetting your password.</p>
+</body></html>`;
+  return { subject, html, text };
+}
+
+export function passwordChangedNoticeEmail(params: { name: string; resetUrl: string }) {
+  const name = escapeHtml(params.name);
+  const url = escapeHtml(params.resetUrl);
+  const subject = "Your SendDox password was changed";
+  const text = [
+    `Hi ${params.name},`,
+    "",
+    "Your SendDox password was just changed.",
+    "",
+    `If this wasn't you, reset your password immediately: ${params.resetUrl}`,
+  ].join("\n");
+  const html = `<!DOCTYPE html>
+<html><body style="font-family:system-ui,sans-serif;color:#0f172a;line-height:1.5">
+  <p>Hi ${name},</p>
+  <p>Your SendDox password was just changed.</p>
+  <p style="color:#64748b;font-size:14px">If this wasn't you, <a href="${url}">reset your password</a> immediately.</p>
+</body></html>`;
+  return { subject, html, text };
+}
+
 export function invitationEmail(params: {
   inviterName: string;
   companyName: string;
