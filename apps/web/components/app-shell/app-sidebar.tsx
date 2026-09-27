@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { cn } from "@repo/ui/utils";
 import { useNewDocumentWorkflow } from "@/components/documents/new-document-workflow-context";
 import { LibraryCreateSplitButton } from "@/components/templates/library-create-split-button";
+import { PdfLibraryPickerModal } from "@/components/templates/pdf-library-picker-modal";
 import { documentTrackingCounts } from "@/lib/ui/document-tracking";
 import {
   type DocumentCreateKind,
@@ -197,6 +198,7 @@ export function AppSidebar({
   const inboxShelf = isEmailInboxPath(pathname);
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [pdfPickerOpen, setPdfPickerOpen] = useState(false);
 
   async function handleCreateKind(kind: DocumentCreateKind) {
     if (createBusy) {
@@ -260,7 +262,19 @@ export function AppSidebar({
           </div>
         ) : section.createCta ? (
           <div className="shrink-0 px-3 pb-2 pt-3">
-            <LibraryCreateSplitButton onSelect={(kind) => void handleCreateKind(kind)} />
+            <LibraryCreateSplitButton
+              onSelect={(kind) => void handleCreateKind(kind)}
+              onNewPdf={() => setPdfPickerOpen(true)}
+            />
+            <PdfLibraryPickerModal
+              open={pdfPickerOpen}
+              onClose={() => setPdfPickerOpen(false)}
+              onPick={(template) => {
+                setPdfPickerOpen(false);
+                openWorkflow({ templateId: template.id, templateName: template.name, kind: "document" });
+                onNavigate();
+              }}
+            />
             {createBusy ? <p className="mt-1 text-[11px] text-muted">Creating…</p> : null}
             {createError ? <p className="mt-1 text-[11px] text-red-600">{createError}</p> : null}
           </div>

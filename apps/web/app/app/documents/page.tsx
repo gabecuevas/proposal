@@ -39,6 +39,7 @@ type Recipient = {
   role: string;
   company_name?: string | null;
   contact_id?: string | null;
+  company_id?: string | null;
 };
 
 type DocumentItem = {
@@ -86,16 +87,35 @@ function firstRecipient(recipients: Recipient[]): {
   name: string;
   email: string;
   company: string;
+  contactHref: string | null;
+  companyHref: string | null;
 } {
   const r = recipients[0];
   if (!r) {
-    return { name: "—", email: "—", company: "—" };
+    return { name: "—", email: "—", company: "—", contactHref: null, companyHref: null };
   }
+  const company = r.company_name?.trim() || "—";
   return {
     name: r.name?.trim() || "—",
     email: r.email?.trim() || "—",
-    company: r.company_name?.trim() || "—",
+    company,
+    contactHref: r.contact_id ? `/app/contacts/people?open=${encodeURIComponent(r.contact_id)}` : null,
+    companyHref:
+      r.company_id && company !== "—"
+        ? `/app/contacts/companies?open=${encodeURIComponent(r.company_id)}`
+        : null,
   };
+}
+
+function CrmCellLink({ href, children }: { href: string | null; children: string }) {
+  if (!href || children === "—") {
+    return <>{children}</>;
+  }
+  return (
+    <Link href={href} className="hover:text-primary hover:underline" title={`Open ${children} in CRM`}>
+      {children}
+    </Link>
+  );
 }
 
 const DOCUMENT_TABLE_COLUMNS: ResizableColumnDef[] = [
@@ -545,21 +565,21 @@ export default function DocumentsPage() {
                   style={{ width: widthFor("company"), maxWidth: widthFor("company") }}
                   title={recipient.company}
                 >
-                  {recipient.company}
+                  <CrmCellLink href={recipient.companyHref}>{recipient.company}</CrmCellLink>
                 </td>
                 <td
                   className={sheetTd("truncate text-foreground")}
                   style={{ width: widthFor("name"), maxWidth: widthFor("name") }}
                   title={recipient.name}
                 >
-                  {recipient.name}
+                  <CrmCellLink href={recipient.contactHref}>{recipient.name}</CrmCellLink>
                 </td>
                 <td
                   className={sheetTd("truncate")}
                   style={{ width: widthFor("email"), maxWidth: widthFor("email") }}
                   title={recipient.email}
                 >
-                  {recipient.email}
+                  <CrmCellLink href={recipient.contactHref}>{recipient.email}</CrmCellLink>
                 </td>
                 <td
                   className={sheetTd("truncate text-foreground")}

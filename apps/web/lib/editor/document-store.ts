@@ -72,6 +72,8 @@ export type DocumentRecord = {
     role: "signer" | "approver" | "viewer";
     company_name?: string | null;
     contact_id?: string | null;
+    /** Resolved from the CRM contact when listing; not persisted. */
+    company_id?: string | null;
   }>;
   doc_hash: string | null;
   finalized_pdf_key: string | null;
@@ -311,7 +313,7 @@ export async function createDocumentFromTemplate(
   },
 ): Promise<DocumentRecord> {
   const template = await prisma.template.findFirst({
-    where: { id: templateId, workspace_id: workspaceId },
+    where: { id: templateId, OR: [{ workspace_id: workspaceId }, { is_sample: true }] },
   });
   if (!template) {
     throw new Error("Template not found");
@@ -540,6 +542,25 @@ export async function listDocuments(
         });
   const byId = new Map(contacts.map((contact) => [contact.id, contact]));
 
+  const unlinkedCompanyNames = [
+    ...new Set(
+      contacts
+        .filter((contact) => !contact.company_id && contact.company_name?.trim())
+        .map((contact) => contact.company_name!.trim()),
+    ),
+  ];
+  const namedCompanies =
+    unlinkedCompanyNames.length === 0
+      ? []
+      : await prisma.company.findMany({
+          where: {
+            workspace_id: workspaceId,
+            OR: unlinkedCompanyNames.map((name) => ({ name: { equals: name, mode: "insensitive" as const } })),
+          },
+          select: { id: true, name: true },
+        });
+  const companyIdByName = new Map(namedCompanies.map((company) => [company.name.trim().toLowerCase(), company.id]));
+
   return documents.map((document) => {
     const recipients = document.recipients_json.map((recipient, index) => {
       const crm =
@@ -547,7 +568,7 @@ export async function listDocuments(
         byId.get(recipient.id) ??
         (index === 0 && document.contact_id ? byId.get(document.contact_id) : undefined);
       if (!crm) {
-        return recipient;
+        return { ...recipient, contact_id: null, company_id: null };
       }
       return {
         ...recipient,
@@ -555,6 +576,8 @@ export async function listDocuments(
         email: crm.email || recipient.email,
         company_name: crm.company?.name ?? crm.company_name ?? recipient.company_name ?? null,
         contact_id: crm.id,
+        company_id:
+          crm.company_id ?? companyIdByName.get(crm.company_name?.trim().toLowerCase() ?? "") ?? null,
       };
     });
     const hasContact = candidateContactIds(document).some((id) => byId.has(id));
