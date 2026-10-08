@@ -8,6 +8,7 @@ import { normalizeIdentityEmail, teamInviteSchema } from "@/lib/auth/onboarding-
 import { requireSessionOnly } from "@/lib/auth/require-session";
 import { buildSessionPayloadFromUser } from "@/lib/auth/session-builder";
 import { jsonWithSessionCookie } from "@/lib/auth/session-cookie";
+import { seatLimitError } from "@/lib/billing/workspace-billing";
 
 const bodySchema = z.union([z.object({ skip: z.literal(true) }), teamInviteSchema]);
 
@@ -63,6 +64,13 @@ export async function POST(request: NextRequest) {
       update: { team_step_skipped_at: new Date() },
     });
   } else if ("invites" in parsed.data) {
+    const seatError = await seatLimitError(
+      session.workspaceId,
+      parsed.data.invites.map((row) => normalizeIdentityEmail(row.email)),
+    );
+    if (seatError) {
+      return errorResponse(request, { status: 402, code: "seat_limit_reached", message: seatError });
+    }
     const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
     for (const row of parsed.data.invites) {
       const email = normalizeIdentityEmail(row.email);

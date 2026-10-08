@@ -3,6 +3,7 @@ import { DM_Sans, Instrument_Serif } from "next/font/google";
 import { redirect } from "next/navigation";
 import { prisma } from "@repo/db";
 import { AppShellLayout } from "@/components/app-shell";
+import type { BillingBannerInfo } from "@/components/app-shell/billing-banner";
 import { getServerSession } from "@/lib/auth/server-session";
 import { assetUrl } from "@/lib/storage/asset-url";
 import { isSupportMessengerEnabled } from "@/lib/support/flags";
@@ -60,6 +61,27 @@ export default async function AppLayout({ children }: Readonly<{ children: React
     };
   }
 
+  let billingBanner: BillingBannerInfo | null = null;
+  if (session?.workspaceId && (session.role === "OWNER" || session.role === "ADMIN")) {
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: session.workspaceId },
+      select: { plan: true, trial_ends_at: true, subscription_status: true },
+    });
+    if (workspace?.subscription_status === "past_due" || workspace?.subscription_status === "unpaid") {
+      billingBanner = { kind: "past_due" };
+    } else if (
+      workspace?.plan === "trial" &&
+      workspace.trial_ends_at &&
+      workspace.subscription_status !== "active"
+    ) {
+      const msLeft = workspace.trial_ends_at.getTime() - Date.now();
+      billingBanner =
+        msLeft <= 0
+          ? { kind: "trial_expired" }
+          : { kind: "trial", daysLeft: Math.ceil(msLeft / (24 * 60 * 60 * 1000)) };
+    }
+  }
+
   return (
     <div className={`${fontSans.variable} ${fontSerif.variable}`}>
       <AppShellLayout
@@ -68,6 +90,7 @@ export default async function AppLayout({ children }: Readonly<{ children: React
         userAvatarUrl={user?.avatar_asset_key ? assetUrl(user.avatar_asset_key) : null}
         messengerEnabled={isSupportMessengerEnabled() && !sudo}
         sudo={sudo}
+        billingBanner={billingBanner}
       >
         {children}
       </AppShellLayout>

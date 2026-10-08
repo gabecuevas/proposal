@@ -1,6 +1,6 @@
 import { cn } from "@repo/ui/utils";
 
-const STEPS = ["Account", "Verify", "Company", "Team"] as const;
+const STEPS = ["Account", "Verify", "Company", "Plan", "Team"] as const;
 
 export type OnboardingStep = (typeof STEPS)[number];
 

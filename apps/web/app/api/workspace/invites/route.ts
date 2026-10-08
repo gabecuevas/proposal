@@ -6,6 +6,7 @@ import { INVITE_TTL_MS } from "@/lib/auth/auth-tokens";
 import { createInviteTokenPair, sendWorkspaceInviteEmail } from "@/lib/auth/invite-mail";
 import { normalizeIdentityEmail, inviteRowSchema } from "@/lib/auth/onboarding-schemas";
 import { assertRole, getRequestAuthContext } from "@/lib/auth/request-context";
+import { seatLimitError } from "@/lib/billing/workspace-billing";
 
 const createSchema = z.object({
   invites: z.array(inviteRowSchema).min(1).max(20),
@@ -73,6 +74,14 @@ export async function POST(request: NextRequest) {
       code: "validation_error",
       message: parsed.error.issues[0]?.message ?? "Invalid invite payload",
     });
+  }
+
+  const seatError = await seatLimitError(
+    auth.workspaceId,
+    parsed.data.invites.map((row) => normalizeIdentityEmail(row.email)),
+  );
+  if (seatError) {
+    return errorResponse(request, { status: 402, code: "seat_limit_reached", message: seatError });
   }
 
   const workspace = await prisma.workspace.findUnique({

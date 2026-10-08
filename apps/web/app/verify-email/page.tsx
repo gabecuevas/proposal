@@ -34,6 +34,7 @@ export default function VerifyEmailPage() {
         pending_email?: string | null;
         emailVerified?: boolean;
         companySetupComplete?: boolean;
+        planStepComplete?: boolean;
         teamStepComplete?: boolean;
         workspaceId?: string | null;
       };
@@ -43,6 +44,8 @@ export default function VerifyEmailPage() {
     if (redirectIfVerified && payload.user?.emailVerified) {
       if (!payload.user.workspaceId || !payload.user.companySetupComplete) {
         window.location.href = "/onboarding/company";
+      } else if (payload.user.planStepComplete === false) {
+        window.location.href = "/onboarding/plan";
       } else if (!payload.user.teamStepComplete) {
         window.location.href = "/onboarding/team";
       } else {

@@ -15,6 +15,8 @@ export type SessionPayload = {
   email: string;
   emailVerified: boolean;
   companySetupComplete: boolean;
+  /** Workspace has a plan (trial or paid). Owners pick one between company and team setup. */
+  planStepComplete: boolean;
   teamStepComplete: boolean;
   /** Set only on sudo sessions minted by a platform admin. */
   impersonatorUserId?: string;
@@ -45,6 +47,11 @@ function normalizePayload(payload: Record<string, unknown>): SessionPayload {
     emailVerified: payload.emailVerified === true || legacyComplete,
     companySetupComplete: payload.companySetupComplete === true || legacyComplete,
     teamStepComplete: payload.teamStepComplete === true || legacyComplete,
+    // Sessions minted before the plan step existed only gate users still mid-onboarding.
+    planStepComplete:
+      payload.planStepComplete === true ||
+      legacyComplete ||
+      (payload.planStepComplete === undefined && payload.teamStepComplete === true),
   };
   if (
     typeof payload.impersonatorUserId === "string" &&

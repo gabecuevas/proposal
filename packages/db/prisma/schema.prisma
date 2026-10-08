@@ -32,6 +32,21 @@ model Workspace {
   sample_mode_enabled Boolean @default(false)
   owner_user_id String?
   billing_frozen_at DateTime?
+  /// Subscription plan key (trial | small_business | big_business | enterprise). Null = legacy workspace.
+  plan          String?
+  /// monthly | annual
+  billing_interval String?
+  plan_selected_at DateTime?
+  trial_ends_at DateTime?
+  /// Null = unlimited (legacy workspaces).
+  seat_limit    Int?
+  stripe_customer_id String? @unique
+  stripe_subscription_id String? @unique
+  stripe_price_id String?
+  /// Mirrors Stripe subscription.status (active, past_due, canceled, ...).
+  subscription_status String?
+  subscription_current_period_end DateTime?
+  subscription_cancel_at_period_end Boolean @default(false)
   audit_retention_days Int @default(90)
   audit_export_token_ttl_minutes Int @default(15)
   cpq_approval_discount_threshold Int @default(15)

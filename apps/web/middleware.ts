@@ -140,6 +140,13 @@ function onboardingRedirect(request: NextRequest, session: SessionPayload): Next
     return null;
   }
 
+  if (!session.planStepComplete) {
+    if (!pathname.startsWith("/onboarding/plan")) {
+      return NextResponse.redirect(new URL("/onboarding/plan", request.url));
+    }
+    return null;
+  }
+
   if (!session.teamStepComplete) {
     if (!pathname.startsWith("/onboarding/team")) {
       return NextResponse.redirect(new URL("/onboarding/team", request.url));
