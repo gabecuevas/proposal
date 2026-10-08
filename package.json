@@ -31,7 +31,8 @@
       "linkify-it": "5.0.2",
       "sharp": ">=0.35.5",
       "source-map-js": ">=1.2.2",
-      "prosemirror-view": ">=1.42.3"
+      "prosemirror-view": ">=1.42.3",
+      "prosemirror-model": "1.25.12"
     }
   },
   "packageManager": "pnpm@9.0.0",
