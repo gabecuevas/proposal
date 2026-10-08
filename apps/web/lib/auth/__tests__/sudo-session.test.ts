@@ -19,6 +19,7 @@ const base: SessionPayload = {
   email: "user@example.com",
   emailVerified: true,
   companySetupComplete: true,
+  planStepComplete: true,
   teamStepComplete: true,
 };
 

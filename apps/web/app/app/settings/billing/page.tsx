@@ -1,28 +1,29 @@
+import { getServerSession } from "@/lib/auth/server-session";
+import { isStripeBillingConfigured } from "@/lib/billing/stripe-billing";
+import { getWorkspaceBillingState } from "@/lib/billing/workspace-billing";
 import { SheetPadded } from "@/components/ui/sheet-table";
+import { BillingClient } from "./billing-client";
 
-export default function BillingPage() {
+export const dynamic = "force-dynamic";
+
+export default async function BillingPage() {
+  const session = await getServerSession();
+  const billing = session?.workspaceId ? await getWorkspaceBillingState(session.workspaceId) : null;
+  const canManage = session?.role === "OWNER" || session?.role === "ADMIN";
+
   return (
     <SheetPadded>
-    <div className="w-full max-w-3xl space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Billing</h1>
-        <p className="mt-2 text-sm text-muted">Plan, invoices, and payment methods for this workspace.</p>
+      <div className="w-full max-w-6xl space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold">Billing</h1>
+          <p className="mt-2 text-sm text-muted">Plan, invoices, and payment methods for this workspace.</p>
+        </div>
+        <BillingClient
+          billing={billing}
+          canManage={canManage}
+          billingAvailable={isStripeBillingConfigured()}
+        />
       </div>
-      <section className="rounded-none border border-border bg-surface p-5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted">Current plan</p>
-        <p className="mt-2 text-lg font-semibold text-foreground">Free</p>
-        <p className="mt-1 text-sm text-muted">
-          Workspace billing is not connected yet. You can still send documents on the current plan.
-        </p>
-        <button
-          type="button"
-          disabled
-          className="mt-4 rounded-none bg-primary px-4 py-2 text-sm font-medium text-primary-foreground opacity-60"
-        >
-          Upgrade
-        </button>
-      </section>
-    </div>
     </SheetPadded>
   );
 }

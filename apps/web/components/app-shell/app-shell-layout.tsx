@@ -8,6 +8,7 @@ import { AppBreadcrumbs } from "./app-breadcrumbs";
 import { AppSidebar } from "./app-sidebar";
 import { AppTopBar } from "./app-top-bar";
 import { isImmersivePath, resolveSection } from "./nav-config";
+import { BillingBanner, type BillingBannerInfo } from "./billing-banner";
 import { SudoBanner, type SudoBannerInfo } from "./sudo-banner";
 
 type AppShellLayoutProps = {
@@ -18,6 +19,7 @@ type AppShellLayoutProps = {
   userAvatarUrl?: string | null;
   messengerEnabled?: boolean;
   sudo?: SudoBannerInfo | null;
+  billingBanner?: BillingBannerInfo | null;
 };
 
 function initialsFromEmail(email: string): string {
@@ -48,6 +50,7 @@ function AppShellChrome({
   userAvatarUrl = null,
   messengerEnabled = false,
   sudo = null,
+  billingBanner = null,
 }: AppShellLayoutProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -120,6 +123,7 @@ function AppShellChrome({
   return (
     <div className="app-theme flex h-screen w-full flex-col overflow-hidden bg-background">
       {sudo ? <SudoBanner sudo={sudo} /> : null}
+      {billingBanner ? <BillingBanner info={billingBanner} /> : null}
       <AppTopBar
         activeSectionId={section.id}
         userInitials={resolvedInitials}

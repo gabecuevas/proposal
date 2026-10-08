@@ -69,7 +69,7 @@ export default function OnboardingCompanyPage() {
       return;
     }
 
-    router.push("/onboarding/team");
+    router.push("/onboarding/plan");
     router.refresh();
   }
 

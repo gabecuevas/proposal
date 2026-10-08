@@ -30,6 +30,7 @@ export async function buildSessionPayloadFromUser(
       email: user.email,
       emailVerified: Boolean(user.email_verified_at),
       companySetupComplete: false,
+      planStepComplete: false,
       teamStepComplete: false,
     };
   }
@@ -48,6 +49,9 @@ export async function buildSessionPayloadFromUser(
   const teamStepComplete = onboarding
     ? Boolean(onboarding.team_step_completed_at || onboarding.team_step_skipped_at)
     : companySetupComplete;
+  // Only owners choose a plan; legacy workspaces that finished onboarding are grandfathered.
+  const planStepComplete =
+    Boolean(membership.workspace.plan_selected_at) || teamStepComplete || membership.role !== "OWNER";
 
   return {
     userId: user.id,
@@ -56,6 +60,7 @@ export async function buildSessionPayloadFromUser(
     email: user.email,
     emailVerified: Boolean(user.email_verified_at),
     companySetupComplete,
+    planStepComplete,
     teamStepComplete,
   };
 }
@@ -66,6 +71,9 @@ export function postAuthRedirectPath(session: SessionPayload, preferredNext?: st
   }
   if (!session.workspaceId || !session.companySetupComplete) {
     return "/onboarding/company";
+  }
+  if (!session.planStepComplete) {
+    return "/onboarding/plan";
   }
   if (!session.teamStepComplete) {
     return "/onboarding/team";

@@ -1,5 +1,10 @@
 import type { NextRequest } from "next/server";
+import type Stripe from "stripe";
 import { errorResponse, jsonWithRequestId } from "@/lib/api/response";
+import {
+  processSubscriptionCheckoutCompleted,
+  syncSubscriptionToWorkspace,
+} from "@/lib/billing/stripe-billing";
 import { getStripeClient, getStripeWebhookSecret } from "@/lib/payments/stripe";
 import {
   processStripeCheckoutCompleted,
@@ -30,9 +35,20 @@ export async function POST(request: NextRequest) {
 
   try {
     if (event.type === "checkout.session.completed") {
-      await processStripeCheckoutCompleted(event);
+      const session = event.data.object as Stripe.Checkout.Session;
+      if (session.mode === "subscription") {
+        await processSubscriptionCheckoutCompleted(session);
+      } else {
+        await processStripeCheckoutCompleted(event);
+      }
     } else if (event.type === "checkout.session.expired") {
       await processStripeCheckoutExpired(event);
+    } else if (
+      event.type === "customer.subscription.created" ||
+      event.type === "customer.subscription.updated" ||
+      event.type === "customer.subscription.deleted"
+    ) {
+      await syncSubscriptionToWorkspace(event.data.object as Stripe.Subscription);
     }
   } catch (error) {
     return errorResponse(request, {
